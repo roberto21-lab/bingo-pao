@@ -1,6 +1,6 @@
-import { Container, Box, Grid } from "@mui/material";
-import Hall from "../Componets/Hall";
+import { Box, Container, Grid } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import Hall from "../Componets/Hall";
 // import Hall from "../components/Hall";
 
 type Room = {
@@ -35,8 +35,7 @@ export default function Home() {
     const navigate = useNavigate();
 
     const handleEnter = (roomId: string) => {
-       navigate(`/room/${roomId}`)
-        alert(`Entrando a ${roomId}`);
+        navigate(`/room/${roomId}`)
     };
 
     return (
