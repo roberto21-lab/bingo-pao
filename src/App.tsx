@@ -1,14 +1,16 @@
 // src/App.tsx
-import * as React from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { ThemeProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import { Routes, Route, Navigate } from "react-router-dom";
+import theme from "./theme";
 import Home from "./Pages/Home";
-import Header from "./Pages/Header";
+import Rooms from "./Pages/Rooms";
 import RoomDetail from "./Pages/RoomDetail";
+import GameInProgress from "./Pages/GameInProgress";
 import PurchasedCartons from "./Pages/PurchasedCartons";
 import Profile from "./Pages/Profile";
-// import Header from "./components/Header"; // asegúrate de la ruta real
+import TabBar from "./Componets/TabBar";
 
-// Componente 404 simple (puedes moverlo a src/Pages/NotFound.tsx luego)
 function NotFound() {
   return (
     <div style={{ padding: 24, fontFamily: "system-ui" }}>
@@ -19,31 +21,20 @@ function NotFound() {
 }
 
 export default function App() {
-  const navigate = useNavigate();
-
   return (
-    <>
-      <Header
-        title="Bingo Pao"
-        links={[{ label: "Inicio", to: "/" }, { label: "Perfil", to: "/profile" }, { label: "Mis cartones", to: "/purchased-cartons" }]}
-        onNavigate={(to) => navigate(to)}
-        actionLabel="Crear sala"
-        // onActionClick={() => alert("Crear sala")}
-        roomCount={2}
-        userName="Roberto"
-        balance={30000}
-        currency="Bs"
-      // onWalletClick={() => alert("Ir a billetera")}
-      />
-
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/room/:roomId" element={<RoomDetail />} /> {/* ⬅️ nueva */}
-        <Route path="/purchased-cartons" element={<PurchasedCartons />} /> {/* ⬅️ nueva */}
-        <Route path="/profile" element={<Profile />} /> {/* ⬅️ nueva */}
+        <Route path="/rooms" element={<Rooms />} />
+        <Route path="/room/:roomId" element={<RoomDetail />} />
+        <Route path="/game/:roomId" element={<GameInProgress />} />
+        <Route path="/purchased-cartons" element={<PurchasedCartons />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/404" element={<NotFound />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
-    </>
+      <TabBar />
+    </ThemeProvider>
   );
 }

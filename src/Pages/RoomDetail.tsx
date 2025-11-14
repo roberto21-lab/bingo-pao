@@ -1,24 +1,15 @@
 // src/Pages/RoomDetail.tsx
 import {
-    Box,
-    Button,
-    Container,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    Divider,
-    FormControl,
-    InputLabel,
-    MenuItem,
-    Pagination,
-    Select,
-    Stack,
-    Typography
+  Box,
+  Button,
+  Container,
+  Typography,
+  Stack,
+  Link,
 } from "@mui/material";
 import * as React from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import BingoCard from "../Componets/BingoCard";
+import { useParams } from "react-router-dom";
+import SelectableCard from "../Componets/SelectableCard";
 import { generateCards } from "../utils/bingo";
 
 type Room = {
@@ -31,273 +22,378 @@ type Room = {
 };
 
 const MOCK_ROOMS: Room[] = [
+  { id: "cosmo-cash", title: "Cosmo Cash", prizeAmount: 500, currency: "USD", ticketsToStart: 112, ticketPrice: 5.0 },
+  { id: "golden-galaxy", title: "Golden Galaxy", prizeAmount: 200, currency: "USD", ticketsToStart: 400, ticketPrice: 10.0 },
+  { id: "lucky-star", title: "Lucky Star Bingo", prizeAmount: 200, currency: "USD", ticketsToStart: 400, ticketPrice: 10.0 },
   { id: "sala-1", title: "Sala Principal", prizeAmount: 10000, currency: "Bs", ticketsToStart: 112, ticketPrice: 100 },
   { id: "sala-2", title: "Sala Nocturna", prizeAmount: 5400, currency: "USD", ticketsToStart: 400, ticketPrice: 10 },
 ];
 
+
 export default function RoomDetail() {
   const { roomId } = useParams<{ roomId: string }>();
-  const navigate = useNavigate();
 
   const room = React.useMemo(() => MOCK_ROOMS.find((r) => r.id === roomId), [roomId]);
-  const cardsToGenerate = room ? room.ticketsToStart * 2 : 0;
-  const allCards = React.useMemo(() => generateCards(cardsToGenerate), [cardsToGenerate]);
+  
+  // Generar más cartones para los sliders (16 cartones, 8 por slider)
+  // Usar la función de bingo.ts que genera cartones 5x5 válidos
+  const allCards = React.useMemo(() => generateCards(16), []);
+  
+  // Dividir cartones en 2 grupos para los 2 sliders
+  const firstRowCards = allCards.slice(0, 8);
+  const secondRowCards = allCards.slice(8, 16);
+  
+  const [selectedCards, setSelectedCards] = React.useState<Set<number>>(new Set());
+  const [availableBalance] = React.useState(1250.75);
 
-  const [page, setPage] = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(60); // más grande porque ahora son celdas ligeras
-  const total = allCards.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const startIdx = (page - 1) * pageSize;
-  const endIdx = Math.min(startIdx + pageSize, total);
-  const visibleIndices = Array.from({ length: endIdx - startIdx }, (_, i) => startIdx + i);
-
-  const [selectedSet, setSelectedSet] = React.useState<Set<number>>(new Set());
-
-  const [previewIndex, setPreviewIndex] = React.useState<number | null>(null);
-  const openPreview = (globalIndex: number) => setPreviewIndex(globalIndex);
-  const closePreview = () => setPreviewIndex(null);
-
-  const acceptPreview = () => {
-    if (previewIndex == null) return;
-    setSelectedSet((prev) => new Set(prev).add(previewIndex));
-    setPreviewIndex(null);
-  };
-
-  const removeSelected = (globalIndex: number) => {
-    setSelectedSet((prev) => {
+  const toggleCard = (index: number) => {
+    setSelectedCards((prev) => {
       const next = new Set(prev);
-      next.delete(globalIndex);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
       return next;
     });
   };
 
-  const handleBuySelected = () => {
-    const sorted = Array.from(selectedSet).sort((a, b) => a - b);
-    const selectedCards = sorted.map((i) => ({
-      id: `carton-${i + 1}`,
-      grid: allCards[i],
-    }));
-    console.log("Compra ->", selectedCards);
-    navigate("/purchased-cartons", { state: { selectedCards } });
+  const handleRandom = () => {
+    // Seleccionar 2 cartones aleatorios de todos los disponibles
+    const randomIndices = Array.from({ length: allCards.length }, (_, i) => i)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 2);
+    setSelectedCards(new Set(randomIndices));
+  };
+
+  const handleFavoriteNumbers = () => {
+    // TODO: Implementar lógica de números favoritos
+    console.log("Mis números favoritos");
+  };
+
+  const handleEnroll = () => {
+    if (selectedCards.size === 0) return;
+    const totalPrice = selectedCards.size * (room?.ticketPrice || 0);
+    console.log("Inscribirse con cartones:", Array.from(selectedCards), "Total:", totalPrice);
+    // TODO: Navegar a confirmación o procesar inscripción
   };
 
   if (!room) {
     return (
-      <Container maxWidth="md" sx={{ py: 4 }}>
-        <Typography variant="h6">Sala no encontrada</Typography>
+      <Container maxWidth="sm" sx={{ py: 4 }}>
+        <Typography variant="h6" sx={{ color: "#ffffff" }}>
+          Sala no encontrada
+        </Typography>
       </Container>
     );
   }
 
-  return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="h5" fontWeight={700}>{room.title}</Typography>
-        <Typography color="text.secondary">Cartones disponibles: {cardsToGenerate}</Typography>
-        
-        <Typography variant="h5" fontWeight={700}>Seleciona tus cartones</Typography>
-         <Typography variant="subtitle1" fontWeight={700}>
-            Seleccionados ({selectedSet.size})
-          </Typography>
-      </Box>
+  const totalPrice = selectedCards.size * room.ticketPrice;
 
-     
-
-      {/* <Box
-        sx={{
-          display: "grid",
-          gap: 1,
-          gridTemplateColumns: {
-            xs: "repeat(3, 1fr)",
-            sm: "repeat(6, 1fr)",
-            md: "repeat(8, 1fr)",
-            lg: "repeat(10, 1fr)",
-          },
-          alignItems: "start",
-        }}
-      >
-        {visibleIndices.map((globalIndex) => {
-          const alreadySelected = selectedSet.has(globalIndex);
-          return (
-            <CellTile
-              key={globalIndex}
-              index={globalIndex}
-              selected={alreadySelected}
-              onClick={() => openPreview(globalIndex)}
-            />
-          );
-        })}
-      </Box> */}
-
-
-{/* Card principal: 400px de alto, scroll interno */}
-<Box
-  sx={{
-    bgcolor: "background.paper",
-    borderRadius: 2,
-    boxShadow: "0 8px 24px rgba(0,0,0,.08)",
-    border: (t) => `1px solid ${t.palette.divider}`,
-    p: 1,
-    height: 400,            // ⬅️ alto fijo solicitado
-    overflowY: "auto",
-    "&::-webkit-scrollbar": { width: 10 },
-    "&::-webkit-scrollbar-thumb": {
-      backgroundColor: "action.hover",
-      borderRadius: 8,
-      border: (t) => `2px solid ${t.palette.background.paper}`,
-    },
-  }}
->
-  {/* Grilla: 5 por fila siempre */}
-  <Box
-    sx={{
-      display: "grid",
-      gap: 0.75,
-      gridTemplateColumns: "repeat(5, 1fr)",  // ⬅️ 5 columnas
-      alignItems: "start",
-    }}
-  >
-    {allCards.map((_, globalIndex) => {
-      const alreadySelected = selectedSet.has(globalIndex);
-      return (
-        <CellTile
-          key={globalIndex}
-          index={globalIndex}
-          selected={alreadySelected}
-          onClick={() => openPreview(globalIndex)}
-        />
-      );
-    })}
-  </Box>
-</Box>
-
-
-      <Box sx={{ mt: 3 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-         
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => setSelectedSet(new Set())}
-              disabled={selectedSet.size === 0}
-            >
-              Limpiar selección
-            </Button>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handleBuySelected}
-              disabled={selectedSet.size === 0}
-            >
-              Comprar seleccionados
-            </Button>
-          </Stack>
-        </Stack>
-
-        {selectedSet.size === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            (Aquí verás los cartones que vayas aceptando)
-          </Typography>
-        ) : (
-          <Box
-            sx={{
-              display: "flex",
-              gap: 1.5,
-              overflowX: "auto",
-              pb: 1,
-              "&::-webkit-scrollbar": { height: 8 },
-              "&::-webkit-scrollbar-thumb": { bgcolor: "action.hover", borderRadius: 8 },
-            }}
-          >
-            {Array.from(selectedSet)
-              .sort((a, b) => a - b)
-              .map((i) => (
-                <Box key={i} sx={{ minWidth: 240 }}>
-                  <BingoCard
-                    grid={allCards[i]}
-                    title={`Cartón #${i + 1}`}
-                    compact
-                  />
-                  <Box sx={{ textAlign: "right", mt: 0.5 }}>
-                    <Button size="small" color="error" onClick={() => removeSelected(i)}>
-                      Quitar
-                    </Button>
-                  </Box>
-                </Box>
-              ))}
-          </Box>
-        )}
-      </Box>
-
-      <Divider sx={{ my: 2 }} />
-
-      <Dialog
-        open={previewIndex !== null}
-        onClose={closePreview}
-        maxWidth="xs"
-        fullWidth
-      >
-        {previewIndex !== null && (
-          <>
-            <DialogTitle>Previsualizar cartón #{previewIndex + 1}</DialogTitle>
-            <DialogContent dividers>
-              <BingoCard
-                grid={allCards[previewIndex]}
-                title={`Cartón #${previewIndex + 1}`}
-              />
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={closePreview}>Cancelar</Button>
-              <Button variant="contained" onClick={acceptPreview}>
-                Aceptar cartón
-              </Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
-    </Container>
-  );
-}
-
-function CellTile({
-  index,
-  selected,
-  onClick,
-}: {
-  index: number;
-  selected: boolean;
-  onClick: () => void;
-}) {
   return (
     <Box
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
       sx={{
-        userSelect: "none",
-        display: "grid",
-        placeItems: "center",
-        height: 64,
-        borderRadius: 1.5,
-        fontWeight: 700,
-        border: (t) => `1px solid ${selected ? t.palette.primary.main : t.palette.divider}`,
-        bgcolor: selected ? "primary.light" : "background.paper",
-        color: selected ? "primary.contrastText" : "text.primary",
-        boxShadow: selected ? "0 0 0 2px rgba(25,118,210,.15)" : "0 1px 3px rgba(0,0,0,.06)",
-        transition: "transform .08s ease, box-shadow .12s ease, background .12s ease",
-        cursor: "pointer",
-        "&:hover": { transform: "translateY(-1px)" },
+        minHeight: "100vh",
+        backgroundColor: "#1a1d2e",
+        color: "#ffffff",
+        paddingBottom: "80px",
       }}
     >
-      #{index + 1}
+      <Container maxWidth="sm" sx={{ py: 4 }}>
+        {/* Título */}
+        <Typography
+          variant="h4"
+          sx={{
+            textAlign: "center",
+            fontSize: { xs: "24px", sm: "28px" },
+            fontWeight: 700,
+            color: "#ffffff",
+            mb: 3,
+            fontFamily: "'Montserrat', sans-serif",
+          }}
+        >
+          Selecciona Tus Cartones
+        </Typography>
+
+        {/* Botones de acción */}
+        <Stack direction="row" spacing={1.5} sx={{ mb: 2, justifyContent: "center" }}>
+          <Button
+            onClick={handleRandom}
+            sx={{
+              background: "linear-gradient(135deg, rgba(201, 168, 90, 0.8) 0%, rgba(227, 191, 112, 0.9) 50%, rgba(240, 208, 138, 0.8) 100%)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              color: "#0f0f1e",
+              fontWeight: 600,
+              fontSize: "14px",
+              py: 1,
+              px: 2,
+              borderRadius: "12px",
+              textTransform: "none",
+              border: "1px solid rgba(227, 191, 112, 0.3)",
+              boxShadow: "0 4px 12px rgba(227, 191, 112, 0.3)",
+              "&:hover": {
+                background: "linear-gradient(135deg, rgba(212, 179, 102, 0.9) 0%, rgba(236, 200, 130, 1) 50%, rgba(245, 217, 154, 0.9) 100%)",
+                boxShadow: "0 6px 16px rgba(227, 191, 112, 0.4)",
+              },
+            }}
+          >
+            Aleatorio
+          </Button>
+          <Button
+            onClick={handleFavoriteNumbers}
+            sx={{
+              background: "linear-gradient(135deg, rgba(201, 168, 90, 0.8) 0%, rgba(227, 191, 112, 0.9) 50%, rgba(240, 208, 138, 0.8) 100%)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              color: "#0f0f1e",
+              fontWeight: 600,
+              fontSize: "14px",
+              py: 1,
+              px: 2,
+              borderRadius: "12px",
+              textTransform: "none",
+              border: "1px solid rgba(227, 191, 112, 0.3)",
+              boxShadow: "0 4px 12px rgba(227, 191, 112, 0.3)",
+              "&:hover": {
+                background: "linear-gradient(135deg, rgba(212, 179, 102, 0.9) 0%, rgba(236, 200, 130, 1) 50%, rgba(245, 217, 154, 0.9) 100%)",
+                boxShadow: "0 6px 16px rgba(227, 191, 112, 0.4)",
+              },
+            }}
+          >
+            Mis Números Favoritos
+          </Button>
+        </Stack>
+
+        {/* Label Libre / Ocupado */}
+        <Typography
+          variant="body2"
+          sx={{
+            textAlign: "center",
+            color: "#ffffff",
+            opacity: 0.7,
+            fontSize: "12px",
+            mb: 2,
+          }}
+        >
+          Libre / Ocupado
+        </Typography>
+
+        {/* Sliders de cartones */}
+        <Stack spacing={3} sx={{ mb: 4 }}>
+          {/* Primer slider */}
+          <Box>
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                overflowX: "auto",
+                overflowY: "hidden",
+                pb: 1,
+                scrollSnapType: "x proximity",
+                scrollbarWidth: "thin",
+                scrollbarColor: "rgba(227, 191, 112, 0.3) transparent",
+                "&::-webkit-scrollbar": {
+                  height: "6px",
+                },
+                "&::-webkit-scrollbar-track": {
+                  background: "transparent",
+                },
+                "&::-webkit-scrollbar-thumb": {
+                  background: "rgba(227, 191, 112, 0.3)",
+                  borderRadius: "10px",
+                  "&:hover": {
+                    background: "rgba(227, 191, 112, 0.5)",
+                  },
+                },
+                // Mostrar 3.5 cartones a la vez
+                // Ancho aproximado: (100vw del contenedor - padding) / 3.5
+                "& > *": {
+                  minWidth: "calc((100% - 32px) / 3.5)", // 32px = 2 gaps de 16px
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                },
+              }}
+            >
+              {firstRowCards.map((card, index) => (
+                <SelectableCard
+                  key={index}
+                  grid={card}
+                  cardId={index + 1}
+                  selected={selectedCards.has(index)}
+                  onClick={() => toggleCard(index)}
+                  status="free"
+                />
+              ))}
+            </Box>
+          </Box>
+
+          {/* Segundo slider */}
+          <Box>
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                overflowX: "auto",
+                overflowY: "hidden",
+                pb: 1,
+                scrollSnapType: "x proximity",
+                scrollbarWidth: "thin",
+                scrollbarColor: "rgba(227, 191, 112, 0.3) transparent",
+                "&::-webkit-scrollbar": {
+                  height: "6px",
+                },
+                "&::-webkit-scrollbar-track": {
+                  background: "transparent",
+                },
+                "&::-webkit-scrollbar-thumb": {
+                  background: "rgba(227, 191, 112, 0.3)",
+                  borderRadius: "10px",
+                  "&:hover": {
+                    background: "rgba(227, 191, 112, 0.5)",
+                  },
+                },
+                // Mostrar 3.5 cartones a la vez
+                // Ancho aproximado: (100vw del contenedor - padding) / 3.5
+                "& > *": {
+                  minWidth: "calc((100% - 32px) / 3.5)", // 32px = 2 gaps de 16px
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                },
+              }}
+            >
+              {secondRowCards.map((card, index) => {
+                const globalIndex = index + 8;
+                return (
+                  <SelectableCard
+                    key={globalIndex}
+                    grid={card}
+                    cardId={globalIndex + 1}
+                    selected={selectedCards.has(globalIndex)}
+                    onClick={() => toggleCard(globalIndex)}
+                    status="free"
+                  />
+                );
+              })}
+            </Box>
+          </Box>
+        </Stack>
+
+        {/* Resumen */}
+        <Box
+          sx={{
+            background: "rgba(31, 34, 51, 0.5)",
+            backdropFilter: "blur(20px) saturate(180%)",
+            WebkitBackdropFilter: "blur(20px) saturate(180%)",
+            borderRadius: "16px",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            p: 2.5,
+            mb: 3,
+          }}
+        >
+          <Stack spacing={1.5}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Typography variant="body2" sx={{ color: "#ffffff", opacity: 0.8 }}>
+                Cartones Seleccionados:
+              </Typography>
+              <Typography variant="body2" sx={{ color: "#ffffff", fontWeight: 600 }}>
+                {selectedCards.size}
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Typography variant="body2" sx={{ color: "#ffffff", opacity: 0.8 }}>
+                Precio Total:
+              </Typography>
+              <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: "#ffffff", fontWeight: 700, fontSize: "16px" }}
+                >
+                  ${totalPrice.toFixed(2)}
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#ffffff", opacity: 0.8 }}>
+                  USD
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Typography variant="body2" sx={{ color: "#ffffff", opacity: 0.8 }}>
+                Saldo Disponible:
+              </Typography>
+              <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: "#ffffff", fontWeight: 700, fontSize: "16px" }}
+                >
+                  ${availableBalance.toFixed(2)}
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#ffffff", opacity: 0.8 }}>
+                  USD
+                </Typography>
+              </Box>
+            </Box>
+          </Stack>
+        </Box>
+
+        {/* Botón Inscribirse */}
+        <Button
+          fullWidth
+          onClick={handleEnroll}
+          disabled={selectedCards.size === 0}
+          sx={{
+            background: selectedCards.size > 0
+              ? "linear-gradient(135deg, rgba(201, 168, 90, 0.8) 0%, rgba(227, 191, 112, 0.9) 50%, rgba(240, 208, 138, 0.8) 100%)"
+              : "rgba(227, 191, 112, 0.3)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            color: selectedCards.size > 0 ? "#0f0f1e" : "#ffffff",
+            fontWeight: 700,
+            fontSize: "16px",
+            py: 1.5,
+            borderRadius: "16px",
+            textTransform: "none",
+            border: "1px solid rgba(227, 191, 112, 0.3)",
+            boxShadow: selectedCards.size > 0
+              ? "0 8px 24px rgba(227, 191, 112, 0.4)"
+              : "none",
+            mb: 2,
+            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            "&:hover": selectedCards.size > 0 ? {
+              background: "linear-gradient(135deg, rgba(212, 179, 102, 0.9) 0%, rgba(236, 200, 130, 1) 50%, rgba(245, 217, 154, 0.9) 100%)",
+              boxShadow: "0 12px 32px rgba(227, 191, 112, 0.5)",
+              transform: "translateY(-2px)",
+            } : {},
+            "&:disabled": {
+              backgroundColor: "rgba(227, 191, 112, 0.2)",
+              color: "rgba(255, 255, 255, 0.5)",
+            },
+          }}
+        >
+          Inscribirse
+        </Button>
+
+        {/* Términos y Condiciones */}
+        <Link
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            // TODO: Mostrar términos y condiciones
+            console.log("Términos y Condiciones");
+          }}
+          sx={{
+            display: "block",
+            textAlign: "center",
+            color: "#e3bf70",
+            fontSize: "12px",
+            textDecoration: "none",
+            "&:hover": {
+              textDecoration: "underline",
+            },
+          }}
+        >
+          Términos y Condiciones
+        </Link>
+      </Container>
     </Box>
   );
 }
