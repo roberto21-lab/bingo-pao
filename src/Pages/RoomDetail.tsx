@@ -1,4 +1,3 @@
-// src/Pages/RoomDetail.tsx
 import {
   Box,
   Button,
@@ -6,9 +5,12 @@ import {
   Typography,
   Stack,
   Link,
+  Dialog,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import SelectableCard from "../Componets/SelectableCard";
 import { generateCards } from "../utils/bingo";
 
@@ -32,34 +34,55 @@ const MOCK_ROOMS: Room[] = [
 
 export default function RoomDetail() {
   const { roomId } = useParams<{ roomId: string }>();
+  const navigate = useNavigate();
 
   const room = React.useMemo(() => MOCK_ROOMS.find((r) => r.id === roomId), [roomId]);
   
-  // Generar más cartones para los sliders (16 cartones, 8 por slider)
-  // Usar la función de bingo.ts que genera cartones 5x5 válidos
-  const allCards = React.useMemo(() => generateCards(16), []);
+  const allCards = React.useMemo(() => generateCards(45), []);
   
-  // Dividir cartones en 2 grupos para los 2 sliders
-  const firstRowCards = allCards.slice(0, 8);
-  const secondRowCards = allCards.slice(8, 16);
+  const firstRowCards = allCards.slice(0, 15);
+  const secondRowCards = allCards.slice(15, 30);
+  const thirdRowCards = allCards.slice(30, 45);
   
   const [selectedCards, setSelectedCards] = React.useState<Set<number>>(new Set());
   const [availableBalance] = React.useState(1250.75);
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [previewCardIndex, setPreviewCardIndex] = React.useState<number | null>(null);
 
-  const toggleCard = (index: number) => {
-    setSelectedCards((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) {
+  const handleCardClick = (index: number) => {
+    if (selectedCards.has(index)) {
+      setSelectedCards((prev) => {
+        const next = new Set(prev);
         next.delete(index);
-      } else {
-        next.add(index);
-      }
-      return next;
-    });
+        return next;
+      });
+      return;
+    }
+    setPreviewCardIndex(index);
+    setModalOpen(true);
+  };
+
+  const handleAcceptCard = () => {
+    if (previewCardIndex !== null) {
+      setSelectedCards((prev) => {
+        const next = new Set(prev);
+        next.add(previewCardIndex);
+        return next;
+      });
+    }
+    handleCloseModal();
+  };
+
+  const handleRejectCard = () => {
+    handleCloseModal();
+  };
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setPreviewCardIndex(null);
   };
 
   const handleRandom = () => {
-    // Seleccionar 2 cartones aleatorios de todos los disponibles
     const randomIndices = Array.from({ length: allCards.length }, (_, i) => i)
       .sort(() => Math.random() - 0.5)
       .slice(0, 2);
@@ -67,15 +90,14 @@ export default function RoomDetail() {
   };
 
   const handleFavoriteNumbers = () => {
-    // TODO: Implementar lógica de números favoritos
     console.log("Mis números favoritos");
   };
 
   const handleEnroll = () => {
-    if (selectedCards.size === 0) return;
+    if (selectedCards.size === 0 || !roomId) return;
     const totalPrice = selectedCards.size * (room?.ticketPrice || 0);
     console.log("Inscribirse con cartones:", Array.from(selectedCards), "Total:", totalPrice);
-    // TODO: Navegar a confirmación o procesar inscripción
+    navigate(`/game/${roomId}`);
   };
 
   if (!room) {
@@ -100,7 +122,6 @@ export default function RoomDetail() {
       }}
     >
       <Container maxWidth="sm" sx={{ py: 4 }}>
-        {/* Título */}
         <Typography
           variant="h4"
           sx={{
@@ -115,7 +136,6 @@ export default function RoomDetail() {
           Selecciona Tus Cartones
         </Typography>
 
-        {/* Botones de acción */}
         <Stack direction="row" spacing={1.5} sx={{ mb: 2, justifyContent: "center" }}>
           <Button
             onClick={handleRandom}
@@ -165,7 +185,6 @@ export default function RoomDetail() {
           </Button>
         </Stack>
 
-        {/* Label Libre / Ocupado */}
         <Typography
           variant="body2"
           sx={{
@@ -179,37 +198,37 @@ export default function RoomDetail() {
           Libre / Ocupado
         </Typography>
 
-        {/* Sliders de cartones */}
-        <Stack spacing={3} sx={{ mb: 4 }}>
-          {/* Primer slider */}
-          <Box>
+        <Box
+          sx={{
+            overflowX: "auto",
+            overflowY: "hidden",
+            mb: 4,
+            scrollSnapType: "x proximity",
+            scrollbarWidth: "thin",
+            scrollbarColor: "rgba(227, 191, 112, 0.3) transparent",
+            "&::-webkit-scrollbar": {
+              height: "8px",
+            },
+            "&::-webkit-scrollbar-track": {
+              background: "transparent",
+            },
+            "&::-webkit-scrollbar-thumb": {
+              background: "rgba(227, 191, 112, 0.3)",
+              borderRadius: "10px",
+              "&:hover": {
+                background: "rgba(227, 191, 112, 0.5)",
+              },
+            },
+          }}
+        >
+          <Stack spacing={3} sx={{ display: "inline-block", minWidth: "100%" }}>
             <Box
               sx={{
                 display: "flex",
                 gap: 2,
-                overflowX: "auto",
-                overflowY: "hidden",
-                pb: 1,
-                scrollSnapType: "x proximity",
-                scrollbarWidth: "thin",
-                scrollbarColor: "rgba(227, 191, 112, 0.3) transparent",
-                "&::-webkit-scrollbar": {
-                  height: "6px",
-                },
-                "&::-webkit-scrollbar-track": {
-                  background: "transparent",
-                },
-                "&::-webkit-scrollbar-thumb": {
-                  background: "rgba(227, 191, 112, 0.3)",
-                  borderRadius: "10px",
-                  "&:hover": {
-                    background: "rgba(227, 191, 112, 0.5)",
-                  },
-                },
-                // Mostrar 3.5 cartones a la vez
-                // Ancho aproximado: (100vw del contenedor - padding) / 3.5
+                width: "max-content",
                 "& > *": {
-                  minWidth: "calc((100% - 32px) / 3.5)", // 32px = 2 gaps de 16px
+                  minWidth: "calc((100vw - 96px) / 3.5)", 
                   flexShrink: 0,
                   scrollSnapAlign: "start",
                 },
@@ -221,65 +240,68 @@ export default function RoomDetail() {
                   grid={card}
                   cardId={index + 1}
                   selected={selectedCards.has(index)}
-                  onClick={() => toggleCard(index)}
+                  onClick={() => handleCardClick(index)}
                   status="free"
                 />
               ))}
             </Box>
-          </Box>
 
-          {/* Segundo slider */}
-          <Box>
             <Box
               sx={{
                 display: "flex",
                 gap: 2,
-                overflowX: "auto",
-                overflowY: "hidden",
-                pb: 1,
-                scrollSnapType: "x proximity",
-                scrollbarWidth: "thin",
-                scrollbarColor: "rgba(227, 191, 112, 0.3) transparent",
-                "&::-webkit-scrollbar": {
-                  height: "6px",
-                },
-                "&::-webkit-scrollbar-track": {
-                  background: "transparent",
-                },
-                "&::-webkit-scrollbar-thumb": {
-                  background: "rgba(227, 191, 112, 0.3)",
-                  borderRadius: "10px",
-                  "&:hover": {
-                    background: "rgba(227, 191, 112, 0.5)",
-                  },
-                },
-                // Mostrar 3.5 cartones a la vez
-                // Ancho aproximado: (100vw del contenedor - padding) / 3.5
+                width: "max-content",
                 "& > *": {
-                  minWidth: "calc((100% - 32px) / 3.5)", // 32px = 2 gaps de 16px
+                  minWidth: "calc((100vw - 96px) / 3.5)", 
                   flexShrink: 0,
                   scrollSnapAlign: "start",
                 },
               }}
             >
               {secondRowCards.map((card, index) => {
-                const globalIndex = index + 8;
+                const globalIndex = index + 15;
                 return (
                   <SelectableCard
                     key={globalIndex}
                     grid={card}
                     cardId={globalIndex + 1}
                     selected={selectedCards.has(globalIndex)}
-                    onClick={() => toggleCard(globalIndex)}
+                    onClick={() => handleCardClick(globalIndex)}
                     status="free"
                   />
                 );
               })}
             </Box>
-          </Box>
-        </Stack>
 
-        {/* Resumen */}
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                width: "max-content",
+                "& > *": {
+                  minWidth: "calc((100vw - 96px) / 3.5)", 
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                },
+              }}
+            >
+              {thirdRowCards.map((card, index) => {
+                const globalIndex = index + 30;
+                return (
+                  <SelectableCard
+                    key={globalIndex}
+                    grid={card}
+                    cardId={globalIndex + 1}
+                    selected={selectedCards.has(globalIndex)}
+                    onClick={() => handleCardClick(globalIndex)}
+                    status="free"
+                  />
+                );
+              })}
+            </Box>
+          </Stack>
+        </Box>
+
         <Box
           sx={{
             background: "rgba(31, 34, 51, 0.5)",
@@ -335,7 +357,6 @@ export default function RoomDetail() {
           </Stack>
         </Box>
 
-        {/* Botón Inscribirse */}
         <Button
           fullWidth
           onClick={handleEnroll}
@@ -372,12 +393,10 @@ export default function RoomDetail() {
           Inscribirse
         </Button>
 
-        {/* Términos y Condiciones */}
         <Link
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            // TODO: Mostrar términos y condiciones
             console.log("Términos y Condiciones");
           }}
           sx={{
@@ -394,6 +413,168 @@ export default function RoomDetail() {
           Términos y Condiciones
         </Link>
       </Container>
+
+      <Dialog
+        open={modalOpen}
+        onClose={handleCloseModal}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: "#1a1d2e",
+            borderRadius: "20px",
+            border: "1px solid rgba(227, 191, 112, 0.3)",
+          },
+        }}
+      >
+        <DialogContent sx={{ p: 4 }}>
+          <Typography
+            variant="h5"
+            sx={{
+              textAlign: "center",
+              color: "#ffffff",
+              fontWeight: 700,
+              mb: 3,
+              fontFamily: "'Montserrat', sans-serif",
+            }}
+          >
+            Cartón #{previewCardIndex !== null ? previewCardIndex + 1 : ""}
+          </Typography>
+          
+          {previewCardIndex !== null && (
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                mb: 3,
+              }}
+            >
+              <Box
+                sx={{
+                  width: "100%",
+                  maxWidth: "400px",
+                  backgroundColor: "#ffffff",
+                  borderRadius: "16px",
+                  p: 3,
+                  border: "2px solid #e3bf70",
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    gap: 2,
+                    mb: 2,
+                  }}
+                >
+                  {["B", "I", "N", "G", "O"].map((letter) => (
+                    <Typography
+                      key={letter}
+                      sx={{
+                        fontSize: "24px",
+                        fontWeight: 900,
+                        color: "#1a1d2e",
+                        letterSpacing: "1px",
+                      }}
+                    >
+                      {letter}
+                    </Typography>
+                  ))}
+                </Box>
+
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, 1fr)",
+                    gap: 1,
+                  }}
+                >
+                  {allCards[previewCardIndex].map((row, rowIndex) =>
+                    row.map((num, colIndex) => {
+                      const isFree = num === 0;
+                      return (
+                        <Box
+                          key={`${rowIndex}-${colIndex}`}
+                          sx={{
+                            aspectRatio: "1",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isFree ? "#f0f0f0" : "#ffffff",
+                            borderRadius: "4px",
+                            border: "2px solid #e0e0e0",
+                            fontSize: "18px",
+                            fontWeight: 700,
+                            color: "#1a1d2e",
+                            position: "relative",
+                          }}
+                        >
+                          {isFree ? (
+                            <Typography
+                              sx={{
+                                fontSize: "12px",
+                                fontWeight: 900,
+                                color: "#1a1d2e",
+                                transform: "rotate(-45deg)",
+                                position: "absolute",
+                              }}
+                            >
+                              FREE
+                            </Typography>
+                          ) : (
+                            num
+                          )}
+                        </Box>
+                      );
+                    })
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 0, gap: 2 }}>
+          <Button
+            onClick={handleRejectCard}
+            sx={{
+              flex: 1,
+              py: 1.5,
+              borderRadius: "12px",
+              textTransform: "none",
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
+              color: "#ffffff",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+              fontWeight: 600,
+              "&:hover": {
+                backgroundColor: "rgba(255, 255, 255, 0.2)",
+              },
+            }}
+          >
+            Rechazar
+          </Button>
+          <Button
+            onClick={handleAcceptCard}
+            sx={{
+              flex: 1,
+              py: 1.5,
+              borderRadius: "12px",
+              textTransform: "none",
+              background: "linear-gradient(135deg, rgba(201, 168, 90, 0.8) 0%, rgba(227, 191, 112, 0.9) 50%, rgba(240, 208, 138, 0.8) 100%)",
+              color: "#0f0f1e",
+              border: "1px solid rgba(227, 191, 112, 0.3)",
+              fontWeight: 700,
+              boxShadow: "0 4px 12px rgba(227, 191, 112, 0.3)",
+              "&:hover": {
+                background: "linear-gradient(135deg, rgba(212, 179, 102, 0.9) 0%, rgba(236, 200, 130, 1) 50%, rgba(245, 217, 154, 0.9) 100%)",
+                boxShadow: "0 6px 16px rgba(227, 191, 112, 0.4)",
+              },
+            }}
+          >
+            Aceptar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
