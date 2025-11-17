@@ -26,10 +26,11 @@ const TabBar: React.FC = () => {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        backgroundColor: "#1f2233",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        borderTop: "1px solid rgba(227, 191, 112, 0.1)",
+        background: "rgba(74, 44, 26, 0.8)",
+        backdropFilter: "blur(20px) saturate(180%)",
+        WebkitBackdropFilter: "blur(20px) saturate(180%)",
+        borderTop: "2px solid rgba(212, 175, 55, 0.3)",
+        boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(212, 175, 55, 0.2)",
         padding: "12px 16px",
         zIndex: 1000,
       }}
@@ -53,7 +54,7 @@ const TabBar: React.FC = () => {
       >
         <Box
           sx={{
-            color: isActive("/") ? "#e3bf70" : "#ffffff",
+            color: isActive("/") ? "#d4af37" : "#f5e6d3",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -65,7 +66,7 @@ const TabBar: React.FC = () => {
         <Typography
           variant="caption"
           sx={{
-            color: isActive("/") ? "#e3bf70" : "#ffffff",
+            color: isActive("/") ? "#d4af37" : "#f5e6d3",
             fontSize: "12px",
             fontWeight: isActive("/") ? 600 : 400,
             transition: "color 0.2s",
@@ -75,34 +76,158 @@ const TabBar: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Join Button - Centro */}
+      {/* Join Button - Lingote de Oro */}
       <Button
         onClick={handleJoin}
+        disableRipple
+        disableElevation
         sx={{
-          minWidth: "120px",
-          height: "56px",
-          background: "linear-gradient(135deg, rgba(201, 168, 90, 0.8) 0%, rgba(227, 191, 112, 0.9) 50%, rgba(240, 208, 138, 0.8) 100%)",
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          color: "#0f0f1e",
-          fontWeight: 700,
-          fontSize: "16px",
-          borderRadius: "16px",
+          minWidth: "140px",
+          height: "64px",
+          color: "#1a0f0a !important",
+          fontWeight: 800,
+          fontSize: "17px",
+          letterSpacing: "0.5px",
           textTransform: "none",
-          border: "1px solid rgba(227, 191, 112, 0.3)",
-          boxShadow: `
-            0 8px 24px rgba(227, 191, 112, 0.4),
-            0 0 0 1px rgba(255, 255, 255, 0.1) inset
+          position: "relative",
+          // Forma de lingote (trapecio con bordes redondeados)
+          borderRadius: "6px 6px 10px 10px",
+          // Efecto de trapecio usando transform skew sutil
+          transform: "perspective(200px) rotateX(2deg)",
+          transformStyle: "preserve-3d",
+          // Gradiente dorado realista de lingote
+          background: `
+            linear-gradient(135deg, 
+              #d4af37 0%,
+              #f4d03f 15%,
+              #ffd700 30%,
+              #f4d03f 45%,
+              #d4af37 60%,
+              #b8941f 75%,
+              #d4af37 90%,
+              #f4d03f 100%
+            ) !important
           `,
-          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          backgroundSize: "200% 200%",
+          animation: "goldShimmer 4s ease-in-out infinite",
+          // Sombras profundas para efecto 3D de lingote
+          boxShadow: `
+            0 8px 24px rgba(0, 0, 0, 0.6),
+            0 4px 12px rgba(212, 175, 55, 0.4),
+            inset 0 2px 4px rgba(255, 255, 255, 0.3),
+            inset 0 -4px 8px rgba(0, 0, 0, 0.4),
+            inset 0 0 20px rgba(255, 215, 0, 0.2)
+          `,
+          // Bordes biselados
+          border: "none !important",
+          borderTop: "2px solid rgba(255, 255, 255, 0.4) !important",
+          borderBottom: "3px solid rgba(0, 0, 0, 0.3) !important",
+          // Deshabilitar estilos por defecto de MUI
+          "&.MuiButton-root": {
+            backgroundColor: "transparent",
+            boxShadow: "none",
+          },
+          // Efecto de relieve
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: "2px",
+            left: "8%",
+            right: "8%",
+            height: "2px",
+            background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent)",
+            borderRadius: "1px",
+            zIndex: 1,
+          },
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            bottom: "4px",
+            left: "5%",
+            right: "5%",
+            height: "3px",
+            background: "linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.3), transparent)",
+            borderRadius: "2px",
+            zIndex: 1,
+          },
+          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
           mx: 2,
           "&:hover": {
-            background: "linear-gradient(135deg, rgba(212, 179, 102, 0.9) 0%, rgba(236, 200, 130, 1) 50%, rgba(245, 217, 154, 0.9) 100%)",
-            boxShadow: `
-              0 12px 32px rgba(227, 191, 112, 0.5),
-              0 0 0 1px rgba(255, 255, 255, 0.2) inset
+            transform: "perspective(200px) rotateX(2deg) translateY(-3px) scale(1.02)",
+            background: `
+              linear-gradient(135deg, 
+                #d4af37 0%,
+                #f4d03f 15%,
+                #ffd700 30%,
+                #f4d03f 45%,
+                #d4af37 60%,
+                #b8941f 75%,
+                #d4af37 90%,
+                #f4d03f 100%
+              ) !important
             `,
-            transform: "translateY(-2px)",
+            boxShadow: `
+              0 12px 36px rgba(0, 0, 0, 0.7),
+              0 6px 16px rgba(212, 175, 55, 0.5),
+              inset 0 2px 4px rgba(255, 255, 255, 0.4),
+              inset 0 -4px 8px rgba(0, 0, 0, 0.5),
+              inset 0 0 25px rgba(255, 215, 0, 0.3)
+            `,
+          },
+          "&:active": {
+            transform: "perspective(200px) rotateX(2deg) translateY(0px) scale(0.99)",
+            // Mantener exactamente el mismo estilo visual
+            background: `
+              linear-gradient(135deg, 
+                #d4af37 0%,
+                #f4d03f 15%,
+                #ffd700 30%,
+                #f4d03f 45%,
+                #d4af37 60%,
+                #b8941f 75%,
+                #d4af37 90%,
+                #f4d03f 100%
+              ) !important
+            `,
+            boxShadow: `
+              0 8px 24px rgba(0, 0, 0, 0.6),
+              0 4px 12px rgba(212, 175, 55, 0.4),
+              inset 0 2px 4px rgba(255, 255, 255, 0.3),
+              inset 0 -4px 8px rgba(0, 0, 0, 0.4),
+              inset 0 0 20px rgba(255, 215, 0, 0.2)
+            `,
+            borderTop: "2px solid rgba(255, 255, 255, 0.4) !important",
+            borderBottom: "3px solid rgba(0, 0, 0, 0.3) !important",
+            filter: "none",
+          },
+          "&:focus": {
+            background: `
+              linear-gradient(135deg, 
+                #d4af37 0%,
+                #f4d03f 15%,
+                #ffd700 30%,
+                #f4d03f 45%,
+                #d4af37 60%,
+                #b8941f 75%,
+                #d4af37 90%,
+                #f4d03f 100%
+              ) !important
+            `,
+            boxShadow: `
+              0 8px 24px rgba(0, 0, 0, 0.6),
+              0 4px 12px rgba(212, 175, 55, 0.4),
+              inset 0 2px 4px rgba(255, 255, 255, 0.3),
+              inset 0 -4px 8px rgba(0, 0, 0, 0.4),
+              inset 0 0 20px rgba(255, 215, 0, 0.2)
+            `,
+          },
+          "@keyframes goldShimmer": {
+            "0%, 100%": {
+              backgroundPosition: "0% 50%",
+            },
+            "50%": {
+              backgroundPosition: "100% 50%",
+            },
           },
         }}
       >
@@ -128,7 +253,7 @@ const TabBar: React.FC = () => {
       >
         <Box
           sx={{
-            color: isActive("/profile") ? "#e3bf70" : "#ffffff",
+            color: isActive("/profile") ? "#d4af37" : "#f5e6d3",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -140,7 +265,7 @@ const TabBar: React.FC = () => {
         <Typography
           variant="caption"
           sx={{
-            color: isActive("/profile") ? "#e3bf70" : "#ffffff",
+            color: isActive("/profile") ? "#d4af37" : "#f5e6d3",
             fontSize: "12px",
             fontWeight: isActive("/profile") ? 600 : 400,
             transition: "color 0.2s",

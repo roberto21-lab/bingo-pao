@@ -62,26 +62,12 @@ const RoomCard: React.FC<RoomCardProps> = ({
     <Box sx={{ display: "flex", gap: 1.5, mb: 2 }}>
       {/* Card izquierda - Dorada */}
       <Card
+        className="gold-metallic"
         sx={{
           flex: 1,
           minWidth: "140px",
-          background: `
-            linear-gradient(135deg, 
-              rgba(201, 168, 90, 0.6) 0%, 
-              rgba(227, 191, 112, 0.75) 30%, 
-              rgba(240, 208, 138, 0.7) 60%, 
-              rgba(227, 191, 112, 0.8) 100%
-            )
-          `,
-          backdropFilter: "blur(25px) saturate(200%)",
-          WebkitBackdropFilter: "blur(25px) saturate(200%)",
           borderRadius: "16px",
-          border: "1px solid rgba(227, 191, 112, 0.5)",
-          boxShadow: `
-            0 8px 32px rgba(227, 191, 112, 0.4),
-            0 0 0 1px rgba(255, 255, 255, 0.2) inset,
-            0 2px 12px rgba(227, 191, 112, 0.3)
-          `,
+          border: "2px solid rgba(212, 175, 55, 0.4)",
           position: "relative",
           overflow: "hidden",
         }}
@@ -188,20 +174,13 @@ const RoomCard: React.FC<RoomCardProps> = ({
         </CardContent>
       </Card>
 
-      {/* Card derecha - Gris oscuro */}
+      {/* Card derecha - Vidrio */}
       <Card
+        className="glass-effect"
         sx={{
           flex: 1,
           minWidth: "140px",
-          background: "rgba(31, 34, 51, 0.5)",
-          backdropFilter: "blur(20px) saturate(180%)",
-          WebkitBackdropFilter: "blur(20px) saturate(180%)",
           borderRadius: "16px",
-          border: "1px solid rgba(255, 255, 255, 0.12)",
-          boxShadow: `
-            0 8px 32px rgba(0, 0, 0, 0.3),
-            0 0 0 1px rgba(255, 255, 255, 0.05) inset
-          `,
           position: "relative",
           overflow: "hidden",
         }}

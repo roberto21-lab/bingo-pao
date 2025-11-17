@@ -78,9 +78,10 @@ export default function Home() {
     <Box
       sx={{
         minHeight: "100vh",
-        backgroundColor: "#1a1d2e",
-        color: "#ffffff",
+        background: "transparent",
+        color: "#f5e6d3",
         paddingBottom: "80px", // Space for tabbar
+        position: "relative",
       }}
     >
       <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -96,26 +97,11 @@ export default function Home() {
         <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
           {/* Available Balance Card */}
           <Card
+            className="gold-metallic"
             sx={{
               flex: 1,
-              background: `
-                linear-gradient(135deg, 
-                  rgba(201, 168, 90, 0.6) 0%, 
-                  rgba(227, 191, 112, 0.75) 30%, 
-                  rgba(240, 208, 138, 0.7) 60%, 
-                  rgba(227, 191, 112, 0.8) 100%
-                )
-              `,
-              backdropFilter: "blur(25px) saturate(200%)",
-              WebkitBackdropFilter: "blur(25px) saturate(200%)",
               borderRadius: "16px",
-              border: "1px solid rgba(227, 191, 112, 0.5)",
-              boxShadow: `
-                0 8px 32px rgba(227, 191, 112, 0.4),
-                0 0 0 1px rgba(255, 255, 255, 0.2) inset,
-                0 2px 12px rgba(227, 191, 112, 0.3),
-                inset 0 1px 0 rgba(255, 255, 255, 0.3)
-              `,
+              border: "2px solid rgba(212, 175, 55, 0.4)",
               position: "relative",
               overflow: "hidden",
               "&::before": {
@@ -127,19 +113,6 @@ export default function Home() {
                 height: "2px",
                 background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent)",
                 zIndex: 1,
-              },
-              "&::after": {
-                content: '""',
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: "80%",
-                height: "80%",
-                borderRadius: "50%",
-                background: "radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%)",
-                filter: "blur(20px)",
-                zIndex: 0,
               },
             }}
           >
@@ -200,17 +173,10 @@ export default function Home() {
 
           {/* Frozen Balance Card */}
           <Card
+            className="glass-effect"
             sx={{
               flex: 1,
-              background: "rgba(31, 34, 51, 0.5)",
-              backdropFilter: "blur(20px) saturate(180%)",
-              WebkitBackdropFilter: "blur(20px) saturate(180%)",
               borderRadius: "16px",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              boxShadow: `
-                0 8px 32px rgba(0, 0, 0, 0.3),
-                0 0 0 1px rgba(255, 255, 255, 0.05) inset
-              `,
               position: "relative",
               overflow: "hidden",
               "&::before": {
@@ -220,7 +186,7 @@ export default function Home() {
                 left: 0,
                 right: 0,
                 height: "1px",
-                background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent)",
+                background: "linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.3), transparent)",
               },
             }}
           >
