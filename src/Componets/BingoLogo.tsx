@@ -198,7 +198,7 @@ const BingoLogo: React.FC<{ size?: number }> = ({ size = 150 }) => {
           }}
         >
           {/* Sombra profunda para efecto 3D */}
-          <Box
+          {/* <Box
             sx={{
               position: "absolute",
               fontSize: `${size * 0.48}px`,
@@ -211,8 +211,8 @@ const BingoLogo: React.FC<{ size?: number }> = ({ size = 150 }) => {
               fontFamily: "'Montserrat', sans-serif",
             }}
           >
-            PO
-          </Box>
+            Pao
+          </Box> */}
           {/* Letras principales con efecto metálico dorado intenso */}
           <Box
             sx={{
@@ -264,7 +264,7 @@ const BingoLogo: React.FC<{ size?: number }> = ({ size = 150 }) => {
               },
             }}
           >
-            PO
+            Pao
           </Box>
         </Box>
 

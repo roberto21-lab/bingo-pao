@@ -10,6 +10,8 @@ import GameInProgress from "./Pages/GameInProgress";
 import PurchasedCartons from "./Pages/PurchasedCartons";
 import Profile from "./Pages/Profile";
 import TabBar from "./Componets/TabBar";
+import Register from "./Pages/Register";
+import { Login } from "@mui/icons-material";
 
 function NotFound() {
   return (
@@ -32,6 +34,8 @@ export default function App() {
         <Route path="/purchased-cartons" element={<PurchasedCartons />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/404" element={<NotFound />} />
+         <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<Login />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
       <TabBar />
