@@ -42,19 +42,45 @@ export default function BingoValidationModal({
       }}
     >
       <DialogContent sx={{ p: 4 }}>
-        <Typography
-          variant="h4"
+        <Box
           sx={{
-            textAlign: "center",
-            color: "#e3bf70",
-            fontWeight: 900,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            mx: "auto",
             mb: 3,
-            fontFamily: "'Montserrat', sans-serif",
-            textShadow: "0 2px 8px rgba(227, 191, 112, 0.5)",
+            px: 3,
+            py: 1,
+            borderRadius: "20px",
+            background: "linear-gradient(135deg, #d4af37 0%, #f4d03f 30%, #ffd700 50%, #f4d03f 70%, #d4af37 100%)",
+            backgroundSize: "200% 200%",
+            animation: "shimmer 3s ease-in-out infinite",
+            boxShadow: `
+              0 4px 15px rgba(212, 175, 55, 0.5),
+              inset 0 1px 0 rgba(255, 255, 255, 0.3),
+              inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+              0 0 0 2px rgba(212, 175, 55, 0.3)
+            `,
+            border: "2px solid rgba(212, 175, 55, 0.6)",
+            "@keyframes shimmer": {
+              "0%, 100%": { backgroundPosition: "0% 50%" },
+              "50%": { backgroundPosition: "100% 50%" },
+            },
           }}
         >
-          ¡BINGO GANADOR!
-        </Typography>
+          <Typography
+            variant="h4"
+            sx={{
+              textAlign: "center",
+              color: "#1a1008",
+              fontWeight: 900,
+              fontFamily: "'Montserrat', sans-serif",
+              textShadow: "0 1px 2px rgba(255, 255, 255, 0.3)",
+            }}
+          >
+            ¡BINGO GANADOR!
+          </Typography>
+        </Box>
 
         <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 3 }}>
           <Box sx={{ flex: 1, minWidth: { xs: "100%", md: "50%" } }}>
@@ -81,14 +107,16 @@ export default function BingoValidationModal({
             px: 4,
             borderRadius: "12px",
             textTransform: "none",
-            backgroundColor: "rgba(244, 67, 54, 0.9)",
-            color: "#ffffff",
-            border: "1px solid rgba(244, 67, 54, 0.5)",
+            background: "rgba(26, 16, 8, 0.6)",
+            backdropFilter: "blur(10px)",
+            color: "#f5e6d3",
+            border: "1px solid rgba(212, 175, 55, 0.4)",
             fontWeight: 700,
-            boxShadow: "0 4px 12px rgba(244, 67, 54, 0.3)",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
             "&:hover": {
-              backgroundColor: "rgba(244, 67, 54, 1)",
-              boxShadow: "0 6px 16px rgba(244, 67, 54, 0.4)",
+              background: "rgba(31, 19, 9, 0.8)",
+              borderColor: "rgba(212, 175, 55, 0.6)",
+              boxShadow: "0 6px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15)",
               transform: "translateY(-1px)",
             },
           }}

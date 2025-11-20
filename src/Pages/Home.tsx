@@ -1,6 +1,16 @@
-import { Box, Container, Typography, Card, CardContent, Button, Stack } from "@mui/material";
+import { Box, Container, Typography, Button, Stack, CircularProgress, Chip } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import * as React from "react";
 import BingoLogo from "../Componets/BingoLogo";
+import BalanceCard from "../Componets/BalanceCard";
+import ActiveRoomCard from "../Componets/ActiveRoomCard";
+import { getUserRooms } from "../Services/cards.service";
+import { getRoomById, getRooms, type Room } from "../Services/rooms.service";
+import { getRoomRounds } from "../Services/rounds.service";
+import { getUserId } from "../Services/auth.service";
+import { useAuth } from "../hooks/useAuth";
+import AuthToast from "../Componets/AuthToast";
+import AvailableRoomsPreview from "../Componets/AvailableRoomsPreview";
 
 type ActiveRoom = {
   id: string;
@@ -10,68 +20,152 @@ type ActiveRoom = {
   currency: string;
 };
 
-const MOCK_ACTIVE_ROOMS: ActiveRoom[] = [
-  {
-    id: "sala-1",
-    title: "Sala Principal",
-    status: "active",
-    prizeAmount: 10000,
-    currency: "USD",
-  },
-  {
-    id: "sala-2",
-    title: "Sala Nocturna",
-    status: "waiting",
-    prizeAmount: 5400,
-    currency: "USD",
-  },
-];
-
-// Mock data for balances
 const AVAILABLE_BALANCE = 1250.75;
 const FROZEN_BALANCE = 0.0;
 
-const getStatusLabel = (status: ActiveRoom["status"]) => {
-  switch (status) {
-    case "active":
-      return "Activa";
-    case "waiting":
-      return "Esperando";
-    case "finished":
-      return "Finalizada";
-    default:
-      return "Desconocido";
-  }
-};
-
-const getStatusColor = (status: ActiveRoom["status"]) => {
-  switch (status) {
-    case "active":
-      return "#4caf50";
-    case "waiting":
-      return "#ff9800";
-    case "finished":
-      return "#9e9e9e";
-    default:
-      return "#ffffff";
-  }
-};
 
 export default function Home() {
   const navigate = useNavigate();
+  const [activeRooms, setActiveRooms] = React.useState<ActiveRoom[]>([]);
+  const [availableRooms, setAvailableRooms] = React.useState<Room[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [showToast, setShowToast] = React.useState(true);
+
+  // Obtener información del usuario autenticado
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const userId = getUserId() || "691c18597217196a8c31da37";
+
+  // Mostrar toast cuando cambia el estado de autenticación
+  React.useEffect(() => {
+    setShowToast(true);
+  }, [isAuthenticated, user]);
+
+  // Cargar salas disponibles cuando no hay usuario logueado
+  React.useEffect(() => {
+    const fetchAvailableRooms = async () => {
+      if (isAuthenticated) {
+        setAvailableRooms([]);
+        return;
+      }
+
+      try {
+        const rooms = await getRooms();
+        // Filtrar solo las salas que están esperando jugadores o en progreso
+        const filteredRooms = rooms.filter(
+          (room) => room.status === "waiting" || room.status === "in_progress"
+        );
+        setAvailableRooms(filteredRooms);
+      } catch (err) {
+        setError("Error al cargar salas disponibles");
+      }
+    };
+
+    if (!authLoading) {
+      fetchAvailableRooms();
+    }
+  }, [isAuthenticated, authLoading]);
+
+  // Cargar partidas activas del usuario
+  React.useEffect(() => {
+    const fetchActiveRooms = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Obtener todas las rooms en las que el usuario tiene cartones
+        const roomIds = await getUserRooms(userId);
+
+        if (roomIds.length === 0) {
+          setActiveRooms([]);
+          setLoading(false);
+          return;
+        }
+
+        // Para cada room, obtener su información y determinar el estado
+        const roomsData: (ActiveRoom | null)[] = await Promise.all(
+          roomIds.map(async (roomId) => {
+            try {
+              // Obtener información de la room
+              const room: Room = await getRoomById(roomId);
+              
+              // Obtener rounds para determinar el estado
+              const rounds = await getRoomRounds(roomId);
+              
+              // Determinar el estado basado en los rounds
+              let status: "active" | "waiting" | "finished" = "waiting";
+              
+              if (rounds.length > 0) {
+                // Buscar si hay algún round en progreso
+                const inProgressRound = rounds.find((round) => {
+                  const statusObj = typeof round.status_id === "object" && round.status_id
+                    ? round.status_id
+                    : null;
+                  return statusObj?.name === "in_progress";
+                });
+
+                // Buscar si todos los rounds están finalizados
+                const allFinished = rounds.every((round) => {
+                  const statusObj = typeof round.status_id === "object" && round.status_id
+                    ? round.status_id
+                    : null;
+                  return statusObj?.name === "finished";
+                });
+
+                if (inProgressRound) {
+                  status = "active";
+                } else if (allFinished) {
+                  status = "finished";
+                } else {
+                  status = "waiting";
+                }
+              } else {
+                // Si no hay rounds, la room está esperando
+                status = "waiting";
+              }
+
+              return {
+                id: room.id,
+                title: room.title,
+                status,
+                prizeAmount: room.estimatedPrize || room.jackpot || 0,
+                currency: room.currency,
+              };
+            } catch (err) {
+              return null;
+            }
+          })
+        );
+
+        // Filtrar nulls y ordenar: active primero, luego waiting, luego finished
+        const validRooms = roomsData
+          .filter((room): room is ActiveRoom => room !== null)
+          .sort((a, b) => {
+            const order = { active: 0, waiting: 1, finished: 2 };
+            return order[a.status] - order[b.status];
+          });
+
+        setActiveRooms(validRooms);
+      } catch (err) {
+        setError("Error al cargar las partidas activas. Por favor, intenta nuevamente.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchActiveRooms();
+  }, [userId]);
 
   const handleRoomClick = (roomId: string) => {
-    navigate(`/room/${roomId}`);
+    navigate(`/game/${roomId}`);
   };
 
   const handleTopUp = () => {
     // TODO: Implementar top up
-    console.log("Top up balance");
   };
 
   const handleWithdraw = () => {
     // TODO: Implementar withdraw
-    console.log("Withdraw funds");
   };
 
   return (
@@ -80,185 +174,128 @@ export default function Home() {
         minHeight: "100vh",
         background: "transparent",
         color: "#f5e6d3",
-        paddingBottom: "80px", // Space for tabbar
+        paddingBottom: "80px",
         position: "relative",
       }}
     >
+      {/* Auth Toast Notification - positioned absolutely at top */}
+      {!authLoading && showToast && (
+        <AuthToast
+          isAuthenticated={isAuthenticated}
+          userName={user?.full_name}
+          onClose={() => setShowToast(false)}
+        />
+      )}
+
       <Container maxWidth="sm" sx={{ py: 4 }}>
-        {/* Logo Section */}
-        <Box sx={{ textAlign: "center", mb: 4 }}>          
-          {/* Logo de Bingo PaO */}
+        <Box sx={{ textAlign: "center", mb: 4, position: "relative" }}>
+          {!authLoading && isAuthenticated && (
+            <Box
+              sx={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 0.5,
+              }}
+            >
+              <Chip
+                icon={
+                  <Box
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      backgroundColor: "#4caf50",
+                      boxShadow: "0 0 8px rgba(76, 175, 80, 0.8)",
+                      animation: "pulse 2s infinite",
+                      "@keyframes pulse": {
+                        "0%, 100%": {
+                          opacity: 1,
+                          transform: "scale(1)",
+                        },
+                        "50%": {
+                          opacity: 0.7,
+                          transform: "scale(1.2)",
+                        },
+                      },
+                    }}
+                  />
+                }
+                label="En línea"
+                size="small"
+                sx={{
+                  backgroundColor: "rgba(76, 175, 80, 0.15)",
+                  color: "#4caf50",
+                  border: "1px solid rgba(76, 175, 80, 0.3)",
+                  fontWeight: 600,
+                  fontSize: "0.75rem",
+                  "& .MuiChip-icon": {
+                    marginLeft: 1,
+                  },
+                }}
+              />
+            </Box>
+          )}
+
           <Box sx={{ mb: 3 }}>
             <BingoLogo size={150} />
           </Box>
         </Box>
 
-        {/* Balance Cards */}
-        <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
-          {/* Available Balance Card */}
-          <Card
-            className="gold-metallic"
-            sx={{
-              flex: 1,
-              borderRadius: "16px",
-              border: "2px solid rgba(212, 175, 55, 0.4)",
-              position: "relative",
-              overflow: "hidden",
-              "&::before": {
-                content: '""',
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                height: "2px",
-                background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent)",
-                zIndex: 1,
-              },
-            }}
-          >
-            <CardContent sx={{ p: 2.5, position: "relative", zIndex: 1 }}>
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  mb: 1,
-                  textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-                }}
-              >
-                Mi Saldo
-              </Typography>
-              <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, mb: 0.5 }}>
-                <Typography
-                  variant="h5"
-                  sx={{
-                    color: "#ffffff",
-                    fontSize: { xs: "20px", sm: "24px" },
-                    fontWeight: 700,
-                    textShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
-                    lineHeight: 1,
-                  }}
-                >
-                  ${AVAILABLE_BALANCE.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </Typography>
-                <Typography
-                  sx={{
-                    color: "#ffffff",
-                    fontSize: { xs: "14px", sm: "16px" },
-                    fontWeight: 600,
-                    textShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
-                    lineHeight: 1,
-                  }}
-                >
-                  USD
-                </Typography>
-              </Box>
-              <Typography
-                variant="caption"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  opacity: 0.95,
-                  textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-                }}
-              >
-                Disponible
-              </Typography>
-            </CardContent>
-          </Card>
+        {isAuthenticated ? (
+          <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
+            <BalanceCard
+              title="Mi Saldo"
+              amount={AVAILABLE_BALANCE}
+              currency="USD"
+              subtitle="Disponible"
+              variant="gold"
+            />
+            <BalanceCard
+              title="Saldo Congelado"
+              amount={FROZEN_BALANCE}
+              currency="USD"
+              subtitle="Pendiente de retiro"
+              variant="glass"
+            />
+          </Stack>
+        ) : (
+          <AvailableRoomsPreview rooms={availableRooms} />
+        )}
 
-          {/* Frozen Balance Card */}
-          <Card
-            className="glass-effect"
-            sx={{
-              flex: 1,
-              borderRadius: "16px",
-              position: "relative",
-              overflow: "hidden",
-              "&::before": {
-                content: '""',
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                height: "1px",
-                background: "linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.3), transparent)",
-              },
-            }}
-          >
-            <CardContent sx={{ p: 2.5, position: "relative", zIndex: 1 }}>
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  mb: 1,
-                }}
-              >
-                Saldo Congelado
-              </Typography>
-              <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, mb: 0.5 }}>
-                <Typography
-                  variant="h5"
-                  sx={{
-                    color: "#ffffff",
-                    fontSize: { xs: "20px", sm: "24px" },
-                    fontWeight: 700,
-                    textShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
-                    lineHeight: 1,
-                  }}
-                >
-                  ${FROZEN_BALANCE.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </Typography>
-                <Typography
-                  sx={{
-                    color: "#ffffff",
-                    fontSize: { xs: "14px", sm: "16px" },
-                    fontWeight: 600,
-                    textShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
-                    lineHeight: 1,
-                  }}
-                >
-                  USD
-                </Typography>
-              </Box>
-              <Typography
-                variant="caption"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  opacity: 0.8,
-                }}
-              >
-                Pendiente de retiro
-              </Typography>
-            </CardContent>
-          </Card>
-        </Stack>
+        {isAuthenticated && (
+          <Box sx={{ mb: 4 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                color: "#ffffff",
+                fontSize: "18px",
+                fontWeight: 600,
+                mb: 2,
+              }}
+            >
+              Mis Juegos Activos
+            </Typography>
 
-        {/* My Active Games Section */}
-        <Box sx={{ mb: 4 }}>
-          <Typography
-            variant="h6"
-            sx={{
-              color: "#ffffff",
-              fontSize: "18px",
-              fontWeight: 600,
-              mb: 2,
-            }}
-          >
-            Mis Juegos Activos
-          </Typography>
-
-          {MOCK_ACTIVE_ROOMS.length === 0 ? (
+          {loading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+              <CircularProgress sx={{ color: "#d4af37" }} />
+            </Box>
+          ) : error ? (
+            <Typography
+              variant="body2"
+              sx={{
+                color: "#ff6b6b",
+                opacity: 0.9,
+                textAlign: "center",
+                py: 4,
+              }}
+            >
+              {error}
+            </Typography>
+          ) : activeRooms.length === 0 ? (
             <Typography
               variant="body2"
               sx={{
@@ -272,133 +309,72 @@ export default function Home() {
             </Typography>
           ) : (
             <Stack spacing={2}>
-              {MOCK_ACTIVE_ROOMS.map((room) => (
-                <Card
-                  key={room.id}
-                  onClick={() => handleRoomClick(room.id)}
-                  sx={{
-                    background: "rgba(26, 26, 46, 0.4)",
-                    backdropFilter: "blur(20px) saturate(180%)",
-                    WebkitBackdropFilter: "blur(20px) saturate(180%)",
-                    borderRadius: "16px",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    boxShadow: `
-                      0 8px 32px rgba(0, 0, 0, 0.3),
-                      0 0 0 1px rgba(255, 255, 255, 0.05) inset
-                    `,
-                    cursor: "pointer",
-                    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                    position: "relative",
-                    overflow: "hidden",
-                    "&::before": {
-                      content: '""',
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: "1px",
-                      background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent)",
-                      transition: "opacity 0.3s",
-                    },
-                    "&:hover": {
-                      borderColor: "rgba(227, 191, 112, 0.5)",
-                      transform: "translateY(-4px)",
-                      boxShadow: `
-                        0 12px 40px rgba(0, 0, 0, 0.4),
-                        0 0 0 1px rgba(227, 191, 112, 0.2) inset,
-                        0 4px 16px rgba(227, 191, 112, 0.2)
-                      `,
-                      background: "rgba(31, 34, 51, 0.7)",
-                      "&::before": {
-                        background: "linear-gradient(90deg, transparent, rgba(227, 191, 112, 0.3), transparent)",
-                      },
-                    },
-                  }}
-                >
-                  <CardContent sx={{ p: 2.5, position: "relative", zIndex: 1 }}>
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      mb={1}
-                    >
-                      <Typography
-                        variant="h6"
-                        sx={{
-                          color: "#ffffff",
-                          fontSize: "16px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {room.title}
-                      </Typography>
-                      <Box
-                        sx={{
-                          px: 1.5,
-                          py: 0.5,
-                          borderRadius: "8px",
-                          backgroundColor: getStatusColor(room.status) + "20",
-                          border: `1px solid ${getStatusColor(room.status)}`,
-                        }}
-                      >
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            color: getStatusColor(room.status),
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {getStatusLabel(room.status)}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: "#ffffff",
-                        opacity: 0.8,
-                        fontSize: "14px",
-                      }}
-                    >
-                      Premio: ${room.prizeAmount.toLocaleString()} {room.currency}
-                    </Typography>
-                  </CardContent>
-                </Card>
+              {activeRooms.map((room) => (
+                <ActiveRoomCard key={room.id} room={room} onClick={handleRoomClick} />
               ))}
             </Stack>
           )}
-        </Box>
+          </Box>
+        )}
 
-        {/* Action Buttons */}
-        <Stack direction="row" spacing={2}>
+        {isAuthenticated && (
+          <Stack direction="row" spacing={2}>
           <Button
             fullWidth
             onClick={handleTopUp}
             sx={{
-              background: "linear-gradient(135deg, rgba(201, 168, 90, 0.8) 0%, rgba(227, 191, 112, 0.9) 50%, rgba(240, 208, 138, 0.8) 100%)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              color: "#0f0f1e",
-              fontWeight: 600,
+              backfaceVisibility: "hidden",
+              position: "relative",
+              cursor: "pointer",
+              display: "inline-block",
+              whiteSpace: "nowrap",
+              color: "#fff",
+              fontWeight: 900,
               fontSize: "14px",
               py: 1.5,
-              borderRadius: "16px",
+              borderRadius: "8px",
               textTransform: "none",
-              border: "1px solid rgba(227, 191, 112, 0.3)",
-              boxShadow: `
-                0 8px 24px rgba(227, 191, 112, 0.3),
-                0 0 0 1px rgba(255, 255, 255, 0.1) inset
+              textShadow: "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
+              border: "1px solid #d4af37",
+              backgroundImage: `
+                repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .12) 3.75%),
+                repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .04) 2.25%),
+                repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .18) 1.2%),
+                linear-gradient(180deg, #d4af37 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #f4d03f 53%, #ffd700 75%, #d4af37 100%)
               `,
-              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              boxShadow: `
+                inset 0px 1px 0px rgba(255,255,255,0.9),
+                inset 0px -1px 0px rgba(0,0,0,0.2),
+                0px 1px 3px rgba(0,0,0,0.4),
+                0px 4px 12px rgba(212, 175, 55, 0.4),
+                0px 0px 20px rgba(255, 215, 0, 0.2)
+              `,
+              transition: "all 0.2s ease",
               "&:hover": {
-                background: "linear-gradient(135deg, rgba(212, 179, 102, 0.9) 0%, rgba(236, 200, 130, 1) 50%, rgba(245, 217, 154, 0.9) 100%)",
-                boxShadow: `
-                  0 12px 32px rgba(227, 191, 112, 0.4),
-                  0 0 0 1px rgba(255, 255, 255, 0.2) inset
+                backgroundImage: `
+                  repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
+                  repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
+                  repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .2) 1.2%),
+                  linear-gradient(180deg, #f4d03f 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #ffed4e 53%, #ffd700 75%, #f4d03f 100%)
                 `,
-                transform: "translateY(-2px)",
+                boxShadow: `
+                  inset 0px 1px 0px rgba(255,255,255,1),
+                  inset 0px -1px 0px rgba(0,0,0,0.2),
+                  0px 2px 6px rgba(0,0,0,0.5),
+                  0px 6px 20px rgba(212, 175, 55, 0.5),
+                  0px 0px 30px rgba(255, 215, 0, 0.3)
+                `,
+                transform: "translateY(-1px)",
+              },
+              "&:active": {
+                transform: "translateY(2px)",
+                boxShadow: `
+                  inset 0px 1px 0px rgba(255,255,255,0.7),
+                  inset 0px -1px 0px rgba(0,0,0,0.3),
+                  0px 1px 2px rgba(0,0,0,0.4),
+                  0px 2px 8px rgba(212, 175, 55, 0.3),
+                  0px 0px 15px rgba(255, 215, 0, 0.15)
+                `,
               },
             }}
           >
@@ -409,32 +385,54 @@ export default function Home() {
             onClick={handleWithdraw}
             variant="outlined"
             sx={{
-              background: "rgba(31, 34, 51, 0.4)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              borderColor: "rgba(227, 191, 112, 0.5)",
-              color: "#e3bf70",
-              fontWeight: 600,
+              backfaceVisibility: "hidden",
+              position: "relative",
+              cursor: "pointer",
+              display: "inline-block",
+              whiteSpace: "nowrap",
+              color: "#fff",
+              fontWeight: 900,
               fontSize: "14px",
               py: 1.5,
-              borderRadius: "16px",
+              borderRadius: "8px",
               textTransform: "none",
-              borderWidth: "2px",
-              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
-              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              textShadow: "0px -1px 0px rgba(0,0,0,0.4)",
+              borderColor: "#7c7c7c",
+              borderWidth: "1px",
+              backgroundImage: `
+                repeating-linear-gradient(left, hsla(0,0%,100%,0) 0%, hsla(0,0%,100%,0) 6%, hsla(0,0%,100%, .1) 7.5%),
+                repeating-linear-gradient(left, hsla(0,0%, 0%,0) 0%, hsla(0,0%, 0%,0) 4%, hsla(0,0%, 0%,.03) 4.5%),
+                repeating-linear-gradient(left, hsla(0,0%,100%,0) 0%, hsla(0,0%,100%,0) 1.2%, hsla(0,0%,100%,.15) 2.2%),
+                linear-gradient(180deg, hsl(0,0%,78%) 0%, hsl(0,0%,90%) 47%, hsl(0,0%,78%) 53%, hsl(0,0%,70%) 100%)
+              `,
+              boxShadow: `
+                inset 0px 1px 0px rgba(255,255,255,1),
+                0px 1px 3px rgba(0,0,0,0.3),
+                0px 4px 12px rgba(0, 0, 0, 0.2)
+              `,
+              transition: "all 0.2s ease",
               "&:hover": {
-                borderColor: "rgba(240, 208, 138, 0.7)",
-                color: "#f0d08a",
-                background: "rgba(227, 191, 112, 0.1)",
-                borderWidth: "2px",
-                boxShadow: "0 8px 24px rgba(227, 191, 112, 0.2)",
-                transform: "translateY(-2px)",
+                boxShadow: `
+                  inset 0px 1px 0px rgba(255,255,255,1),
+                  0px 2px 6px rgba(0,0,0,0.4),
+                  0px 6px 16px rgba(0, 0, 0, 0.3)
+                `,
+                transform: "translateY(-1px)",
+              },
+              "&:active": {
+                transform: "translateY(2px)",
+                boxShadow: `
+                  inset 0px 1px 0px rgba(255,255,255,0.8),
+                  0px 1px 2px rgba(0,0,0,0.3),
+                  0px 2px 8px rgba(0, 0, 0, 0.15)
+                `,
               },
             }}
           >
             Retirar Fondos
           </Button>
         </Stack>
+        )}
       </Container>
     </Box>
   );

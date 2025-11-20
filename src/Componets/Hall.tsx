@@ -1,4 +1,3 @@
-// Hall.tsx
 import * as React from "react";
 import {
   Card,
@@ -93,7 +92,7 @@ const Hall: React.FC<HallProps> = ({
       <CardActions sx={{ justifyContent: "flex-end", px: 2, pb: 2 }}>
         <Button
           variant="contained"
-          onClick={onEnter ?? (() => console.log("Ver sala / Entrar"))}
+          onClick={onEnter}
         >
           Ver sala
         </Button>

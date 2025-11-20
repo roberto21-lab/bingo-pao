@@ -1,7 +1,6 @@
 // src/Componets/SelectableCard.tsx
 import * as React from "react";
 import { Box, Card, CardContent, Typography } from "@mui/material";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 type SelectableCardProps = {
   grid: number[][];
@@ -12,6 +11,7 @@ type SelectableCardProps = {
   calledNumbers?: Set<string>;
   markedNumbers?: Set<string>;
   hasBingo?: boolean;
+  bingoPatternNumbers?: Set<string>;
 };
 
 const HEADERS = ["B", "I", "N", "G", "O"] as const;
@@ -35,6 +35,7 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
   calledNumbers = new Set(),
   markedNumbers = new Set(),
   hasBingo = false,
+  bingoPatternNumbers = new Set(),
 }) => {
   const isNumberCalled = (num: number): boolean => {
     if (num === 0) return false;
@@ -121,7 +122,7 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
           border: hasBingo
             ? "3px solid #e3bf70"
             : selected
-            ? "2px solid #e3bf70"
+            ? "3px solid rgba(212, 175, 55, 0.8)"
             : status === "occupied"
             ? "2px solid #9e9e9e"
             : "2px solid #ffffff",
@@ -133,10 +134,53 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
           zIndex: 1,
           boxShadow: hasBingo
             ? "0 2px 8px rgba(227, 191, 112, 0.4)"
+            : selected
+            ? "0 0 15px rgba(212, 175, 55, 0.4), 0 0 30px rgba(212, 175, 55, 0.2), 0 1px 4px rgba(0, 0, 0, 0.1)"
             : "0 1px 4px rgba(0, 0, 0, 0.1)",
-          "&:hover": status === "occupied" ? {} : { transform: "translateY(-2px)", boxShadow: hasBingo ? "0 3px 10px rgba(227, 191, 112, 0.5)" : "0 2px 8px rgba(0, 0, 0, 0.15)" },
+          "&:hover": status === "occupied" ? {} : { transform: "translateY(-2px)", boxShadow: hasBingo ? "0 3px 10px rgba(227, 191, 112, 0.5)" : selected ? "0 0 20px rgba(212, 175, 55, 0.5), 0 2px 8px rgba(0, 0, 0, 0.15)" : "0 2px 8px rgba(0, 0, 0, 0.15)" },
         }}
       >
+        {/* Badge de seleccionado - Esquina superior izquierda */}
+        {selected && (
+          <Box
+            sx={{
+              position: "absolute",
+              top: -2,
+              left: -5,
+              zIndex: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 0.25,
+              px: 0.75,
+              py: 0.25,
+              borderRadius: "8px",
+              background: "linear-gradient(135deg, rgba(212, 175, 55, 0.9) 0%, rgba(244, 208, 63, 1) 50%, rgba(212, 175, 55, 0.9) 100%)",
+              border: "1.5px solid rgba(212, 175, 55, 1)",
+              boxShadow: "0 2px 8px rgba(212, 175, 55, 0.5)",
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: "8px",
+                fontWeight: 700,
+                color: "#1a1008",
+                lineHeight: 1,
+              }}
+            >
+              ✓
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "7px",
+                fontWeight: 700,
+                color: "#1a1008",
+                lineHeight: 1,
+              }}
+            >
+              Seleccionado
+            </Typography>
+          </Box>
+        )}
         <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
           <Box
             sx={{
@@ -194,8 +238,9 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
                 const isCalled = isNumberCalled(num);
                 const isMarked = isNumberMarked(num);
                 const isCalledButNotMarked = isCalled && !isMarked;
-                
-                const shouldBeGold = hasBingo && isMarked;
+                const numFormat = num !== 0 ? numberToBingoFormat(num) : "";
+                const isPartOfBingoPattern = hasBingo && numFormat !== "" && bingoPatternNumbers.has(numFormat);
+                const shouldBeGold = isPartOfBingoPattern && isMarked;
                 
                 return (
                   <Box
@@ -252,30 +297,6 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
           </Box>
         </CardContent>
       </Card>
-
-      {selected && (
-        <Box
-          sx={{
-            width: "24px",
-            height: "24px",
-            borderRadius: "50%",
-            border: "2px solid #e3bf70",
-            backgroundColor: "#e3bf70",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "all 0.2s",
-            boxShadow: "0 2px 8px rgba(227, 191, 112, 0.4)",
-          }}
-        >
-          <CheckCircleIcon
-            sx={{
-              fontSize: "20px",
-              color: "#ffffff",
-            }}
-          />
-        </Box>
-      )}
     </Box>
   );
 };
