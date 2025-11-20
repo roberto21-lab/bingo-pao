@@ -1,8 +1,5 @@
-// src/Componets/RoomCard.tsx
 import * as React from "react";
-import { Box, Card, CardContent, Typography, Button, Stack } from "@mui/material";
-import StarIcon from "@mui/icons-material/Star";
-import LockIcon from "@mui/icons-material/Lock";
+import { Box, Card, CardContent, Typography, Stack } from "@mui/material";
 
 type RoomStatus = "waiting" | "preparing" | "in_progress" | "locked";
 
@@ -48,10 +45,42 @@ const getStatusColor = (status: RoomStatus) => {
   }
 };
 
+type RoomInfoRowProps = {
+  label: string;
+  value: string | number;
+  valueBold?: boolean;
+};
+
+const RoomInfoRow: React.FC<RoomInfoRowProps> = ({ label, value, valueBold = false }) => (
+  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <Typography
+      variant="body2"
+      sx={{
+        color: "#ffffff",
+        opacity: 0.8,
+        fontSize: "14px",
+      }}
+    >
+      {label}
+    </Typography>
+    <Typography
+      variant="body2"
+      sx={{
+        color: "#ffffff",
+        fontWeight: valueBold ? 700 : 600,
+        fontSize: valueBold ? "16px" : "14px",
+      }}
+    >
+      {value}
+    </Typography>
+  </Box>
+);
+
 const RoomCard: React.FC<RoomCardProps> = ({
   title,
   price,
   estimatedPrize,
+  currency,
   status,
   rounds,
   jackpot,
@@ -59,212 +88,108 @@ const RoomCard: React.FC<RoomCardProps> = ({
   onJoin,
 }) => {
   return (
-    <Box sx={{ display: "flex", gap: 1.5, mb: 2 }}>
-      {/* Card izquierda - Dorada */}
+    <Box sx={{ mb: 2 }}>
       <Card
-        className="gold-metallic"
+        onClick={status !== "locked" ? onJoin : undefined}
         sx={{
-          flex: 1,
-          minWidth: "140px",
+          background: "rgba(26, 26, 46, 0.4)",
+          backdropFilter: "blur(20px) saturate(180%)",
+          WebkitBackdropFilter: "blur(20px) saturate(180%)",
           borderRadius: "16px",
-          border: "2px solid rgba(212, 175, 55, 0.4)",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
+          boxShadow: `
+            0 8px 32px rgba(0, 0, 0, 0.3),
+            0 0 0 1px rgba(255, 255, 255, 0.05) inset
+          `,
+          cursor: status === "locked" ? "not-allowed" : "pointer",
+          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           position: "relative",
           overflow: "hidden",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: "1px",
+            background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent)",
+            transition: "opacity 0.3s",
+          },
+          "&:hover": status !== "locked" ? {
+            borderColor: "rgba(227, 191, 112, 0.5)",
+            transform: "translateY(-4px)",
+            boxShadow: `
+              0 12px 40px rgba(0, 0, 0, 0.4),
+              0 0 0 1px rgba(227, 191, 112, 0.2) inset,
+              0 4px 16px rgba(227, 191, 112, 0.2)
+            `,
+            background: "rgba(31, 34, 51, 0.7)",
+            "&::before": {
+              background: "linear-gradient(90deg, transparent, rgba(227, 191, 112, 0.3), transparent)",
+            },
+          } : {},
         }}
       >
-        <CardContent sx={{ p: 2, position: "relative", zIndex: 1 }}>
-          {/* Icono pequeño en la esquina superior derecha */}
-          <Box
-            sx={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              width: "24px",
-              height: "24px",
-              borderRadius: "50%",
-              background: "rgba(255, 255, 255, 0.3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 2,
-            }}
+        <CardContent sx={{ p: 2.5, position: "relative", zIndex: 1 }}>
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+            mb={1}
           >
-            <StarIcon sx={{ fontSize: "14px", color: "#ffffff" }} />
-          </Box>
-
-          <Typography
-            variant="h6"
-            sx={{
-              color: "#ffffff",
-              fontSize: "14px",
-              fontWeight: 700,
-              mb: 1.5,
-              textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-              pr: 3,
-            }}
-          >
-            {title}
-          </Typography>
-
-          <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5, mb: 0.5 }}>
             <Typography
-              component="span"
+              variant="h6"
               sx={{
                 color: "#ffffff",
-                fontSize: "18px",
-                fontWeight: 700,
-                textShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
-              }}
-            >
-              Precio:
-            </Typography>
-            <Typography
-              component="span"
-              sx={{
-                color: "#ffffff",
-                fontSize: "20px",
-                fontWeight: 700,
-                textShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
-              }}
-            >
-              ${price.toFixed(2)}
-            </Typography>
-          </Box>
-
-          <Typography
-            variant="body2"
-            sx={{
-              color: "#ffffff",
-              fontSize: "11px",
-              opacity: 0.95,
-              mb: 0.5,
-              textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-            }}
-          >
-            Estimado: ${estimatedPrize.toFixed(2)}
-          </Typography>
-
-          {players && (
-            <Typography
-              variant="body2"
-              sx={{
-                color: "#ffffff",
-                fontSize: "11px",
-                opacity: 0.95,
-                textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-              }}
-            >
-              Jugadores: {players}
-            </Typography>
-          )}
-
-          {!players && status === "waiting" && (
-            <Typography
-              variant="body2"
-              sx={{
-                color: "#ffffff",
-                fontSize: "11px",
-                opacity: 0.95,
-                textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-              }}
-            >
-              Disponible
-            </Typography>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Card derecha - Vidrio */}
-      <Card
-        className="glass-effect"
-        sx={{
-          flex: 1,
-          minWidth: "140px",
-          borderRadius: "16px",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <CardContent sx={{ p: 2, position: "relative", zIndex: 1 }}>
-          <Stack spacing={1}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "11px",
-                  opacity: 0.8,
-                }}
-              >
-                Precio ${price.toFixed(2)}
-              </Typography>
-              {status === "locked" && (
-                <LockIcon sx={{ fontSize: "14px", color: "#9e9e9e" }} />
-              )}
-            </Box>
-
-            {rounds && (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "11px",
-                  opacity: 0.8,
-                }}
-              >
-                Rondas: {rounds}
-              </Typography>
-            )}
-
-            {jackpot ? (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "11px",
-                  opacity: 0.8,
-                }}
-              >
-                Jackpot: ${jackpot.toFixed(2)}
-              </Typography>
-            ) : (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ffffff",
-                  fontSize: "11px",
-                  opacity: 0.8,
-                }}
-              >
-                Estimado: ${estimatedPrize.toFixed(2)}
-              </Typography>
-            )}
-
-            <Button
-              fullWidth
-              onClick={onJoin}
-              disabled={status === "locked"}
-              sx={{
-                mt: 1,
-                py: 0.75,
-                borderRadius: "8px",
-                textTransform: "none",
-                fontSize: "11px",
+                fontSize: "16px",
                 fontWeight: 600,
-                backgroundColor: getStatusColor(status),
-                color: "#ffffff",
-                "&:hover": {
-                  backgroundColor: getStatusColor(status),
-                  opacity: 0.9,
-                },
-                "&:disabled": {
-                  backgroundColor: "#9e9e9e",
-                  color: "#ffffff",
-                },
               }}
             >
-              {getStatusLabel(status)}
-            </Button>
+              {title}
+            </Typography>
+            <Box
+              sx={{
+                px: 1.5,
+                py: 0.5,
+                borderRadius: "8px",
+                backgroundColor: getStatusColor(status) + "20",
+                border: `1px solid ${getStatusColor(status)}`,
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: getStatusColor(status),
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                }}
+              >
+                {getStatusLabel(status)}
+              </Typography>
+            </Box>
+          </Stack>
+
+          <Stack spacing={1.5} sx={{ mt: 2 }}>
+            <RoomInfoRow
+              label="Precio por cartón:"
+              value={`$${price.toFixed(2)} ${currency}`}
+              valueBold
+            />
+            <RoomInfoRow
+              label="Premio estimado:"
+              value={`$${estimatedPrize.toFixed(2)} ${currency}`}
+              valueBold
+            />
+            {players && <RoomInfoRow label="Jugadores:" value={players} />}
+            {rounds && <RoomInfoRow label="Rondas:" value={rounds} />}
+            {jackpot && (
+              <RoomInfoRow
+                label="Jackpot:"
+                value={`$${jackpot.toFixed(2)} ${currency}`}
+                valueBold
+              />
+            )}
           </Stack>
         </CardContent>
       </Card>

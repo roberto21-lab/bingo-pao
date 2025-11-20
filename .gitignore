@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Archivos de simulación de autenticación (contienen datos sensibles)
+simulate-login.js

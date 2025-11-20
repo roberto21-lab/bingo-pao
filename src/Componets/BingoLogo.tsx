@@ -1,4 +1,3 @@
-// src/Componets/BingoLogo.tsx
 import * as React from "react";
 import { Box } from "@mui/material";
 import logoImage from "../assets/logo.png";
@@ -16,7 +15,6 @@ const BingoLogo: React.FC<{ size?: number }> = ({ size = 150 }) => {
         justifyContent: "center",
       }}
     >
-      {/* Contenedor del logo con la imagen */}
       <Box
         sx={{
           position: "relative",

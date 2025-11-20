@@ -6,6 +6,10 @@ type GameStatusCardProps = {
   totalRounds: number;
   lastNumbers: string[];
   currentNumber: string;
+  progress?: number;
+  countdown?: number;
+  isFinished?: boolean;
+  timeoutCountdown?: number | null;
 };
 
 export default function GameStatusCard({
@@ -13,38 +17,132 @@ export default function GameStatusCard({
   totalRounds,
   lastNumbers,
   currentNumber,
+  progress,
+  countdown,
+  isFinished = false,
+  timeoutCountdown = null,
 }: GameStatusCardProps) {
   return (
     <Box
+      className="glass-effect"
       sx={{
-        background: "rgba(31, 34, 51, 0.5)",
+        background: "rgba(31, 19, 9, 0.6)",
         backdropFilter: "blur(20px) saturate(180%)",
         WebkitBackdropFilter: "blur(20px) saturate(180%)",
-        borderRadius: "16px",
-        border: "1px solid rgba(255, 255, 255, 0.12)",
-        p: 2.5,
+        borderRadius: "20px",
+        border: "2px solid rgba(212, 175, 55, 0.3)",
+        p: 3,
         mb: 3,
+        position: "relative",
+        overflow: "hidden",
+        boxShadow: `
+          0 8px 32px rgba(0, 0, 0, 0.6),
+          inset 0 1px 0 rgba(255, 255, 255, 0.1),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+          0 0 0 1px rgba(212, 175, 55, 0.1) inset
+        `,
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: "2px",
+          background: "linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent)",
+          zIndex: 1,
+        },
+        "&::after": {
+          content: '""',
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: `
+            radial-gradient(ellipse 300px 200px at 20% 30%, rgba(0, 0, 0, 0.1) 0%, transparent 50%),
+            radial-gradient(ellipse 250px 180px at 80% 60%, rgba(0, 0, 0, 0.08) 0%, transparent 50%)
+          `,
+          pointerEvents: "none",
+          zIndex: 0,
+        },
       }}
     >
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography
-          variant="body2"
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2} sx={{ position: "relative", zIndex: 2 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <Box
+            sx={{
+              display: "inline-block",
+              px: 1.5,
+              py: 0.5,
+              borderRadius: "12px",
+              background: "linear-gradient(135deg, rgba(212, 175, 55, 0.3) 0%, rgba(244, 208, 63, 0.2) 100%)",
+              border: "1px solid rgba(212, 175, 55, 0.4)",
+              boxShadow: "0 2px 8px rgba(212, 175, 55, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+            }}
+          >
+            <Typography
+              variant="body2"
+              sx={{
+                color: "#f5e6d3",
+                fontSize: "14px",
+                fontWeight: 700,
+                textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+              }}
+            >
+              Ronda: {currentRound}/{totalRounds}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              display: "inline-block",
+              px: 1,
+              py: 0.3,
+              borderRadius: "8px",
+              background: isFinished 
+                ? "rgba(76, 175, 80, 0.2)" 
+                : timeoutCountdown !== null 
+                ? "rgba(255, 152, 0, 0.2)" 
+                : "rgba(212, 175, 55, 0.2)",
+              border: `1px solid ${isFinished ? "rgba(76, 175, 80, 0.4)" : timeoutCountdown !== null ? "rgba(255, 152, 0, 0.4)" : "rgba(212, 175, 55, 0.4)"}`,
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{
+                color: isFinished ? "#4caf50" : timeoutCountdown !== null ? "#ff9800" : "#d4af37",
+                fontSize: "10px",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+              }}
+            >
+              {isFinished 
+                ? "✓ Finalizada" 
+                : timeoutCountdown !== null 
+                ? `⏱️ ${timeoutCountdown}s`
+                : "▶ En progreso"}
+            </Typography>
+          </Box>
+        </Box>
+        <Box
           sx={{
-            color: "#ffffff",
-            fontSize: "14px",
-            fontWeight: 600,
+            px: 1.5,
+            py: 1,
+            borderRadius: "12px",
+            background: "rgba(26, 16, 8, 0.4)",
+            border: "1px solid rgba(212, 175, 55, 0.2)",
+            backdropFilter: "blur(10px)",
           }}
         >
-          Ronda: {currentRound}/{totalRounds}
-        </Typography>
-        <Box>
           <Typography
             variant="body2"
             sx={{
-              color: "#ffffff",
-              fontSize: "12px",
-              opacity: 0.8,
+              color: "#f5e6d3",
+              fontSize: "11px",
+              opacity: 0.9,
               mb: 0.5,
+              textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
             }}
           >
             Últimos Números:
@@ -52,17 +150,24 @@ export default function GameStatusCard({
           <Typography
             variant="body2"
             sx={{
-              color: "#ffffff",
-              fontSize: "12px",
-              fontWeight: 600,
+              color: "#d4af37",
+              fontSize: "13px",
+              fontWeight: 700,
+              textShadow: "0 1px 3px rgba(212, 175, 55, 0.5)",
             }}
           >
-            {lastNumbers.join(", ")}
+            {lastNumbers.length > 0 ? lastNumbers.join(", ") : "—"}
           </Typography>
         </Box>
       </Stack>
 
-      <CurrentNumberDisplay currentNumber={currentNumber} />
+      <CurrentNumberDisplay 
+        currentNumber={currentNumber} 
+        progress={progress}
+        countdown={countdown}
+        isFinished={isFinished}
+        timeoutCountdown={timeoutCountdown}
+      />
     </Box>
   );
 }

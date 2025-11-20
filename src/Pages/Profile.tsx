@@ -112,7 +112,6 @@ export default function Profile() {
       userId: MOCK_USER.id,
       createdAt: new Date().toISOString(),
     };
-    console.log("Reporte de pago →", payload);
     // aquí enviarías al backend…
 
     // reset suave y cerrar
