@@ -854,6 +854,8 @@ export default function GameInProgress() {
           currentRound={currentRound}
           currentRoundPrize={currentRoundPrize}
           currentBingoType={currentBingoType}
+          isGameActive={!roundFinished && gameStarted}
+          roomName={room && typeof room === "object" && "name" in room ? String(room.name) : undefined}
         />
 
             <GameStatusCard

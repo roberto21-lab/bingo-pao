@@ -59,7 +59,6 @@ export default function CardList({
           backgroundClip: "text",
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
-          mb: 2,
           fontFamily: "'Montserrat', sans-serif",
           textShadow: "0 2px 4px rgba(212, 175, 55, 0.3)",
         }}

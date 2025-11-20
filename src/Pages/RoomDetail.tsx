@@ -115,6 +115,7 @@ export default function RoomDetail() {
         
         setRoom(roomData);
       } catch (err) {
+        console.error("Error al cargar la sala:", err);
         setError("Error al cargar la sala. Por favor, intenta nuevamente.");
       } finally {
         setLoading(false);

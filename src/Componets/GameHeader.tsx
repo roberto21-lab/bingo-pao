@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, Chip } from "@mui/material";
 import type { BingoType } from "../utils/bingoUtils";
 import { getBingoTypeName } from "../utils/bingoUtils";
 
@@ -6,19 +6,71 @@ type GameHeaderProps = {
   currentRound: number;
   currentRoundPrize: number;
   currentBingoType: BingoType;
+  isGameActive?: boolean;
+  roomName?: string;
 };
 
 export default function GameHeader({
   currentRound,
   currentRoundPrize,
   currentBingoType,
+  isGameActive = true,
+  roomName = "Juego en Progreso",
 }: GameHeaderProps) {
   return (
     <>
+      {isGameActive && (
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            mb: 1,
+            mt: "0",
+          }}
+        >
+          <Chip
+            icon={
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: "#f44336",
+                  boxShadow: "0 0 8px rgba(244, 67, 54, 0.8)",
+                  animation: "pulse 2s infinite",
+                  "@keyframes pulse": {
+                    "0%, 100%": {
+                      opacity: 1,
+                      transform: "scale(1)",
+                    },
+                    "50%": {
+                      opacity: 0.7,
+                      transform: "scale(1.2)",
+                    },
+                  },
+                }}
+              />
+            }
+            label="En Vivo"
+            size="small"
+            sx={{
+              backgroundColor: "rgba(76, 175, 80, 0.15)",
+              color: "#f44336",
+              border: "1px solid rgba(76, 175, 80, 0.3)",
+              fontWeight: 600,
+              fontSize: "0.75rem",
+              "& .MuiChip-icon": {
+                marginLeft: 1,
+              },
+            }}
+          />
+        </Box>
+      )}
+
       <Typography
         variant="h4"
         sx={{
-          marginTop: "3rem",
           textAlign: "center",
           fontSize: { xs: "24px", sm: "28px" },
           fontWeight: 900,
@@ -27,51 +79,42 @@ export default function GameHeader({
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
           mb: 3,
+          mt: "3rem",
           fontFamily: "'Montserrat', sans-serif",
           textShadow: "0 2px 8px rgba(212, 175, 55, 0.4)",
           position: "relative",
         }}
       >
-        Juego en Progreso
+        {roomName}
       </Typography>
 
-      {/* Badge tipo moneda para el premio */}
       <Box
         sx={{
+          position: "absolute",
+          left: 0,
+          top: 32,
           display: "inline-flex",
           alignItems: "center",
-          justifyContent: "center",
-          mx: "auto",
-          mb: 2,
-          px: 2.5,
+          px: 2,
           py: 1,
-          borderRadius: "20px",
-          background: "linear-gradient(135deg, #d4af37 0%, #f4d03f 30%, #ffd700 50%, #f4d03f 70%, #d4af37 100%)",
-          backgroundSize: "200% 200%",
-          animation: "shimmer 3s ease-in-out infinite",
-          boxShadow: `
-            0 4px 15px rgba(212, 175, 55, 0.5),
-            inset 0 1px 0 rgba(255, 255, 255, 0.3),
-            inset 0 -1px 0 rgba(0, 0, 0, 0.2),
-            0 0 0 2px rgba(212, 175, 55, 0.3)
-          `,
-          border: "2px solid rgba(212, 175, 55, 0.6)",
-          position: "relative",
-          "@keyframes shimmer": {
-            "0%, 100%": { backgroundPosition: "0% 50%" },
-            "50%": { backgroundPosition: "100% 50%" },
-          },
+          borderTopRightRadius: "8px",
+          borderBottomRightRadius: "8px",
+          background: "linear-gradient(135deg, rgba(212, 175, 55, 0.9) 0%, rgba(244, 208, 63, 1) 50%, rgba(212, 175, 55, 0.9) 100%)",
+          border: "1.5px solid rgba(212, 175, 55, 1)",
+          borderLeft: "none",
+          boxShadow: "0 2px 8px rgba(212, 175, 55, 0.5)",
+          zIndex: 2,
+          mb: 2,
         }}
       >
         <Typography
           variant="h5"
           sx={{
             fontSize: { xs: "18px", sm: "22px" },
-            fontWeight: 900,
+            fontWeight: 700,
             color: "#1a1008",
-            textAlign: "center",
             fontFamily: "'Montserrat', sans-serif",
-            textShadow: "0 1px 2px rgba(255, 255, 255, 0.3)",
+            letterSpacing: "0.5px",
           }}
         >
           Premio Ronda {currentRound}: ${currentRoundPrize.toLocaleString("es-US", {
