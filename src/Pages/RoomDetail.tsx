@@ -54,13 +54,14 @@ export default function RoomDetail() {
         setError(null);
         
         // Obtener datos completos del backend
-        const response = await api.get<{ success: boolean; data: BackendRoom }>(`/rooms/${roomId}`);
+        // El backend devuelve un objeto directo, no envuelto en { success, data }
+        const response = await api.get<BackendRoom>(`/rooms/${roomId}`);
         
-        if (!response.data.success || !response.data.data) {
+        if (!response.data) {
           throw new Error("Sala no encontrada");
         }
         
-        const backendRoom = response.data.data;
+        const backendRoom = response.data;
         
         // Función para parsear Decimal128
         const parseDecimal = (decimal: unknown): number => {
@@ -104,7 +105,7 @@ export default function RoomDetail() {
         const mappedStatus = mapStatus(status);
         
         const roomData: RoomDetailData = {
-          id: backendRoom._id,
+          id: backendRoom._id || backendRoom.id || "",
           title: backendRoom.name,
           prizeAmount: parseDecimal(backendRoom.total_pot),
           currency: currency?.code || "USD",
@@ -113,10 +114,11 @@ export default function RoomDetail() {
           status: mappedStatus || "waiting", // Siempre tener un status por defecto
         };
         
+        console.log("Room data loaded:", roomData);
         setRoom(roomData);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error al cargar la sala:", err);
-        setError("Error al cargar la sala. Por favor, intenta nuevamente.");
+        setError(err?.response?.data?.message || err?.message || "Error al cargar la sala. Por favor, intenta nuevamente.");
       } finally {
         setLoading(false);
       }
