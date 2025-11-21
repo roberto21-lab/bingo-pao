@@ -1,9 +1,6 @@
 /**
- * Servicio de autenticación SIMULADO
- * 
- * NOTA: Este es un servicio temporal para simular autenticación.
- * Cuando el equipo de autenticación implemente la lógica real,
- * este archivo debe ser reemplazado o adaptado para usar su implementación.
+ * Servicio de autenticación
+ * Integrado con el backend para autenticación real mediante JWT
  */
 
 import { api } from "./api";
@@ -20,36 +17,8 @@ const AUTH_STORAGE_KEY = "auth_user";
 const TOKEN_STORAGE_KEY = "auth_token";
 
 /**
- * Simula el login de un usuario
- * En producción, esto debería hacer una llamada al backend
- */
-export function simulateLogin(userData: {
-  id: string;
-  email: string;
-  full_name: string;
-}): User {
-  const expiredDate = new Date();
-  expiredDate.setHours(expiredDate.getHours() + 6); // Token expira en 6 horas
-
-  const user: User = {
-    id: userData.id,
-    email: userData.email,
-    full_name: userData.full_name,
-    token: "is_loging",
-    expired_token_date: expiredDate,
-  };
-
-  // Guardar en localStorage
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-  localStorage.setItem(TOKEN_STORAGE_KEY, user.token);
-  localStorage.setItem("userId", user.id); // Para compatibilidad con código existente
-
-  return user;
-}
-
-/**
  * Obtiene el usuario logueado desde localStorage
- * En producción, esto debería validar el token con el backend
+ * Valida que el token no haya expirado
  */
 export function getCurrentUser(): User | null {
   try {
@@ -95,6 +64,11 @@ export function logout(): void {
   localStorage.removeItem(AUTH_STORAGE_KEY);
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem("userId");
+  
+  // Notificar cambio de autenticación
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("auth-change"));
+  }
 }
 
 /**
@@ -107,16 +81,15 @@ export function getUserId(): string | null {
 }
 
 export async function loginService(email: string, password: string): Promise<{ user: User; token: string }> {
-  // Aquí se haría la llamada real al backend
   const response = await api.post('/auth/login', { email, password });
   
-  // Suponiendo que el backend devuelve los datos del usuario y el token
   const data = response.data;
 
+  // Mapear la respuesta del backend al formato esperado
   const user: User = {
     id: data.user.id,
     email: data.user.email,
-    full_name: data.user.full_name,
+    full_name: data.user.full_name || data.user.name, // Usar name como fallback
     token: data.token,
     expired_token_date: new Date(data.expired_token_date),
   };
@@ -125,6 +98,11 @@ export async function loginService(email: string, password: string): Promise<{ u
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
   localStorage.setItem(TOKEN_STORAGE_KEY, user.token);
   localStorage.setItem("userId", user.id); // Para compatibilidad con código existente
+
+  // Notificar cambio de autenticación
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("auth-change"));
+  }
 
   return { user, token: data.token };
 }

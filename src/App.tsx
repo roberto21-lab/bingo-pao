@@ -1,7 +1,7 @@
 // src/App.tsx
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import theme from "./theme";
 import Home from "./Pages/Home";
 import Rooms from "./Pages/Rooms";
@@ -23,10 +23,12 @@ function NotFound() {
   );
 }
 
-export default function App() {
+function AppContent() {
+  const location = useLocation();
+  const hideTabBar = location.pathname === "/login" || location.pathname === "/register";
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/rooms" element={<Rooms />} />
@@ -40,7 +42,16 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
-      <TabBar />
+      {!hideTabBar && <TabBar />}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AppContent />
     </ThemeProvider>
   );
 }

@@ -16,46 +16,75 @@ import {
 } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import HomeIcon from '@mui/icons-material/Home';
 import BingoLogo from '../Componets/BingoLogo';
-// import BingoLogo from '../components/BingoLogo';
+import { useNavigate } from 'react-router-dom';
 
-// arriba del componente
-const gold = '#d6bf7b';
+// Inputs estilo glassmorphism mejorado
 const textFieldSx = {
-    '& .MuiOutlinedInput-root': {
-        bgcolor: '#fff',           // fondo del input
-        borderRadius: 2,
-        // borde visible en reposo
-        '& .MuiOutlinedInput-notchedOutline': {
-            borderColor: 'rgba(214,191,123,0.65)', // dorado tenue
-            borderWidth: 2,
-        },
-        // hover
-        '&:hover .MuiOutlinedInput-notchedOutline': {
-            borderColor: gold,
-        },
-        // focus
-        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-            borderColor: '#c79b36',
-            boxShadow: '0 0 0 3px rgba(214,172,75,0.18)',
-        },
+  '& .MuiOutlinedInput-root': {
+    bgcolor: 'rgba(31, 19, 9, 0.6)',
+    backdropFilter: 'blur(20px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+    borderRadius: '12px',
+    color: '#f5e6d3',
+    transition: 'all 0.3s ease',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: 'rgba(212, 175, 55, 0.3)',
+      borderWidth: 2,
+      transition: 'all 0.3s ease',
     },
-    // color del label
-    '& .MuiInputLabel-root': {
-        color: '#a89563',
+    '&:hover': {
+      bgcolor: 'rgba(31, 19, 9, 0.7)',
+      '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'rgba(212, 175, 55, 0.5)',
+        boxShadow: '0 0 0 2px rgba(212, 175, 55, 0.1)',
+      },
     },
-    '& .MuiInputLabel-root.Mui-focused': {
-        color: '#c79b36',
+    '&.Mui-focused': {
+      bgcolor: 'rgba(31, 19, 9, 0.8)',
+      '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'rgba(212, 175, 55, 0.7)',
+        boxShadow: '0 0 0 3px rgba(212, 175, 55, 0.15), 0 0 20px rgba(212, 175, 55, 0.2)',
+      },
     },
-    // placeholder (si usas placeholder en vez de label)
-    '& input::placeholder': {
-        color: '#b9a873',
-        opacity: 1,
+    '&.Mui-error': {
+      '& .MuiOutlinedInput-notchedOutline': {
+        borderColor: 'rgba(244, 67, 54, 0.6)',
+      },
     },
+  },
+  '& .MuiInputLabel-root': {
+    color: 'rgba(245, 230, 211, 0.7)',
+    fontWeight: 500,
+  },
+  '& .MuiInputLabel-root.Mui-focused': {
+    color: 'rgba(212, 175, 55, 0.9)',
+    fontWeight: 600,
+  },
+  '& .MuiInputLabel-root.Mui-error': {
+    color: 'rgba(244, 67, 54, 0.8)',
+  },
+  '& input': {
+    color: '#f5e6d3',
+    fontWeight: 500,
+    '&::placeholder': {
+      color: 'rgba(245, 230, 211, 0.5)',
+      opacity: 1,
+    },
+  },
+  '& .MuiFormHelperText-root': {
+    color: 'rgba(245, 230, 211, 0.6)',
+    fontSize: '0.75rem',
+    '&.Mui-error': {
+      color: 'rgba(244, 67, 54, 0.8)',
+    },
+  },
 };
 
 
 export default function RegisterPage() {
+    const navigate = useNavigate();
     const [values, setValues] = React.useState({
         fullName: '',
         email: '',
@@ -124,69 +153,176 @@ export default function RegisterPage() {
     return (
         <Box
             sx={{
-                // minHeight: '100vh',
-                display: 'grid',
-                placeItems: 'center',
+                minHeight: '100vh',
+                background: 'transparent',
+                color: '#f5e6d3',
+                paddingBottom: '80px',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                py: 4,
                 px: 2,
-                background:
-                    'radial-gradient(1200px 600px at 50% -10%, rgba(255,255,255,0.06), transparent 60%), linear-gradient(180deg, #0b1220, #0a0f1a 40%, #0b1020)',
             }}
         >
-
-            <Stack spacing={1.2} textAlign="center">
-                <Typography
+            {/* Botón Ir a Inicio */}
+            <Box
+                sx={{
+                    position: 'absolute',
+                    top: 16,
+                    left: 16,
+                    zIndex: 1,
+                }}
+            >
+                <Button
+                    onClick={() => navigate('/')}
+                    startIcon={<HomeIcon />}
+                    variant="text"
                     sx={{
-                        fontSize: { xs: 44, sm: 64 },
-                        fontWeight: 900,
-                        letterSpacing: '0.14em',
-                        lineHeight: 1,
-                        color: '#FFFFFF',
-                        textTransform: 'uppercase',
+                        color: '#fcead0',
+                        fontWeight: 600,
+                        fontSize: '14px',
+                        textTransform: 'none',
+                        borderRadius: '8px',
+                        px: 2,
+                        py: 1,
+                        bgcolor: 'transparent',
+                        background: 'none',
+                        backgroundImage: 'none',
+                        border: 'none',
+                        boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.2)',
+                        transition: 'all 0.3s ease',
+                        '&:hover': {
+                            bgcolor: 'transparent',
+                            background: 'none',
+                            backgroundImage: 'none',
+                            boxShadow: 'inset 0 2px 6px rgba(0, 0, 0, 0.3)',
+                            transform: 'translateY(-1px)',
+                            '& .MuiButton-startIcon': {
+                                color: '#d4af37',
+                            },
+                        },
+                        '& .MuiButton-startIcon': {
+                            color: '#fcead0',
+                            transition: 'color 0.3s ease',
+                        },
                     }}
                 >
-                    BINGO
-                </Typography>
+                    Ir a Inicio
+                </Button>
+            </Box>
 
-
-                <Box sx={{ textAlign: "center", mb: 4 }}>
-                        <BingoLogo size={120} />
+            <Stack spacing={1.2} textAlign="center" sx={{ mb: 3 }}>
+                <Box sx={{ textAlign: "center" }}>
+                    <BingoLogo size={150} />
                 </Box>
 
                 <Typography
                     sx={{
-                        fontSize: { xs: 22, sm: 28 },
+                        fontSize: { xs: 24, sm: 28 },
                         fontWeight: 800,
-                        color: '#EDEDED',
-                        mt: 1,
+                        color: '#fcead0',
+                        mb: 1,
+                        textShadow: '0 0 10px rgba(0,0,0,0.8)',
                     }}
                 >
-                    Registrate
+                    Regístrate
+                </Typography>
+                <Typography
+                    sx={{
+                        fontSize: 14,
+                        color: 'rgba(255,255,255,0.65)',
+                        mb: 3,
+                    }}
+                >
+                    Crea tu cuenta para unirte a las salas de Bingo PAO
                 </Typography>
             </Stack>
 
 
 
             <Container maxWidth="sm">
-                {/* 👉 CARD BLANCA */}
                 <Paper
-                    elevation={8}
+                    elevation={0}
                     sx={{
                         p: { xs: 3, sm: 4 },
-                        borderRadius: 5,
-                        bgcolor: '#fff',
-                        boxShadow: '0 16px 48px rgba(0,0,0,.25)',
+                        borderRadius: "24px",
+                        backgroundColor: "rgba(31, 19, 9, 0.92)",
+                        backdropFilter: "blur(40px) saturate(150%)",
+                        WebkitBackdropFilter: "blur(40px) saturate(150%)",
+                        border: "2px solid rgba(212, 175, 55, 0.3)",
+                        backgroundImage: `
+                          repeating-linear-gradient(
+                            0deg,
+                            rgba(31, 19, 9, 0.92) 0px,
+                            rgba(35, 22, 11, 0.94) 1px,
+                            rgba(40, 25, 13, 0.92) 2px,
+                            rgba(35, 22, 11, 0.94) 3px,
+                            rgba(31, 19, 9, 0.92) 4px,
+                            rgba(31, 19, 9, 0.92) 12px,
+                            rgba(35, 22, 11, 0.94) 13px,
+                            rgba(40, 25, 13, 0.92) 14px,
+                            rgba(35, 22, 11, 0.94) 15px,
+                            rgba(31, 19, 9, 0.92) 16px
+                          ),
+                          linear-gradient(
+                            90deg,
+                            rgba(31, 19, 9, 0.92) 0%,
+                            rgba(35, 22, 11, 0.93) 25%,
+                            rgba(40, 25, 13, 0.92) 50%,
+                            rgba(35, 22, 11, 0.93) 75%,
+                            rgba(31, 19, 9, 0.92) 100%
+                          ),
+                          radial-gradient(ellipse 400px 300px at 30% 40%, rgba(50, 30, 15, 0.15) 0%, transparent 60%),
+                          radial-gradient(ellipse 350px 250px at 70% 60%, rgba(45, 28, 14, 0.12) 0%, transparent 60%)
+                        `,
+                        backgroundSize: `
+                          100% 32px,
+                          200% 100%,
+                          100% 100%,
+                          100% 100%
+                        `,
+                        boxShadow: `
+                          0 0 30px rgba(255, 255, 255, 0.06),
+                          0 0 60px rgba(255, 255, 255, 0.04),
+                          0 0 90px rgba(255, 255, 255, 0.02),
+                          0 15px 50px rgba(0, 0, 0, 0.6),
+                          0 30px 80px rgba(0, 0, 0, 0.4),
+                          inset 0 1px 0 rgba(255, 255, 255, 0.1)
+                        `,
+                        position: "relative",
+                        overflow: "hidden",
+                        "&::before": {
+                          content: '""',
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: "2px",
+                          background: "linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent)",
+                          zIndex: 1,
+                        },
                     }}
                 >
                     <Stack spacing={3} component="form" onSubmit={handleSubmit}>
 
-
                         {serverError && (
-                            <Typography color="error" textAlign="center">
+                            <Typography 
+                                textAlign="center"
+                                sx={{
+                                    color: '#f44336',
+                                    bgcolor: 'rgba(244, 67, 54, 0.15)',
+                                    border: '1px solid rgba(244, 67, 54, 0.3)',
+                                    borderRadius: '8px',
+                                    p: 1.5,
+                                    fontSize: '0.875rem',
+                                    fontWeight: 500,
+                                }}
+                            >
                                 {serverError}
                             </Typography>
                         )}
 
-                        {/* 👉 Inputs blancos */}
                         <TextField
                             name="fullName"
                             label="Nombre completo"
@@ -225,7 +361,16 @@ export default function RegisterPage() {
                             InputProps={{
                                 endAdornment: (
                                     <InputAdornment position="end">
-                                        <IconButton edge="end" sx={{ color: '#8c7a3a' }}>
+                                        <IconButton 
+                                            edge="end" 
+                                            sx={{ 
+                                                color: 'rgba(212, 175, 55, 0.7)',
+                                                '&:hover': {
+                                                    color: 'rgba(212, 175, 55, 0.9)',
+                                                },
+                                            }}
+                                            onClick={() => setShowPw((v) => !v)}
+                                        >
                                             {showPw ? <VisibilityOff /> : <Visibility />}
                                         </IconButton>
                                     </InputAdornment>
@@ -247,7 +392,16 @@ export default function RegisterPage() {
                             InputProps={{
                                 endAdornment: (
                                     <InputAdornment position="end">
-                                        <IconButton edge="end" sx={{ color: '#8c7a3a' }}>
+                                        <IconButton 
+                                            edge="end" 
+                                            sx={{ 
+                                                color: 'rgba(212, 175, 55, 0.7)',
+                                                '&:hover': {
+                                                    color: 'rgba(212, 175, 55, 0.9)',
+                                                },
+                                            }}
+                                            onClick={() => setShowPw2((v) => !v)}
+                                        >
                                             {showPw2 ? <VisibilityOff /> : <Visibility />}
                                         </IconButton>
                                     </InputAdornment>
@@ -263,49 +417,136 @@ export default function RegisterPage() {
                                     checked={values.acceptTerms}
                                     onChange={onChange}
                                     name="acceptTerms"
-                                    sx={{ '&.Mui-checked': { color: '#b4932f' } }}
+                                    sx={{ 
+                                        color: 'rgba(212, 175, 55, 0.7)',
+                                        '&.Mui-checked': { 
+                                            color: '#d4af37',
+                                        },
+                                        '&:hover': {
+                                            bgcolor: 'rgba(212, 175, 55, 0.1)',
+                                        },
+                                    }}
                                 />
                             }
                             label={
-                                <Typography>
-                                    I accept the <Link href="#" underline="hover" color="#b4932f">Terms & Conditions</Link>
+                                <Typography sx={{ color: 'rgba(245, 230, 211, 0.8)', fontSize: '0.875rem' }}>
+                                    Acepto los{' '}
+                                    <Link 
+                                        href="#" 
+                                        underline="hover" 
+                                        sx={{ 
+                                            color: '#d4af37',
+                                            '&:hover': {
+                                                color: '#f4d03f',
+                                            },
+                                        }}
+                                    >
+                                        Términos y Condiciones
+                                    </Link>
                                 </Typography>
                             }
                         />
                         {errors.acceptTerms && (
-                            <Typography variant="caption" color="error" sx={{ mt: -1 }}>
+                            <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                    mt: -1,
+                                    color: 'rgba(244, 67, 54, 0.8)',
+                                    fontSize: '0.75rem',
+                                }}
+                            >
                                 {errors.acceptTerms}
                             </Typography>
                         )}
 
                         <Button
                             type="submit"
-                            variant="contained"
                             disabled={loading}
+                            fullWidth
                             sx={{
-                                py: 1.4,
-                                fontWeight: 700,
-                                borderRadius: 999,
-                                textTransform: 'none',
-                                fontSize: '1.05rem',
-                                background: 'linear-gradient(180deg, #f3d08a 0%, #d6ac4b 100%)',
-                                color: '#0b0f1a',
-                                boxShadow: '0 8px 20px rgba(214,172,75,0.35)',
-                                '&:hover': {
-                                    background: 'linear-gradient(180deg, #f0c56d 0%, #c79b36 100%)',
-                                    boxShadow: '0 10px 24px rgba(214,172,75,0.45)',
+                                backfaceVisibility: "hidden",
+                                position: "relative",
+                                cursor: loading ? "not-allowed" : "pointer",
+                                display: "inline-block",
+                                whiteSpace: "nowrap",
+                                color: "#fff",
+                                fontWeight: 900,
+                                fontSize: "14px",
+                                py: 1.5,
+                                borderRadius: "8px",
+                                textTransform: "none",
+                                textShadow: "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
+                                border: "1px solid #d4af37",
+                                backgroundImage: `
+                                  repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .12) 3.75%),
+                                  repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .04) 2.25%),
+                                  repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .18) 1.2%),
+                                  linear-gradient(180deg, #d4af37 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #f4d03f 53%, #ffd700 75%, #d4af37 100%)
+                                `,
+                                boxShadow: `
+                                  inset 0px 1px 0px rgba(255,255,255,0.9),
+                                  inset 0px -1px 0px rgba(0,0,0,0.2),
+                                  0px 1px 3px rgba(0,0,0,0.4),
+                                  0px 4px 12px rgba(212, 175, 55, 0.4),
+                                  0px 0px 20px rgba(255, 215, 0, 0.2)
+                                `,
+                                transition: "all 0.2s ease",
+                                opacity: loading ? 0.6 : 1,
+                                "&:hover": {
+                                    backgroundImage: `
+                                      repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
+                                      repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
+                                      repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .2) 1.2%),
+                                      linear-gradient(180deg, #f4d03f 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #ffed4e 53%, #ffd700 75%, #f4d03f 100%)
+                                    `,
+                                    boxShadow: `
+                                      inset 0px 1px 0px rgba(255,255,255,1),
+                                      inset 0px -1px 0px rgba(0,0,0,0.2),
+                                      0px 2px 6px rgba(0,0,0,0.5),
+                                      0px 6px 20px rgba(212, 175, 55, 0.5),
+                                      0px 0px 30px rgba(255, 215, 0, 0.3)
+                                    `,
+                                    transform: loading ? "none" : "translateY(-1px)",
+                                },
+                                "&:active": {
+                                    transform: loading ? "none" : "translateY(2px)",
+                                    boxShadow: `
+                                      inset 0px 1px 0px rgba(255,255,255,0.7),
+                                      inset 0px -1px 0px rgba(0,0,0,0.3),
+                                      0px 1px 2px rgba(0,0,0,0.4),
+                                      0px 2px 8px rgba(212, 175, 55, 0.3),
+                                      0px 0px 15px rgba(255, 215, 0, 0.15)
+                                    `,
                                 },
                             }}
                         >
-                            {loading ? 'Creating...' : 'Create Account'}
+                            {loading ? 'Creando cuenta...' : 'Crear cuenta'}
                         </Button>
 
-                        <Divider />
+                        <Divider 
+                            sx={{
+                                borderColor: 'rgba(255,255,255,0.08)',
+                            }}
+                        />
 
-                        <Typography textAlign="center" color="text.secondary">
-                            Already have the account?{' '}
-                            <Link href="/login" underline="hover" color="#b4932f">
-                                Log In
+                        <Typography 
+                            textAlign="center" 
+                            sx={{ 
+                                color: 'rgba(255,255,255,0.75)',
+                            }}
+                        >
+                            ¿Ya tienes cuenta?{' '}
+                            <Link 
+                                href="/login" 
+                                underline="hover" 
+                                sx={{ 
+                                    color: '#f1ca66',
+                                    '&:hover': {
+                                        color: '#d4af37',
+                                    },
+                                }}
+                            >
+                                Inicia sesión
                             </Link>
                         </Typography>
                     </Stack>

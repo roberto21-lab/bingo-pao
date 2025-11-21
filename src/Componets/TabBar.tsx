@@ -3,17 +3,28 @@ import * as React from "react";
 import { Box, Typography, Button } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import PersonIcon from "@mui/icons-material/Person";
+import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 
 const TabBar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAuthenticated } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
 
   const handleJoin = () => {
     // Navegar a la página de salas
     navigate("/rooms");
+  };
+
+  const handleProfileOrLogin = () => {
+    if (isAuthenticated) {
+      navigate("/profile");
+    } else {
+      navigate("/login");
+    }
   };
 
   return (
@@ -234,9 +245,9 @@ const TabBar: React.FC = () => {
         Unirse
       </Button>
 
-      {/* Profile Tab */}
+      {/* Profile Tab o Login Tab */}
       <Box
-        onClick={() => navigate("/profile")}
+        onClick={handleProfileOrLogin}
         sx={{
           display: "flex",
           flexDirection: "column",
@@ -253,25 +264,25 @@ const TabBar: React.FC = () => {
       >
         <Box
           sx={{
-            color: isActive("/profile") ? "#d4af37" : "#f5e6d3",
+            color: isActive("/profile") || isActive("/login") ? "#d4af37" : "#f5e6d3",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             transition: "color 0.2s",
           }}
         >
-          <PersonIcon />
+          {isAuthenticated ? <PersonIcon /> : <PowerSettingsNewIcon />}
         </Box>
         <Typography
           variant="caption"
           sx={{
-            color: isActive("/profile") ? "#d4af37" : "#f5e6d3",
+            color: isActive("/profile") || isActive("/login") ? "#d4af37" : "#f5e6d3",
             fontSize: "12px",
-            fontWeight: isActive("/profile") ? 600 : 400,
+            fontWeight: isActive("/profile") || isActive("/login") ? 600 : 400,
             transition: "color 0.2s",
           }}
         >
-          Perfil
+          {isAuthenticated ? "Perfil" : "Iniciar sesión"}
         </Typography>
       </Box>
     </Box>
