@@ -1,6 +1,5 @@
 // src/Pages/Profile.tsx
 import {
-  Alert,
   Avatar,
   Box,
   Button,
@@ -8,13 +7,7 @@ import {
   CardContent,
   CardHeader,
   Container,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  MenuItem,
   Stack,
-  TextField,
   Typography
 } from "@mui/material";
 import * as React from "react";
@@ -24,7 +17,9 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import IconButton from "@mui/material/IconButton";
 import { useNavigate } from "react-router";
 import BackgroundStars from "../Componets/BackgroundStars";
+import { MobilePaymentReportDialog, type MobilePaymentReportFormState } from "../Componets/MobilePaymentReportDialog";
 import { logout } from "../Services/auth.service";
+import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 
 
 type User = {
@@ -156,6 +151,8 @@ export default function Profile() {
   };
 
   const submitReport = () => {
+    setOpenReport(!openReport);
+
     setError("");
     if (!report.refCode.trim()) return setError("La referencia es obligatoria.");
     if (!report.bankName) return setError("Selecciona el banco.");
@@ -173,7 +170,6 @@ export default function Profile() {
     // await api.post('/payments/report', reportData);
 
     // reset suave y cerrar
-    setOpenReport(false);
     setReport((s) => ({ ...s, refCode: "", amount: "", notes: "", voucherFile: null, voucherPreview: "" }));
   };
 
@@ -181,6 +177,18 @@ export default function Profile() {
     logout();
     navigate("/login");
   };
+
+    const [openWithdrawRequestDialog, setOpenWithdrawRequestDialog] = React.useState(false);
+  
+    const handleSubmitWithdrawRequestDialog = () =>{
+        setOpenWithdrawRequestDialog(!openWithdrawRequestDialog);
+    }
+   
+
+  //  const [openReport, setOpenReport] = useState(false);
+  // const [error, setError] = useState<string | null>(null);
+
+  
 
   return (
     <>
@@ -507,67 +515,120 @@ export default function Profile() {
             gap: 2,
           }}
         >
-          <Button
-            fullWidth
-            onClick={() => setOpenReport(true)}
-            sx={{
-              backfaceVisibility: "hidden",
-              position: "relative",
-              cursor: "pointer",
-              display: "inline-block",
-              whiteSpace: "nowrap",
-              color: "#fff",
-              fontWeight: 900,
-              fontSize: "14px",
-              py: 1.5,
-              borderRadius: "8px",
-              textTransform: "none",
-              textShadow: "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
-              border: "1px solid #d4af37",
-              backgroundImage: `
-                repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .12) 3.75%),
-                repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .04) 2.25%),
-                repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .18) 1.2%),
-                linear-gradient(180deg, #d4af37 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #f4d03f 53%, #ffd700 75%, #d4af37 100%)
-              `,
-              boxShadow: `
-                inset 0px 1px 0px rgba(255,255,255,0.9),
-                inset 0px -1px 0px rgba(0,0,0,0.2),
-                0px 1px 3px rgba(0,0,0,0.4),
-                0px 4px 12px rgba(212, 175, 55, 0.4),
-                0px 0px 20px rgba(255, 215, 0, 0.2)
-              `,
-              transition: "all 0.2s ease",
-              "&:hover": {
-                backgroundImage: `
-                  repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
-                  repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
-                  repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .2) 1.2%),
-                  linear-gradient(180deg, #f4d03f 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #ffed4e 53%, #ffd700 75%, #f4d03f 100%)
-                `,
-                boxShadow: `
-                  inset 0px 1px 0px rgba(255,255,255,1),
-                  inset 0px -1px 0px rgba(0,0,0,0.2),
-                  0px 2px 6px rgba(0,0,0,0.5),
-                  0px 6px 20px rgba(212, 175, 55, 0.5),
-                  0px 0px 30px rgba(255, 215, 0, 0.3)
-                `,
-                transform: "translateY(-1px)",
-              },
-              "&:active": {
-                transform: "translateY(2px)",
-                boxShadow: `
-                  inset 0px 1px 0px rgba(255,255,255,0.7),
-                  inset 0px -1px 0px rgba(0,0,0,0.3),
-                  0px 1px 2px rgba(0,0,0,0.4),
-                  0px 2px 8px rgba(212, 175, 55, 0.3),
-                  0px 0px 15px rgba(255, 215, 0, 0.15)
-                `,
-              },
-            }}
-          >
-            Reportar pago
-          </Button>
+          <Stack direction="row" spacing={2}>
+                  <Button
+                    fullWidth
+                    onClick={submitReport}
+                    sx={{
+                      backfaceVisibility: "hidden",
+                      position: "relative",
+                      cursor: "pointer",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                      color: "#fff",
+                      fontWeight: 900,
+                      fontSize: "14px",
+                      py: 1.5,
+                      borderRadius: "8px",
+                      textTransform: "none",
+                      textShadow: "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
+                      border: "1px solid #d4af37",
+                      backgroundImage: `
+                        repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .12) 3.75%),
+                        repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .04) 2.25%),
+                        repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .18) 1.2%),
+                        linear-gradient(180deg, #d4af37 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #f4d03f 53%, #ffd700 75%, #d4af37 100%)
+                      `,
+                      boxShadow: `
+                        inset 0px 1px 0px rgba(255,255,255,0.9),
+                        inset 0px -1px 0px rgba(0,0,0,0.2),
+                        0px 1px 3px rgba(0,0,0,0.4),
+                        0px 4px 12px rgba(212, 175, 55, 0.4),
+                        0px 0px 20px rgba(255, 215, 0, 0.2)
+                      `,
+                      transition: "all 0.2s ease",
+                      "&:hover": {
+                        backgroundImage: `
+                          repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
+                          repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
+                          repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .2) 1.2%),
+                          linear-gradient(180deg, #f4d03f 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #ffed4e 53%, #ffd700 75%, #f4d03f 100%)
+                        `,
+                        boxShadow: `
+                          inset 0px 1px 0px rgba(255,255,255,1),
+                          inset 0px -1px 0px rgba(0,0,0,0.2),
+                          0px 2px 6px rgba(0,0,0,0.5),
+                          0px 6px 20px rgba(212, 175, 55, 0.5),
+                          0px 0px 30px rgba(255, 215, 0, 0.3)
+                        `,
+                        transform: "translateY(-1px)",
+                      },
+                      "&:active": {
+                        transform: "translateY(2px)",
+                        boxShadow: `
+                          inset 0px 1px 0px rgba(255,255,255,0.7),
+                          inset 0px -1px 0px rgba(0,0,0,0.3),
+                          0px 1px 2px rgba(0,0,0,0.4),
+                          0px 2px 8px rgba(212, 175, 55, 0.3),
+                          0px 0px 15px rgba(255, 215, 0, 0.15)
+                        `,
+                      },
+                    }}
+                  >
+                    Recargar Saldo
+                  </Button>
+                  <Button
+                    fullWidth
+                    onClick={handleSubmitWithdrawRequestDialog}
+                    variant="outlined"
+                    sx={{
+                      backfaceVisibility: "hidden",
+                      position: "relative",
+                      cursor: "pointer",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                      color: "#fff",
+                      fontWeight: 900,
+                      fontSize: "14px",
+                      py: 1.5,
+                      borderRadius: "8px",
+                      textTransform: "none",
+                      textShadow: "0px -1px 0px rgba(0,0,0,0.4)",
+                      borderColor: "#7c7c7c",
+                      borderWidth: "1px",
+                      backgroundImage: `
+                        repeating-linear-gradient(left, hsla(0,0%,100%,0) 0%, hsla(0,0%,100%,0) 6%, hsla(0,0%,100%, .1) 7.5%),
+                        repeating-linear-gradient(left, hsla(0,0%, 0%,0) 0%, hsla(0,0%, 0%,0) 4%, hsla(0,0%, 0%,.03) 4.5%),
+                        repeating-linear-gradient(left, hsla(0,0%,100%,0) 0%, hsla(0,0%,100%,0) 1.2%, hsla(0,0%,100%,.15) 2.2%),
+                        linear-gradient(180deg, hsl(0,0%,78%) 0%, hsl(0,0%,90%) 47%, hsl(0,0%,78%) 53%, hsl(0,0%,70%) 100%)
+                      `,
+                      boxShadow: `
+                        inset 0px 1px 0px rgba(255,255,255,1),
+                        0px 1px 3px rgba(0,0,0,0.3),
+                        0px 4px 12px rgba(0, 0, 0, 0.2)
+                      `,
+                      transition: "all 0.2s ease",
+                      "&:hover": {
+                        boxShadow: `
+                          inset 0px 1px 0px rgba(255,255,255,1),
+                          0px 2px 6px rgba(0,0,0,0.4),
+                          0px 6px 16px rgba(0, 0, 0, 0.3)
+                        `,
+                        transform: "translateY(-1px)",
+                      },
+                      "&:active": {
+                        transform: "translateY(2px)",
+                        boxShadow: `
+                          inset 0px 1px 0px rgba(255,255,255,0.8),
+                          0px 1px 2px rgba(0,0,0,0.3),
+                          0px 2px 8px rgba(0, 0, 0, 0.15)
+                        `,
+                      },
+                    }}
+                  >
+                    Retirar Fondos
+                  </Button>
+                </Stack>
           
           <Button
             variant="outlined"
@@ -642,296 +703,30 @@ export default function Profile() {
       </Container>
     </Box>
 
-      <Dialog
+      <WithdrawRequestDialog
+              open={openWithdrawRequestDialog}
+              onClose={() => setOpenWithdrawRequestDialog(false)}
+              onSubmit={handleSubmitWithdrawRequestDialog}
+              error={error}
+              currency="Bs"
+              // accountInfo={MOCK_ACCOUNT}
+              minAmount={500} accountInfo={{
+                bankName: "",
+                docType: "V",
+                docId: "",
+                phone: ""
+              }}      />
+
+     {/* <button onClick={() => setOpenReport(true)}>Reportar pago móvil</button> */}
+
+      <MobilePaymentReportDialog
         open={openReport}
         onClose={() => setOpenReport(false)}
-        maxWidth="sm"
-        fullWidth
-        slotProps={{
-          backdrop: {
-            sx: {
-              backgroundColor: "rgba(0, 0, 0, 0.6)",
-              backdropFilter: "blur(25px) saturate(120%)",
-              WebkitBackdropFilter: "blur(25px) saturate(120%)",
-            },
-          },
-        }}
-        PaperProps={{
-          sx: {
-            backgroundColor: "rgba(31, 19, 9, 0.92)",
-            backdropFilter: "blur(40px) saturate(150%)",
-            WebkitBackdropFilter: "blur(40px) saturate(150%)",
-            borderRadius: "24px",
-            border: "2px solid rgba(212, 175, 55, 0.3)",
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            fontWeight: 800,
-            background: "linear-gradient(135deg, #d4af37, #f4d03f, #d4af37)",
-            backgroundClip: "text",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            fontFamily: "'Montserrat', sans-serif",
-            borderBottom: "1px solid rgba(212, 175, 55, 0.25)",
-            pb: 2,
-          }}
-        >
-          Reportar pago móvil
-        </DialogTitle>
-        <DialogContent
-          dividers
-          sx={{
-            bgcolor: "transparent",
-            color: "#f5e6d3",
-          }}
-        >
-          {error && (
-            <Alert 
-              severity="error" 
-              sx={{ 
-                mb: 2,
-                backgroundColor: "rgba(201, 168, 90, 0.2)", 
-                color: "#c9a85a", 
-                border: "1px solid rgba(201, 168, 90, 0.4)",
-                "& .MuiAlert-icon": {
-                  color: "#c9a85a",
-                },
-              }}
-            >
-              {error}
-            </Alert>
-          )}
-
-          <Stack spacing={2}>
-            <TextField
-              fullWidth
-              label="Código de referencia"
-              value={report.refCode}
-              onChange={(e) =>
-                setReport((s) => ({ ...s, refCode: e.target.value }))
-              }
-              sx={textFieldStyles}
-            />
-
-            <TextField
-              select
-              fullWidth
-              label="Banco emisor"
-              value={report.bankName}
-              onChange={(e) =>
-                setReport((s) => ({ ...s, bankName: e.target.value }))
-              }
-              sx={textFieldStyles}
-            >
-              {BANKS.map((b) => (
-                <MenuItem 
-                  key={b} 
-                  value={b}
-                  sx={{
-                    bgcolor: "rgba(31, 19, 9, 0.95)",
-                    color: "#f5e6d3",
-                    "&:hover": {
-                      bgcolor: "rgba(212, 175, 55, 0.2)",
-                    },
-                    "&.Mui-selected": {
-                      bgcolor: "rgba(212, 175, 55, 0.3)",
-                      "&:hover": {
-                        bgcolor: "rgba(212, 175, 55, 0.4)",
-                      },
-                    },
-                  }}
-                >
-                  {b}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                select
-                fullWidth
-                label="Tipo"
-                value={report.payerDocType}
-                onChange={(e) =>
-                  setReport((s) => ({
-                    ...s,
-                    payerDocType: e.target.value as "V" | "E",
-                  }))
-                }
-                sx={textFieldStyles}
-              >
-                <MenuItem 
-                  value="V"
-                  sx={{
-                    bgcolor: "rgba(31, 19, 9, 0.95)",
-                    color: "#f5e6d3",
-                    "&:hover": {
-                      bgcolor: "rgba(212, 175, 55, 0.2)",
-                    },
-                    "&.Mui-selected": {
-                      bgcolor: "rgba(212, 175, 55, 0.3)",
-                    },
-                  }}
-                >
-                  V
-                </MenuItem>
-                <MenuItem 
-                  value="E"
-                  sx={{
-                    bgcolor: "rgba(31, 19, 9, 0.95)",
-                    color: "#f5e6d3",
-                    "&:hover": {
-                      bgcolor: "rgba(212, 175, 55, 0.2)",
-                    },
-                    "&.Mui-selected": {
-                      bgcolor: "rgba(212, 175, 55, 0.3)",
-                    },
-                  }}
-                >
-                  E
-                </MenuItem>
-              </TextField>
-
-              <TextField
-                fullWidth
-                label="Cédula"
-                value={report.payerDocId}
-                onChange={(e) =>
-                  setReport((s) => ({ ...s, payerDocId: e.target.value }))
-                }
-                sx={textFieldStyles}
-              />
-            </Stack>
-
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                fullWidth
-                label="Teléfono del pagador"
-                value={report.payerPhone}
-                onChange={(e) =>
-                  setReport((s) => ({ ...s, payerPhone: e.target.value }))
-                }
-                placeholder="0412-0000000"
-                sx={textFieldStyles}
-              />
-
-              <TextField
-                fullWidth
-                type="number"
-                label={`Monto (${MOCK_USER.currency})`}
-                value={report.amount}
-                onChange={(e) =>
-                  setReport((s) => ({ ...s, amount: e.target.value }))
-                }
-                inputProps={{ min: 0, step: "any" }}
-                sx={textFieldStyles}
-              />
-            </Stack>
-
-            <TextField
-              fullWidth
-              type="datetime-local"
-              label="Fecha y hora del pago"
-              value={report.paidAt}
-              onChange={(e) =>
-                setReport((s) => ({ ...s, paidAt: e.target.value }))
-              }
-              InputLabelProps={{ shrink: true }}
-              sx={textFieldStyles}
-            />
-
-            <Button 
-              component="label" 
-              variant="outlined" 
-              fullWidth
-              sx={{
-                color: "#f5e6d3",
-                borderColor: "rgba(212, 175, 55, 0.3)",
-                "&:hover": {
-                  borderColor: "rgba(212, 175, 55, 0.5)",
-                  bgcolor: "rgba(212, 175, 55, 0.1)",
-                },
-              }}
-            >
-              Subir comprobante (imagen)
-              <input
-                hidden
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-              />
-            </Button>
-
-            {report.voucherPreview && (
-              <Box
-                component="img"
-                src={report.voucherPreview}
-                alt="Comprobante"
-                sx={{
-                  maxHeight: 220,
-                  borderRadius: 2,
-                  boxShadow: 2,
-                  display: "block",
-                  mx: "auto",
-                }}
-              />
-            )}
-
-            <TextField
-              fullWidth
-              label="Notas (opcional)"
-              multiline
-              minRows={2}
-              value={report.notes}
-              onChange={(e) =>
-                setReport((s) => ({ ...s, notes: e.target.value }))
-              }
-              sx={textFieldStyles}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions
-          sx={{
-            bgcolor: "transparent",
-            borderTop: "1px solid rgba(212, 175, 55, 0.25)",
-            p: 3,
-            gap: 2,
-          }}
-        >
-          <Button 
-            onClick={() => setOpenReport(false)}
-            sx={{
-              color: "#f5e6d3",
-              borderColor: "rgba(212, 175, 55, 0.3)",
-              "&:hover": {
-                borderColor: "rgba(212, 175, 55, 0.5)",
-                bgcolor: "rgba(212, 175, 55, 0.1)",
-              },
-            }}
-          >
-            Cancelar
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={submitReport}
-            sx={{
-              background: "linear-gradient(135deg, rgba(212, 175, 55, 0.9) 0%, rgba(244, 208, 63, 1) 50%, rgba(212, 175, 55, 0.9) 100%)",
-              border: "1.5px solid rgba(212, 175, 55, 1)",
-              boxShadow: "0 2px 8px rgba(212, 175, 55, 0.5)",
-              color: "#1a1008",
-              fontWeight: 700,
-              "&:hover": {
-                background: "linear-gradient(135deg, rgba(244, 208, 63, 1) 0%, rgba(255, 223, 0, 1) 50%, rgba(244, 208, 63, 1) 100%)",
-                boxShadow: "0 4px 16px rgba(212, 175, 55, 0.7)",
-              },
-            }}
-          >
-            Enviar reporte
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onSubmit={submitReport}
+        error={error}
+        banks={BANKS}
+        currency={MOCK_USER.currency}
+      />
     </>
   );
 }

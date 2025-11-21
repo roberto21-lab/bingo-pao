@@ -7,10 +7,12 @@ import ActiveRoomCard from "../Componets/ActiveRoomCard";
 import { getUserRooms } from "../Services/cards.service";
 import { getRoomById, getRooms, type Room } from "../Services/rooms.service";
 import { getRoomRounds } from "../Services/rounds.service";
-import { getUserId } from "../Services/auth.service";
+import { getUserId, type User } from "../Services/auth.service";
 import { useAuth } from "../hooks/useAuth";
 import AuthToast from "../Componets/AuthToast";
 import AvailableRoomsPreview from "../Componets/AvailableRoomsPreview";
+import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
+import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 
 type ActiveRoom = {
   id: string;
@@ -19,6 +21,8 @@ type ActiveRoom = {
   prizeAmount: number;
   currency: string;
 };
+
+
 
 const AVAILABLE_BALANCE = 1250.75;
 const FROZEN_BALANCE = 0.0;
@@ -31,6 +35,18 @@ export default function Home() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [showToast, setShowToast] = React.useState(true);
+   const [openReport, setOpenReport] = React.useState(false);
+
+
+   const BANKS = [
+  "Banco de Venezuela",
+  "Banco Provincial",
+  "Banesco",
+  "Mercantil",
+  "BOD",
+  "Banco del Tesoro",
+  "Bancamiga",
+];
 
   // Obtener información del usuario autenticado
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -167,6 +183,45 @@ export default function Home() {
   const handleWithdraw = () => {
     // TODO: Implementar withdraw
   };
+
+    const [report, setReport] = React.useState({
+      refCode: "",
+      bankName: "",
+      payerDocType: "V",
+      payerDocId: "",
+      payerPhone: "",
+      amount: "",
+      paidAt: new Date().toISOString().slice(0, 16), // datetime-local iso
+      notes: "",
+      voucherFile: null as File | null,
+      voucherPreview: "" as string,
+    });
+
+
+   const submitReport = () => {
+
+
+    // Preparar datos para enviar al backend
+    // const reportData = {
+    //   ...report,
+    //   amount: Number(report.amount),
+    //   userId: MOCK_USER.id,
+    //   createdAt: new Date().toISOString(),
+    // };
+    // await api.post('/payments/report', reportData);
+
+    // reset suave y cerrar
+    setOpenReport(!openReport);
+    setReport((s) => ({ ...s, refCode: "", amount: "", notes: "", voucherFile: null, voucherPreview: "" }));
+  };
+
+  const [openWithdrawRequestDialog, setOpenWithdrawRequestDialog] = React.useState(false);
+
+  const handleSubmitWithdrawRequestDialog = () =>{
+      setOpenWithdrawRequestDialog(!openWithdrawRequestDialog);
+  }
+ 
+
 
   return (
     <Box
@@ -321,7 +376,7 @@ export default function Home() {
           <Stack direction="row" spacing={2}>
           <Button
             fullWidth
-            onClick={handleTopUp}
+            onClick={submitReport}
             sx={{
               backfaceVisibility: "hidden",
               position: "relative",
@@ -382,7 +437,7 @@ export default function Home() {
           </Button>
           <Button
             fullWidth
-            onClick={handleWithdraw}
+            onClick={handleSubmitWithdrawRequestDialog}
             variant="outlined"
             sx={{
               backfaceVisibility: "hidden",
@@ -433,6 +488,31 @@ export default function Home() {
           </Button>
         </Stack>
         )}
+
+          {/* <button onClick={() => setOpenWithdrawRequestDialog(true)}>Retirar saldo</button> */}
+
+      <WithdrawRequestDialog
+          open={openWithdrawRequestDialog}
+          onClose={() => setOpenWithdrawRequestDialog(false)}
+          onSubmit={handleSubmitWithdrawRequestDialog}
+          error={error}
+          currency="Bs"
+          // accountInfo={MOCK_ACCOUNT}
+          minAmount={500} accountInfo={{
+            bankName: "",
+            docType: "V",
+            docId: "",
+            phone: ""
+          }}      />
+
+            <MobilePaymentReportDialog
+                open={openReport}
+                onClose={() => setOpenReport(false)}
+                onSubmit={submitReport}
+                error={error}
+                banks={BANKS}
+                currency={"USD"}
+              />
       </Container>
     </Box>
   );
