@@ -11,7 +11,8 @@ import PurchasedCartons from "./Pages/PurchasedCartons";
 import Profile from "./Pages/Profile";
 import TabBar from "./Componets/TabBar";
 import Register from "./Pages/Register";
-import { Login } from "@mui/icons-material";
+import WalletPage from "./Pages/WalletPage";
+import Login from "./Pages/Login";
 
 function NotFound() {
   return (
@@ -29,12 +30,13 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/rooms" element={<Rooms />} />
+        <Route path="/wallet" element={<WalletPage />} />
         <Route path="/room/:roomId" element={<RoomDetail />} />
         <Route path="/game/:roomId" element={<GameInProgress />} />
         <Route path="/purchased-cartons" element={<PurchasedCartons />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/404" element={<NotFound />} />
-         <Route path="/register" element={<Register />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>

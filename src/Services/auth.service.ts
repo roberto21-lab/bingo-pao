@@ -6,6 +6,8 @@
  * este archivo debe ser reemplazado o adaptado para usar su implementación.
  */
 
+import { api } from "./api";
+
 export interface User {
   id: string;
   email: string;
@@ -104,3 +106,25 @@ export function getUserId(): string | null {
   return user?.id || localStorage.getItem("userId");
 }
 
+export async function loginService(email: string, password: string): Promise<{ user: User; token: string }> {
+  // Aquí se haría la llamada real al backend
+  const response = await api.post('/auth/login', { email, password });
+  
+  // Suponiendo que el backend devuelve los datos del usuario y el token
+  const data = response.data;
+
+  const user: User = {
+    id: data.user.id,
+    email: data.user.email,
+    full_name: data.user.full_name,
+    token: data.token,
+    expired_token_date: new Date(data.expired_token_date),
+  };
+
+  // Guardar en localStorage
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+  localStorage.setItem(TOKEN_STORAGE_KEY, user.token);
+  localStorage.setItem("userId", user.id); // Para compatibilidad con código existente
+
+  return { user, token: data.token };
+}
