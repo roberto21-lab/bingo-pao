@@ -21,17 +21,18 @@ export type BackendCurrency = {
 // Tipo para la room del backend
 export type BackendRoom = {
   _id: string;
+  id?: string; // Algunos endpoints devuelven id en lugar de _id
   name: string;
-  price_per_card?: ApiDecimal;
+  price_per_card?: ApiDecimal | number; // Puede venir como número o como ApiDecimal
   min_players?: number;
   max_rounds?: number;
   currency_id?: BackendCurrency | string;
   status_id?: BackendStatus | string;
   description?: string | null;
-  total_pot?: ApiDecimal;
-  admin_fee?: ApiDecimal;
-  players?: string[];
-  rewards?: string[];
+  total_pot?: ApiDecimal | number; // Puede venir como número o como ApiDecimal
+  admin_fee?: ApiDecimal | number; // Puede venir como número o como ApiDecimal
+  players?: string[] | any[];
+  rewards?: string[] | any[];
   created_at?: string;
   updated_at?: string;
 };
@@ -50,8 +51,11 @@ export type Room = {
 };
 
 // Función para convertir Decimal128 a número
-function parseDecimal(decimal: ApiDecimal | string | undefined): number {
+function parseDecimal(decimal: ApiDecimal | string | number | undefined): number {
   if (!decimal) return 0;
+  if (typeof decimal === "number") {
+    return decimal;
+  }
   if (typeof decimal === "string") {
     return parseFloat(decimal) || 0;
   }
@@ -121,14 +125,16 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
 // GET /rooms - obtener todas las salas
 export async function getRooms(): Promise<Room[]> {
   try {
-    const response = await api.get<{ success: boolean; data: BackendRoom[] }>("/rooms");
+    // El backend devuelve un array directo, no un objeto con success/data
+    const response = await api.get<BackendRoom[]>("/rooms");
     
-    if (response.data.success && Array.isArray(response.data.data)) {
-      return response.data.data.map(mapBackendRoomToRoom);
+    if (Array.isArray(response.data)) {
+      return response.data.map(mapBackendRoomToRoom);
     }
     
     return [];
   } catch (error) {
+    console.error("Error al obtener salas:", error);
     throw error;
   }
 }

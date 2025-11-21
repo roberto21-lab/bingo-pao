@@ -21,10 +21,12 @@ export default function Rooms() {
         setLoading(true);
         setError(null);
         const data = await getRooms();
+        console.log("Salas obtenidas:", data);
         setRooms(data);
         setCurrentRoomIndex(0); // Resetear al índice inicial cuando se cargan las salas
-      } catch (err) {
-        setError("Error al cargar las salas. Por favor, intenta nuevamente.");
+      } catch (err: any) {
+        console.error("Error al obtener salas:", err);
+        setError(err?.response?.data?.message || err?.message || "Error al cargar las salas. Por favor, intenta nuevamente.");
       } finally {
         setLoading(false);
       }
