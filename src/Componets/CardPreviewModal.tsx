@@ -17,7 +17,7 @@ type CardPreviewModalProps = {
   onClose: () => void;
   onBingo: () => void;
   card: BingoGrid;
-  cardId: number;
+  cardCode: string;
   hasBingo: boolean;
   isNumberCalled: (num: number) => boolean;
   isNumberMarked: (num: number) => boolean;
@@ -36,7 +36,7 @@ export default function CardPreviewModal({
   onClose,
   onBingo,
   card,
-  cardId,
+  cardCode,
   hasBingo,
   isNumberCalled,
   isNumberMarked,
@@ -282,7 +282,7 @@ export default function CardPreviewModal({
                 whiteSpace: "nowrap",
               }}
             >
-              Cartón #{cardId}
+              Cartón {cardCode}
             </Typography>
             {hasBingo && (
               <Box

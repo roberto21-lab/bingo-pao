@@ -1,127 +1,28 @@
 import { Box, Card, CardContent, Typography, Stack, Chip } from "@mui/material";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 import type { Room } from "../Services/rooms.service";
 
 interface AvailableRoomsPreviewProps {
   rooms: Room[];
 }
 
-// Componente para el contador regresivo de una sala
-function RoomCountdown({ room }: { room: Room }) {
-  const [remaining, setRemaining] = React.useState<number>(0);
-
-  React.useEffect(() => {
-    if (room.status === "in_progress") {
-      return;
-    }
-
-    if (!room.players) {
-      return;
-    }
-
-    // Parsear jugadores (formato: "X/Y" o solo número)
-    const playersMatch = room.players.match(/(\d+)\/(\d+)/);
-    if (playersMatch) {
-      const current = parseInt(playersMatch[1]);
-      const needed = parseInt(playersMatch[2]);
-      const remainingPlayers = needed - current;
-
-      if (remainingPlayers <= 0) {
-        setRemaining(0);
-        return;
-      }
-
-      // Estimar: cada jugador tarda ~30 segundos en promedio
-      const estimatedSeconds = remainingPlayers * 30;
-      setRemaining(estimatedSeconds);
-    }
-  }, [room.players, room.status]);
-
-  React.useEffect(() => {
-    if (remaining <= 0) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [remaining]);
-
-  const minutes = Math.floor(remaining / 60);
-  const seconds = remaining % 60;
-
-  if (room.status === "in_progress") {
-    return null;
-  }
-
-  if (remaining <= 0) {
-    return (
-      <Box
-        sx={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 1,
-          px: 1.5,
-          py: 0.5,
-          borderRadius: "8px",
-          backgroundColor: "rgba(76, 175, 80, 0.15)",
-          border: "1px solid rgba(76, 175, 80, 0.3)",
-        }}
-      >
-        <Typography
-          variant="caption"
-          sx={{
-            color: "#4caf50",
-            fontWeight: 600,
-          }}
-        >
-          Iniciando pronto...
-        </Typography>
-      </Box>
-    );
-  }
-
-  const timeText = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-
-  return (
-    <Box
-      sx={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 1,
-        px: 1.5,
-        py: 0.5,
-        borderRadius: "8px",
-        backgroundColor: "rgba(255, 152, 0, 0.15)",
-        border: "1px solid rgba(255, 152, 0, 0.3)",
-      }}
-    >
-      <Typography
-        variant="caption"
-        sx={{
-          color: "#ff9800",
-          fontWeight: 600,
-        }}
-      >
-        ⏱️ Inicia en: {timeText}
-      </Typography>
-    </Box>
-  );
-}
+import RoomCountdown from "./RoomCountdown";
 
 export default function AvailableRoomsPreview({ rooms }: AvailableRoomsPreviewProps) {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const handleRoomClick = (roomId: string) => {
-    navigate(`/game/${roomId}`);
+    // Si no está autenticado, redirigir al login con la sala de destino
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=/room/${roomId}`);
+      return;
+    }
+    
+    // Si está autenticado, ir directamente a la selección de cartones
+    navigate(`/room/${roomId}`);
   };
 
   if (rooms.length === 0) {
@@ -245,7 +146,7 @@ export default function AvailableRoomsPreview({ rooms }: AvailableRoomsPreviewPr
                       </Box>
                     </Stack>
 
-                    {isWaiting && <RoomCountdown room={room} />}
+                    {isWaiting && room.scheduledAt && <RoomCountdown room={room} />}
 
                     {room.status === "in_progress" && (
                       <Chip

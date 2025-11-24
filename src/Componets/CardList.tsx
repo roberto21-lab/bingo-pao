@@ -1,12 +1,15 @@
-import { Box, Typography, Dialog, DialogContent, DialogActions, Button } from "@mui/material";
+import { Box, Typography, Dialog, DialogContent, DialogActions, Button, Chip } from "@mui/material";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import SelectableCard from "./SelectableCard";
 import CardBadge from "./CardBadge";
 import type { BingoGrid } from "../utils/bingo";
+import type { RoomWinner } from "../Services/bingo.service";
+import { getBingoTypeName } from "../utils/bingoUtils";
 
 type CardListProps = {
   cards: BingoGrid[];
+  cardsData?: Array<{ _id: string; code: string }>;
   calledNumbers: Set<string>;
   markedNumbers: Map<number, Set<string>>;
   hasBingo: (index: number) => boolean;
@@ -14,10 +17,29 @@ type CardListProps = {
   bingoPatternNumbersMap?: Map<number, Set<string>>;
   roomId?: string;
   isGameFinished?: boolean;
+  winningNumbersMap?: Map<number, Set<string>>; // Números ganadores por índice de cartón
+  showWinners?: boolean; // Si se están mostrando cartones ganadores
+  winners?: RoomWinner[]; // Datos de los ganadores (ronda, patrón, etc.)
 };
+
+function mapPatternToBingoType(patternName: string): "horizontal" | "vertical" | "smallCross" | "fullCard" {
+  switch (patternName) {
+    case "horizontal":
+      return "horizontal";
+    case "vertical":
+      return "vertical";
+    case "cross_small":
+      return "smallCross";
+    case "full":
+      return "fullCard";
+    default:
+      return "fullCard";
+  }
+}
 
 export default function CardList({
   cards,
+  cardsData = [],
   calledNumbers,
   markedNumbers,
   hasBingo,
@@ -25,6 +47,9 @@ export default function CardList({
   bingoPatternNumbersMap = new Map(),
   roomId,
   isGameFinished = false,
+  winningNumbersMap = new Map(),
+  showWinners = false,
+  winners = [],
 }: CardListProps) {
   const navigate = useNavigate();
   const [confirmModalOpen, setConfirmModalOpen] = React.useState(false);
@@ -63,7 +88,7 @@ export default function CardList({
           textShadow: "0 2px 4px rgba(212, 175, 55, 0.3)",
         }}
       >
-        Mis Cartones
+        {showWinners ? "Cartones Ganadores" : "Mis Cartones"}
       </Typography>
 
       <Box
@@ -109,21 +134,87 @@ export default function CardList({
             const cardMarked = getMarkedForCard(index);
             const cardHasBingo = hasBingo(index);
             const cardBingoPatternNumbers = bingoPatternNumbersMap.get(index) || new Set<string>();
+            
+            // Cuando se muestran ganadores, buscar el ganador por índice del array (que corresponde a la ronda)
+            // Los ganadores ya vienen ordenados por round_number del backend
+            const winner = showWinners && winners.length > index ? winners[index] : null;
+            const cardCode = showWinners && winner 
+              ? winner.card_code 
+              : (cardsData[index]?.code || String(index + 1));
 
             return (
-              <Box key={index} sx={{ position: "relative" }}>
-                <SelectableCard
-                  grid={card}
-                  cardId={index + 1}
-                  selected={false}
-                  onClick={() => onCardClick(index)}
-                  status="free"
-                  calledNumbers={calledNumbers}
-                  markedNumbers={cardMarked}
-                  hasBingo={cardHasBingo}
-                  bingoPatternNumbers={cardBingoPatternNumbers}
-                />
-                <CardBadge hasBingo={cardHasBingo} markedCount={cardMarked.size} />
+              <Box key={index} sx={{ position: "relative", display: "flex", flexDirection: "column", gap: 1 }}>
+                {showWinners && winner && (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 0.75,
+                      alignItems: "center",
+                      mb: 1,
+                      px: 1.5,
+                      py: 1,
+                      borderRadius: "12px",
+                      background: "linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(244, 208, 63, 0.15) 100%)",
+                      border: "1.5px solid rgba(212, 175, 55, 0.4)",
+                      boxShadow: "0 2px 8px rgba(212, 175, 55, 0.2)",
+                    }}
+                  >
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        fontSize: "18px",
+                        fontWeight: 800,
+                        color: "#d4af37",
+                        textShadow: "0 1px 3px rgba(212, 175, 55, 0.5)",
+                        fontFamily: "'Montserrat', sans-serif",
+                      }}
+                    >
+                      Ronda {winner.round_number}
+                    </Typography>
+                    <Chip
+                      label={getBingoTypeName(mapPatternToBingoType(winner.pattern))}
+                      sx={{
+                        backgroundColor: "rgba(212, 175, 55, 0.3)",
+                        color: "#d4af37",
+                        border: "1px solid rgba(212, 175, 55, 0.5)",
+                        fontWeight: 700,
+                        fontSize: "11px",
+                        height: "24px",
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: "11px",
+                        color: "#f5e6d3",
+                        opacity: 0.95,
+                        mt: 0.25,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Premio: Bs. {parseFloat(winner.prize_amount).toLocaleString("es-VE", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </Typography>
+                  </Box>
+                )}
+                <Box sx={{ position: "relative" }}>
+                  <SelectableCard
+                    grid={card}
+                    cardCode={cardCode}
+                    selected={false}
+                    onClick={() => onCardClick(index)}
+                    status="free"
+                    calledNumbers={calledNumbers}
+                    markedNumbers={cardMarked}
+                    hasBingo={cardHasBingo}
+                    bingoPatternNumbers={cardBingoPatternNumbers}
+                    winningNumbers={winningNumbersMap.get(index)}
+                  />
+                  {!showWinners && <CardBadge hasBingo={cardHasBingo} markedCount={cardMarked.size} />}
+                </Box>
               </Box>
             );
           })}

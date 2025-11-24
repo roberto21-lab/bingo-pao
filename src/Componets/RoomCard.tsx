@@ -1,5 +1,7 @@
 import * as React from "react";
 import { Box, Card, CardContent, Typography, Stack } from "@mui/material";
+import RoomCountdown from "./RoomCountdown";
+import type { Room } from "../Services/rooms.service";
 
 type RoomStatus = "waiting" | "preparing" | "in_progress" | "locked";
 
@@ -12,6 +14,7 @@ type RoomCardProps = {
   rounds?: number;
   jackpot?: number;
   players?: string; // formato "35/50"
+  scheduledAt?: Date | null;
   onJoin?: () => void;
 };
 
@@ -85,17 +88,31 @@ const RoomCard: React.FC<RoomCardProps> = ({
   rounds,
   jackpot,
   players,
+  scheduledAt,
   onJoin,
 }) => {
+  // Crear objeto Room para el componente RoomCountdown
+  const roomForCountdown: Room = {
+    id: "",
+    title,
+    price,
+    estimatedPrize,
+    currency,
+    status,
+    rounds,
+    jackpot,
+    players,
+    scheduledAt,
+  };
   return (
-    <Box sx={{ mb: 2 }}>
+    <Box sx={{ marginBottom: "16px", marginTop: "-40px" }}>
       <Card
         onClick={status !== "locked" ? onJoin : undefined}
         sx={{
           background: "rgba(26, 26, 46, 0.4)",
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          borderRadius: "16px",
+          borderRadius: 0,
           border: "1px solid rgba(255, 255, 255, 0.1)",
           boxShadow: `
             0 8px 32px rgba(0, 0, 0, 0.3),
@@ -104,6 +121,7 @@ const RoomCard: React.FC<RoomCardProps> = ({
           cursor: status === "locked" ? "not-allowed" : "pointer",
           transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           position: "relative",
+          zIndex: 1,
           overflow: "hidden",
           "&::before": {
             content: '""',
@@ -191,6 +209,13 @@ const RoomCard: React.FC<RoomCardProps> = ({
               />
             )}
           </Stack>
+
+          {/* Contador regresivo */}
+          {status === "waiting" && scheduledAt && (
+            <Box sx={{ mt: 1.5 }}>
+              <RoomCountdown room={roomForCountdown} />
+            </Box>
+          )}
         </CardContent>
       </Card>
     </Box>

@@ -4,13 +4,13 @@ import { numberToBingoFormat } from "../utils/bingoUtils";
 
 type WinningCardDisplayProps = {
   card: BingoGrid;
-  cardId: number;
+  cardCode: string;
   markedNumbers: Set<string>;
 };
 
 export default function WinningCardDisplay({
   card,
-  cardId,
+  cardCode,
   markedNumbers,
 }: WinningCardDisplayProps) {
   const isMarked = (num: number): boolean => {
@@ -30,7 +30,7 @@ export default function WinningCardDisplay({
           fontFamily: "'Montserrat', sans-serif",
         }}
       >
-        Cartón #{cardId}
+        Cartón {cardCode}
       </Typography>
       <Box
         sx={{

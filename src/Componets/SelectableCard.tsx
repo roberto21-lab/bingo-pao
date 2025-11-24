@@ -4,7 +4,7 @@ import { Box, Card, CardContent, Typography } from "@mui/material";
 
 type SelectableCardProps = {
   grid: number[][];
-  cardId: number;
+  cardCode: string;
   selected?: boolean;
   onClick?: () => void;
   status?: "free" | "occupied";
@@ -12,6 +12,7 @@ type SelectableCardProps = {
   markedNumbers?: Set<string>;
   hasBingo?: boolean;
   bingoPatternNumbers?: Set<string>;
+  winningNumbers?: Set<string>; // Números que hicieron bingo (para salas finalizadas)
 };
 
 const HEADERS = ["B", "I", "N", "G", "O"] as const;
@@ -28,7 +29,7 @@ const numberToBingoFormat = (num: number): string => {
 
 const SelectableCard: React.FC<SelectableCardProps> = ({
   grid,
-  cardId,
+  cardCode,
   selected = false,
   onClick,
   status = "free",
@@ -36,6 +37,7 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
   markedNumbers = new Set(),
   hasBingo = false,
   bingoPatternNumbers = new Set(),
+  winningNumbers = new Set(),
 }) => {
   const isNumberCalled = (num: number): boolean => {
     if (num === 0) return false;
@@ -221,7 +223,7 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
                 ml: 0.5,
               }}
             >
-              {cardId}
+              {cardCode}
             </Typography>
           </Box>
 
@@ -240,7 +242,9 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
                 const isCalledButNotMarked = isCalled && !isMarked;
                 const numFormat = num !== 0 ? numberToBingoFormat(num) : "";
                 const isPartOfBingoPattern = hasBingo && numFormat !== "" && bingoPatternNumbers.has(numFormat);
-                const shouldBeGold = isPartOfBingoPattern && isMarked;
+                const isWinningNumber = numFormat !== "" && winningNumbers.has(numFormat);
+                // Si hay winningNumbers, priorizar esos sobre el patrón de bingo
+                const shouldBeGold = isWinningNumber || (isPartOfBingoPattern && isMarked);
                 
                 return (
                   <Box

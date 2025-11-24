@@ -1,66 +1,239 @@
 import { io, Socket } from "socket.io-client";
+import { getToken } from "./auth.service";
 
-const SOCKET_URL = "http://localhost:3000";
+const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+// Estado de conexión
+export type SocketConnectionState = "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
+
+// Callbacks de estado
+type ConnectionStateCallback = (state: SocketConnectionState) => void;
+
+// Queue de eventos pendientes cuando está desconectado
+type QueuedEvent = {
+  event: string;
+  data: unknown;
+};
 
 let socket: Socket | null = null;
+let connectionState: SocketConnectionState = "disconnected";
+const stateCallbacks: Set<ConnectionStateCallback> = new Set();
+let queuedEvents: QueuedEvent[] = [];
+let currentRoomId: string | null = null;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY_BASE = 1000; // 1 segundo base
 
-// Inicializar conexión WebSocket
+// Notificar cambios de estado
+const notifyStateChange = (newState: SocketConnectionState) => {
+  if (connectionState !== newState) {
+    connectionState = newState;
+    stateCallbacks.forEach((callback) => callback(newState));
+  }
+};
+
+// Obtener token de autenticación
+const getAuthToken = (): string | null => {
+  try {
+    return getToken();
+  } catch {
+    return null;
+  }
+};
+
+// Inicializar conexión WebSocket con autenticación
 export const connectSocket = (): Socket => {
+  // Si ya está conectado, retornar la instancia existente
   if (socket?.connected) {
     return socket;
   }
 
+  // Si existe pero no está conectado, desconectar primero para limpiar
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
+  }
+
+  const token = getAuthToken();
+  
+  // Configuración optimizada para baja latencia
   socket = io(SOCKET_URL, {
-    transports: ["websocket", "polling"],
+    transports: ["websocket", "polling"], // Preferir websocket, fallback a polling
+    upgrade: true,
+    rememberUpgrade: true,
     reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionAttempts: 5,
+    reconnectionDelay: RECONNECT_DELAY_BASE,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+    timeout: 20000,
+    forceNew: false,
+    // Autenticación
+    auth: token ? { token } : undefined,
+    // Headers de autenticación (fallback)
+    extraHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
+    // Opciones de rendimiento
+    autoConnect: true,
   });
 
+  // Evento: Conectado
   socket.on("connect", () => {
-    // Socket conectado
+    console.log("✅ Socket conectado:", socket?.id);
+    notifyStateChange("connected");
+    
+    // Re-join room si había una activa
+    if (currentRoomId && socket) {
+      socket.emit("join-room", currentRoomId);
+    }
+    
+    // Procesar eventos en cola
+    processQueuedEvents();
   });
 
-  socket.on("disconnect", () => {
-    // Socket desconectado
+  // Evento: Desconectado
+  socket.on("disconnect", (reason) => {
+    console.log("❌ Socket desconectado:", reason);
+    
+    if (reason === "io server disconnect") {
+      // El servidor desconectó, intentar reconectar manualmente
+      socket?.connect();
+    } else if (reason === "io client disconnect") {
+      // Cliente desconectó intencionalmente
+      notifyStateChange("disconnected");
+    } else {
+      // Desconexión inesperada, intentar reconectar
+      notifyStateChange("reconnecting");
+    }
   });
 
-  socket.on("connect_error", () => {
-    // Error de conexión
+  // Evento: Reconectando
+  socket.on("reconnect_attempt", (attemptNumber: number) => {
+    console.log(`🔄 Intentando reconectar (${attemptNumber}/${MAX_RECONNECT_ATTEMPTS})...`);
+    notifyStateChange("reconnecting");
   });
 
+  // Evento: Reconectado exitosamente
+  socket.on("reconnect", (attemptNumber: number) => {
+    console.log(`✅ Reconectado exitosamente después de ${attemptNumber} intentos`);
+    notifyStateChange("connected");
+    
+    // Re-join room si había una activa
+    if (currentRoomId && socket) {
+      socket.emit("join-room", currentRoomId);
+    }
+    
+    // Procesar eventos en cola
+    processQueuedEvents();
+  });
+
+  // Evento: Error de conexión
+  socket.on("connect_error", (error) => {
+    console.error("❌ Error de conexión socket:", error.message);
+    notifyStateChange("error");
+    
+    // Si el error es de autenticación, limpiar token
+    if (error.message.includes("auth") || error.message.includes("401")) {
+      console.warn("⚠️ Error de autenticación en socket, limpiando conexión");
+      disconnectSocket();
+    }
+  });
+
+  // Evento: Error general
+  socket.on("error", (error) => {
+    console.error("❌ Error en socket:", error);
+  });
+
+  notifyStateChange("connecting");
   return socket;
 };
+
+// Procesar eventos en cola
+const processQueuedEvents = () => {
+  if (!socket?.connected || queuedEvents.length === 0) return;
+  
+  console.log(`📤 Procesando ${queuedEvents.length} eventos en cola...`);
+  const events = [...queuedEvents];
+  queuedEvents = [];
+  
+  events.forEach(({ event, data }) => {
+    if (socket?.connected) {
+      socket.emit(event, data);
+    } else {
+      // Si se desconectó mientras procesábamos, volver a encolar
+      queuedEvents.push({ event, data });
+    }
+  });
+};
+
 
 // Desconectar WebSocket
 export const disconnectSocket = () => {
   if (socket) {
+    currentRoomId = null;
+    queuedEvents = [];
+    socket.removeAllListeners();
     socket.disconnect();
     socket = null;
+    notifyStateChange("disconnected");
+    console.log("🔌 Socket desconectado y limpiado");
   }
 };
 
-// Unirse a una room
+// Suscribirse a cambios de estado de conexión
+export const onConnectionStateChange = (callback: ConnectionStateCallback): (() => void) => {
+  stateCallbacks.add(callback);
+  // Llamar inmediatamente con el estado actual
+  callback(connectionState);
+  
+  // Retornar función de limpieza
+  return () => {
+    stateCallbacks.delete(callback);
+  };
+};
+
+// Obtener estado actual de conexión
+export const getConnectionState = (): SocketConnectionState => {
+  return connectionState;
+};
+
+// Unirse a una room (con manejo robusto)
 export const joinRoom = (roomId: string) => {
-  if (socket) {
-    if (socket.connected) {
-      socket.emit("join-room", roomId);
-    } else {
-      socket.once("connect", () => {
-        socket?.emit("join-room", roomId);
-      });
+  if (!roomId) {
+    console.warn("⚠️ Intento de unirse a room sin ID");
+    return;
+  }
+
+  currentRoomId = roomId;
+  
+  if (socket?.connected) {
+    socket.emit("join-room", roomId);
+    console.log(`✅ Unido a room: ${roomId}`);
+  } else {
+    // Si no está conectado, encolar y conectar
+    queuedEvents.push({ event: "join-room", data: roomId });
+    if (!socket || connectionState === "disconnected") {
+      connectSocket();
     }
+    // Si ya está conectando, el evento se procesará cuando se conecte
+    socket?.once("connect", () => {
+      socket?.emit("join-room", roomId);
+      console.log(`✅ Unido a room después de reconectar: ${roomId}`);
+    });
   }
 };
 
 // Salir de una room
 export const leaveRoom = (roomId: string) => {
-  if (socket) {
+  if (socket?.connected) {
     socket.emit("leave-room", roomId);
+    console.log(`👋 Salido de room: ${roomId}`);
+  }
+  
+  if (currentRoomId === roomId) {
+    currentRoomId = null;
   }
 };
 
-// Escuchar evento de número llamado
+// Escuchar evento de número llamado (optimizado)
 export const onNumberCalled = (
   callback: (data: {
     number: string;
@@ -68,13 +241,74 @@ export const onNumberCalled = (
     round_number: number;
     room_id: string;
   }) => void
-) => {
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
   if (socket) {
-    socket.on("number-called", callback);
+    const handler = (data: unknown) => {
+      // Validar datos antes de llamar callback
+      if (
+        data &&
+        typeof data === "object" &&
+        "number" in data &&
+        "room_id" in data &&
+        "round_number" in data &&
+        "called_at" in data
+      ) {
+        callback(data as {
+          number: string;
+          called_at: string;
+          round_number: number;
+          room_id: string;
+        });
+      }
+    };
+    
+    socket.on("number-called", handler);
+    
     return () => {
-      socket?.off("number-called", callback);
+      socket?.off("number-called", handler);
     };
   }
+  
+  return () => {};
+};
+
+// Escuchar evento de round iniciado
+export const onRoundStarted = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "round_number" in data &&
+        "room_id" in data
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+        });
+      }
+    };
+    
+    socket.on("round-started", handler);
+    
+    return () => {
+      socket?.off("round-started", handler);
+    };
+  }
+  
   return () => {};
 };
 
@@ -83,15 +317,36 @@ export const onRoundFinished = (
   callback: (data: {
     round_number: number;
     room_id: string;
-    reason?: string; // "timeout" cuando se finaliza por timeout sin ganador
+    reason?: string;
   }) => void
-) => {
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
   if (socket) {
-    socket.on("round-finished", callback);
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "round_number" in data &&
+        "room_id" in data
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          reason?: string;
+        });
+      }
+    };
+    
+    socket.on("round-finished", handler);
+    
     return () => {
-      socket?.off("round-finished", callback);
+      socket?.off("round-finished", handler);
     };
   }
+  
   return () => {};
 };
 
@@ -102,18 +357,195 @@ export const onTimeoutCountdown = (
     room_id: string;
     seconds_remaining: number;
   }) => void
-) => {
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
   if (socket) {
-    socket.on("timeout-countdown", callback);
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "seconds_remaining" in data &&
+        typeof (data as { seconds_remaining: unknown }).seconds_remaining === "number"
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          seconds_remaining: number;
+        });
+      }
+    };
+    
+    socket.on("timeout-countdown", handler);
+    
     return () => {
-      socket?.off("timeout-countdown", callback);
+      socket?.off("timeout-countdown", handler);
     };
   }
+  
+  return () => {};
+};
+
+// Escuchar evento de countdown de transición entre rondas
+export const onRoundTransitionCountdown = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+    seconds_remaining: number;
+    next_round_number: number;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "seconds_remaining" in data &&
+        typeof (data as { seconds_remaining: unknown }).seconds_remaining === "number"
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          seconds_remaining: number;
+          next_round_number: number;
+        });
+      }
+    };
+    
+    socket.on("round-transition-countdown", handler);
+    
+    return () => {
+      socket?.off("round-transition-countdown", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de countdown de ventana de bingo
+export const onBingoClaimCountdown = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+    seconds_remaining: number;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "seconds_remaining" in data &&
+        typeof (data as { seconds_remaining: unknown }).seconds_remaining === "number"
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          seconds_remaining: number;
+        });
+      }
+    };
+    
+    socket.on("bingo-claim-countdown", handler);
+    
+    return () => {
+      socket?.off("bingo-claim-countdown", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de bingo reclamado
+export const onBingoClaimed = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+    winner: {
+      card_id: string;
+      user_id: string;
+      winner_id: string;
+      is_first: boolean;
+    };
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "winner" in data &&
+        data.winner &&
+        typeof data.winner === "object" &&
+        "user_id" in data.winner
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          winner: {
+            card_id: string;
+            user_id: string;
+            winner_id: string;
+            is_first: boolean;
+          };
+        });
+      }
+    };
+    
+    socket.on("bingo-claimed", handler);
+    
+    return () => {
+      socket?.off("bingo-claimed", handler);
+    };
+  }
+  
   return () => {};
 };
 
 // Obtener instancia del socket
 export const getSocket = (): Socket | null => {
+  if (!socket) {
+    connectSocket();
+  }
   return socket;
 };
 
+// Verificar si está conectado
+export const isConnected = (): boolean => {
+  return socket?.connected ?? false;
+};
+
+// Limpiar todos los listeners de un evento específico
+export const removeAllListeners = (event?: string) => {
+  if (socket) {
+    if (event) {
+      socket.removeAllListeners(event);
+    } else {
+      socket.removeAllListeners();
+    }
+  }
+};
+
+// Reconectar manualmente
+export const reconnect = () => {
+  if (socket) {
+    socket.disconnect();
+    socket.connect();
+  } else {
+    connectSocket();
+  }
+};

@@ -33,6 +33,7 @@ export type BackendRoom = {
   admin_fee?: ApiDecimal | number; // Puede venir como número o como ApiDecimal
   players?: string[] | any[];
   rewards?: string[] | any[];
+  scheduled_at?: string | Date | null; // Hora programada de inicio
   created_at?: string;
   updated_at?: string;
 };
@@ -48,6 +49,7 @@ export type Room = {
   rounds?: number;
   jackpot?: number;
   players?: string;
+  scheduledAt?: Date | null; // Hora programada de inicio
 };
 
 // Función para convertir Decimal128 a número
@@ -64,6 +66,11 @@ function parseDecimal(decimal: ApiDecimal | string | number | undefined): number
 
 // Función para mapear el status del backend al frontend
 function mapStatus(statusName?: string): "waiting" | "preparing" | "in_progress" | "locked" {
+  if (!statusName) {
+    console.warn("[rooms.service] Status name es undefined, usando 'waiting' por defecto");
+    return "waiting";
+  }
+
   switch (statusName) {
     case "waiting_players":
       return "waiting";
@@ -71,10 +78,14 @@ function mapStatus(statusName?: string): "waiting" | "preparing" | "in_progress"
       return "preparing";
     case "in_progress":
       return "in_progress";
+    case "round_winner":
+      // Cuando hay un ganador, la sala sigue en progreso pero en transición
+      return "in_progress";
     case "finished":
     case "closed":
       return "locked";
     default:
+      console.warn(`[rooms.service] Status desconocido: "${statusName}", usando 'waiting' por defecto`);
       return "waiting";
   }
 }
@@ -89,6 +100,19 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
     typeof backendRoom.status_id === "object" && backendRoom.status_id
       ? backendRoom.status_id
       : null;
+
+  // Debug: Log detallado del status recibido
+  console.log(`[rooms.service] 🔍 Procesando sala: ${backendRoom.name || backendRoom._id}`);
+  console.log(`[rooms.service]    - status_id tipo:`, typeof backendRoom.status_id);
+  console.log(`[rooms.service]    - status_id valor:`, JSON.stringify(backendRoom.status_id, null, 2));
+  
+  if (!status) {
+    console.warn(`[rooms.service] ⚠️ Status es null/undefined para sala ${backendRoom.name || backendRoom._id}`);
+  } else if (!status.name) {
+    console.warn(`[rooms.service] ⚠️ Status no tiene propiedad 'name' para sala ${backendRoom.name || backendRoom._id}:`, status);
+  } else {
+    console.log(`[rooms.service] ✅ Status encontrado: ${status.name}`);
+  }
 
   const price = parseDecimal(backendRoom.price_per_card);
   const totalPot = parseDecimal(backendRoom.total_pot);
@@ -109,16 +133,34 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
   const minPlayers = backendRoom.min_players || 0;
   const playersString = minPlayers > 0 ? `${playersCount}/${minPlayers}` : `${playersCount}`;
 
+  // Parsear scheduled_at si existe
+  let scheduledAt: Date | null = null;
+  if (backendRoom.scheduled_at) {
+    if (backendRoom.scheduled_at instanceof Date) {
+      scheduledAt = backendRoom.scheduled_at;
+    } else if (typeof backendRoom.scheduled_at === "string") {
+      scheduledAt = new Date(backendRoom.scheduled_at);
+    }
+  }
+
+  const mappedStatus = mapStatus(status?.name);
+  
+  // Debug: Log del mapeo
+  if (status?.name) {
+    console.log(`[rooms.service] Sala ${backendRoom.name}: status backend="${status.name}" -> frontend="${mappedStatus}"`);
+  }
+
   return {
     id: backendRoom._id,
     title: backendRoom.name,
     price,
     estimatedPrize,
     currency: currencyCode,
-    status: mapStatus(status?.name),
+    status: mappedStatus,
     rounds: backendRoom.max_rounds,
     jackpot: estimatedPrize,
     players: playersCount > 0 ? playersString : undefined,
+    scheduledAt,
   };
 }
 
@@ -142,14 +184,16 @@ export async function getRooms(): Promise<Room[]> {
 // GET /rooms/:id - obtener sala por ID
 export async function getRoomById(id: string): Promise<Room> {
   try {
-    const response = await api.get<{ success: boolean; data: BackendRoom }>(`/rooms/${id}`);
+    // El backend ahora devuelve un objeto directo, no envuelto en { success, data }
+    const response = await api.get<BackendRoom>(`/rooms/${id}`);
     
-    if (response.data.success && response.data.data) {
-      return mapBackendRoomToRoom(response.data.data);
+    if (response.data) {
+      return mapBackendRoomToRoom(response.data);
     }
     
     throw new Error("Sala no encontrada");
   } catch (error) {
+    console.error("Error en getRoomById:", error);
     throw error;
   }
 }

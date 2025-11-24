@@ -19,10 +19,12 @@ import { ChevronLeft, ChevronRight } from "@mui/icons-material";
 import * as React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import SelectableCard from "../Componets/SelectableCard";
-import { generateCards } from "../utils/bingo";
 import { type BackendRoom } from "../Services/rooms.service";
 import { api } from "../Services/api";
 import BackgroundStars from "../Componets/BackgroundStars";
+import { getCardsByRoomAndUser, enrollCards, getAvailableCards, type BackendCard } from "../Services/cards.service";
+import { getUserId } from "../Services/auth.service";
+import { useAuth } from "../hooks/useAuth";
 
 type RoomDetailData = {
   id: string;
@@ -37,9 +39,14 @@ type RoomDetailData = {
 export default function RoomDetail() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [room, setRoom] = React.useState<RoomDetailData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [enrolledCards, setEnrolledCards] = React.useState<BackendCard[]>([]);
+  const [enrolling, setEnrolling] = React.useState(false);
+  const [availableCardsFromDB, setAvailableCardsFromDB] = React.useState<BackendCard[]>([]);
+  const [loadingCards, setLoadingCards] = React.useState(true);
 
   React.useEffect(() => {
     const fetchRoom = async () => {
@@ -127,7 +134,118 @@ export default function RoomDetail() {
     fetchRoom();
   }, [roomId]);
   
-  const allCards = React.useMemo(() => generateCards(45), []);
+  // Obtener cartones disponibles del backend y generar si no existen
+  React.useEffect(() => {
+    const fetchAvailableCards = async () => {
+      if (!roomId) return;
+
+      try {
+        setLoadingCards(true);
+        
+        // Obtener cartones disponibles (el backend devuelve máximo 40)
+        const cards = await getAvailableCards(roomId);
+        
+        // Convertir los números del backend ("FREE") al formato del frontend (0)
+        const formattedCards = cards.map(card => ({
+          ...card,
+          numbers_json: card.numbers_json.map(row => 
+            row.map(num => num === "FREE" ? 0 : num)
+          ) as number[][]
+        }));
+
+        setAvailableCardsFromDB(formattedCards);
+      } catch (err) {
+        console.error("Error al obtener cartones disponibles:", err);
+      } finally {
+        setLoadingCards(false);
+      }
+    };
+
+    fetchAvailableCards();
+  }, [roomId]);
+
+  // Obtener cartones ya inscritos del usuario en esta sala
+  React.useEffect(() => {
+    const fetchEnrolledCards = async () => {
+      if (!roomId || !user?.id) return;
+
+      try {
+        const cards = await getCardsByRoomAndUser(roomId, user.id);
+        setEnrolledCards(cards);
+      } catch (err) {
+        console.error("Error al obtener cartones inscritos:", err);
+      }
+    };
+
+    if (user?.id) {
+      fetchEnrolledCards();
+    }
+  }, [roomId, user?.id]);
+
+  // Función para comparar dos cartones y ver si son iguales
+  const areCardsEqual = (card1: number[][], card2: (number | "FREE")[][]): boolean => {
+    if (card1.length !== card2.length) return false;
+    
+    for (let i = 0; i < card1.length; i++) {
+      if (card1[i].length !== card2[i].length) return false;
+      for (let j = 0; j < card1[i].length; j++) {
+        const val1 = card1[i][j] === 0 ? "FREE" : card1[i][j];
+        const val2 = card2[i][j];
+        if (val1 !== val2) return false;
+      }
+    }
+    
+    return true;
+  };
+
+  // Filtrar cartones disponibles que no estén inscritos por el usuario
+  // Los cartones disponibles vienen del backend (user_id = null)
+  // Solo necesitamos filtrar los que el usuario ya inscribió
+  const { availableCards, indexMap, cardIdMap, codeMap } = React.useMemo(() => {
+    if (loadingCards || availableCardsFromDB.length === 0) {
+      return { 
+        availableCards: [], 
+        indexMap: new Map<number, number>(),
+        cardIdMap: new Map<number, string>(),
+        codeMap: new Map<number, string>()
+      };
+    }
+
+    // Si el usuario no tiene cartones inscritos, todos los disponibles están disponibles
+    if (enrolledCards.length === 0) {
+      const cards = availableCardsFromDB.map(card => card.numbers_json as number[][]);
+      const map = new Map(cards.map((_, index) => [index, index]));
+      const idMap = new Map(cards.map((_, index) => [index, availableCardsFromDB[index]._id]));
+      const codeMap = new Map(cards.map((_, index) => [index, availableCardsFromDB[index].code]));
+      return { availableCards: cards, indexMap: map, cardIdMap: idMap, codeMap };
+    }
+
+    // Filtrar los cartones que el usuario ya inscribió
+    // Ahora comparamos por ID en lugar de por números, ya que los cartones son independientes
+    const enrolledCardIds = new Set(enrolledCards.map(card => card._id || card.id));
+    
+    const available: number[][] = [];
+    const map = new Map<number, number>(); // Mapeo: índice en availableCards -> índice en availableCardsFromDB
+    const idMap = new Map<number, string>(); // Mapeo: índice en availableCards -> ID del cartón
+    const codeMap = new Map<number, string>(); // Mapeo: índice en availableCards -> código del cartón
+
+    availableCardsFromDB.forEach((card, dbIndex) => {
+      const cardNumbers = card.numbers_json as number[][];
+      
+      // Verificar si este cartón ya está inscrito por el usuario (por ID)
+      const isEnrolled = enrolledCardIds.has(card._id);
+
+      if (!isEnrolled) {
+        const newIndex = available.length;
+        available.push(cardNumbers);
+        map.set(newIndex, dbIndex);
+        idMap.set(newIndex, card._id);
+        codeMap.set(newIndex, card.code);
+      }
+    });
+
+    return { availableCards: available, indexMap: map, cardIdMap: idMap, codeMap };
+  }, [availableCardsFromDB, enrolledCards, loadingCards]);
   
   const [selectedCards, setSelectedCards] = React.useState<Set<number>>(new Set());
   const [availableBalance] = React.useState(1250.75);
@@ -136,9 +254,9 @@ export default function RoomDetail() {
   const [confirmDeselectModalOpen, setConfirmDeselectModalOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState<string>("");
 
-  const handleCardClick = (index: number) => {
-    // Siempre abrir el modal para ver el cartón, sin importar si está seleccionado o no
-    setPreviewCardIndex(index);
+  const handleCardClick = (availableIndex: number) => {
+    // previewCardIndex ahora es el índice dentro de availableCards
+    setPreviewCardIndex(availableIndex);
     setModalOpen(true);
   };
 
@@ -186,17 +304,17 @@ export default function RoomDetail() {
     setPreviewCardIndex(null);
   };
 
-  // Calcular índices filtrados para navegación
+  // Calcular índices filtrados para navegación (usando availableCards)
   const filteredIndices = React.useMemo(() => {
     return searchTerm
-      ? allCards
+      ? availableCards
           .map((_, index) => index)
           .filter((index) => {
-            const cardId = index + 1;
-            return cardId.toString().includes(searchTerm.trim());
+            const cardCode = codeMap.get(index) ?? "";
+            return cardCode.toLowerCase().includes(searchTerm.trim().toLowerCase());
           })
-      : allCards.map((_, index) => index);
-  }, [searchTerm, allCards]);
+      : availableCards.map((_, index) => index);
+  }, [searchTerm, availableCards, codeMap]);
 
   const handlePreviousCard = () => {
     if (previewCardIndex !== null) {
@@ -217,9 +335,51 @@ export default function RoomDetail() {
   };
 
 
-  const handleEnroll = () => {
-    if (selectedCards.size === 0 || !roomId) return;
+  const handleEnroll = async () => {
+    if (selectedCards.size === 0 || !roomId || !user?.id) return;
+
+    try {
+      setEnrolling(true);
+      
+      // Obtener los IDs de los cartones seleccionados
+      const selectedCardIds = Array.from(selectedCards).map(index => {
+        const dbIndex = indexMap.get(index);
+        if (dbIndex !== undefined && availableCardsFromDB[dbIndex]) {
+          return availableCardsFromDB[dbIndex]._id;
+        }
+        return null;
+      }).filter((id): id is string => id !== null);
+      
+      // Inscribir los cartones en el backend usando sus IDs
+      const result = await enrollCards(user.id, roomId, selectedCardIds);
+      
+      console.log("Cartones inscritos:", result);
+      
+      // Actualizar la lista de cartones inscritos
+      const updatedCards = await getCardsByRoomAndUser(roomId, user.id);
+      setEnrolledCards(updatedCards);
+      
+      // Refrescar cartones disponibles (los inscritos ya no estarán disponibles)
+      const refreshedAvailable = await getAvailableCards(roomId);
+      const formattedRefreshed = refreshedAvailable.map(card => ({
+        ...card,
+        numbers_json: card.numbers_json.map(row => 
+          row.map(num => num === "FREE" ? 0 : num)
+        ) as number[][]
+      }));
+      setAvailableCardsFromDB(formattedRefreshed);
+      
+      // Limpiar selección
+      setSelectedCards(new Set());
+      
+      // Navegar al juego
     navigate(`/game/${roomId}`);
+    } catch (err: any) {
+      console.error("Error al inscribir cartones:", err);
+      setError(err?.response?.data?.message || err?.message || "Error al inscribir cartones. Por favor, intenta nuevamente.");
+    } finally {
+      setEnrolling(false);
+    }
   };
 
   // Loading state
@@ -365,18 +525,18 @@ export default function RoomDetail() {
               zIndex: 2,
             }}
           >
-            <Typography
-              variant="h4"
-              sx={{
+        <Typography
+          variant="h4"
+          sx={{
                 fontSize: { xs: "22px", sm: "26px" },
-                fontWeight: 700,
+            fontWeight: 700,
                 color: "#1a1008",
-                fontFamily: "'Montserrat', sans-serif",
+            fontFamily: "'Montserrat', sans-serif",
                 letterSpacing: "0.5px",
-              }}
-            >
+          }}
+        >
               {room.title}
-            </Typography>
+        </Typography>
           </Box>
         )}
 
@@ -391,7 +551,7 @@ export default function RoomDetail() {
             }}
           >
             <Box
-              sx={{
+            sx={{
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "flex-start",
@@ -529,14 +689,14 @@ export default function RoomDetail() {
               sx={{
                 "& .MuiOutlinedInput-root": {
                   background: "linear-gradient(135deg, rgba(212, 175, 55, 0.9) 0%, rgba(244, 208, 63, 1) 50%, rgba(212, 175, 55, 0.9) 100%)",
-                  borderRadius: "12px",
+              borderRadius: "12px",
                   border: "1.5px solid rgba(212, 175, 55, 1)",
                   boxShadow: "0 2px 8px rgba(212, 175, 55, 0.5)",
                   transition: "all 0.3s ease",
                   "& fieldset": {
                     borderColor: "transparent",
                   },
-                  "&:hover": {
+              "&:hover": {
                     boxShadow: "0 4px 16px rgba(212, 175, 55, 0.7)",
                     transform: "translateY(-1px)",
                   },
@@ -559,7 +719,7 @@ export default function RoomDetail() {
                       color: "rgba(26, 16, 8, 0.6)",
                       opacity: 1,
                       fontWeight: 500,
-                    },
+              },
                   },
                 },
               }}
@@ -568,8 +728,8 @@ export default function RoomDetail() {
 
           {/* Indicador Libre / Ocupado */}
           <Box>
-            <Typography
-              variant="body2"
+        <Typography
+          variant="body2"
               sx={{
                 color: "#f5e6d3",
                 opacity: 0.85,
@@ -595,8 +755,8 @@ export default function RoomDetail() {
               <>
                 {filteredIndices.length === 0 ? (
                   <Box
-                    sx={{
-                      textAlign: "center",
+          sx={{
+            textAlign: "center",
                       py: 4,
                       px: 2,
                     }}
@@ -605,14 +765,14 @@ export default function RoomDetail() {
                       variant="body1"
                       sx={{
                         color: "#f5e6d3",
-                        opacity: 0.7,
-                      }}
-                    >
+            opacity: 0.7,
+          }}
+        >
                       No se encontraron cartones con el número "{searchTerm}"
-                    </Typography>
+        </Typography>
                   </Box>
                 ) : (
-                  <Box
+        <Box
           sx={{
             overflowX: "auto",
             overflowY: "hidden",
@@ -637,81 +797,93 @@ export default function RoomDetail() {
         >
           <Stack spacing={3} sx={{ display: "inline-block", minWidth: "100%" }}>
             {filteredFirstRow.length > 0 && (
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: 2,
-                  width: "max-content",
-                  "& > *": {
-                    minWidth: "calc((100vw - 96px) / 3.5)", 
-                    flexShrink: 0,
-                    scrollSnapAlign: "start",
-                  },
-                }}
-              >
-                {filteredFirstRow.map((index) => (
-                  <SelectableCard
-                    key={index}
-                    grid={allCards[index]}
-                    cardId={index + 1}
-                    selected={selectedCards.has(index)}
-                    onClick={() => handleCardClick(index)}
-                    status="free"
-                  />
-                ))}
-              </Box>
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                width: "max-content",
+                "& > *": {
+                  minWidth: "calc((100vw - 96px) / 3.5)", 
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                },
+              }}
+            >
+                {filteredFirstRow.map((availableIndex) => {
+                  const cardId = cardIdMap.get(availableIndex) ?? `${availableIndex + 1}`;
+                  const cardCode = codeMap.get(availableIndex) ?? `${availableIndex + 1}`;
+                  return (
+                <SelectableCard
+                      key={cardId}
+                      grid={availableCards[availableIndex]}
+                      cardCode={cardCode}
+                      selected={selectedCards.has(availableIndex)}
+                      onClick={() => handleCardClick(availableIndex)}
+                  status="free"
+                />
+                  );
+                })}
+            </Box>
             )}
 
             {filteredSecondRow.length > 0 && (
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: 2,
-                  width: "max-content",
-                  "& > *": {
-                    minWidth: "calc((100vw - 96px) / 3.5)", 
-                    flexShrink: 0,
-                    scrollSnapAlign: "start",
-                  },
-                }}
-              >
-                {filteredSecondRow.map((globalIndex) => (
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                width: "max-content",
+                "& > *": {
+                  minWidth: "calc((100vw - 96px) / 3.5)", 
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                },
+              }}
+            >
+                {filteredSecondRow.map((availableIndex) => {
+                  const cardId = cardIdMap.get(availableIndex) ?? `${availableIndex + 1}`;
+                  const cardCode = codeMap.get(availableIndex) ?? `${availableIndex + 1}`;
+                return (
                   <SelectableCard
-                    key={globalIndex}
-                    grid={allCards[globalIndex]}
-                    cardId={globalIndex + 1}
-                    selected={selectedCards.has(globalIndex)}
-                    onClick={() => handleCardClick(globalIndex)}
+                      key={cardId}
+                      grid={availableCards[availableIndex]}
+                      cardCode={cardCode}
+                      selected={selectedCards.has(availableIndex)}
+                      onClick={() => handleCardClick(availableIndex)}
                     status="free"
                   />
-                ))}
-              </Box>
+                );
+              })}
+            </Box>
             )}
 
             {filteredThirdRow.length > 0 && (
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: 2,
-                  width: "max-content",
-                  "& > *": {
-                    minWidth: "calc((100vw - 96px) / 3.5)", 
-                    flexShrink: 0,
-                    scrollSnapAlign: "start",
-                  },
-                }}
-              >
-                {filteredThirdRow.map((globalIndex) => (
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                width: "max-content",
+                "& > *": {
+                  minWidth: "calc((100vw - 96px) / 3.5)", 
+                  flexShrink: 0,
+                  scrollSnapAlign: "start",
+                },
+              }}
+            >
+                {filteredThirdRow.map((availableIndex) => {
+                  const cardId = cardIdMap.get(availableIndex) ?? `${availableIndex + 1}`;
+                  const cardCode = codeMap.get(availableIndex) ?? `${availableIndex + 1}`;
+                return (
                   <SelectableCard
-                    key={globalIndex}
-                    grid={allCards[globalIndex]}
-                    cardId={globalIndex + 1}
-                    selected={selectedCards.has(globalIndex)}
-                    onClick={() => handleCardClick(globalIndex)}
+                      key={cardId}
+                      grid={availableCards[availableIndex]}
+                      cardCode={cardCode}
+                      selected={selectedCards.has(availableIndex)}
+                      onClick={() => handleCardClick(availableIndex)}
                     status="free"
                   />
-                ))}
-              </Box>
+                );
+              })}
+            </Box>
             )}
           </Stack>
         </Box>
@@ -774,15 +946,15 @@ export default function RoomDetail() {
                   USD
                 </Typography>
               </Box>
-            </Box>
-            
+        </Box>
+
             {/* Botón de Inscribirse dentro del contenedor */}
             <Box sx={{ mt: 2, pt: 2, borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
-              <Button
-                fullWidth
-                onClick={handleEnroll}
-                disabled={selectedCards.size === 0}
-                sx={{
+        <Button
+          fullWidth
+          onClick={handleEnroll}
+                disabled={selectedCards.size === 0 || enrolling}
+          sx={{
                   backfaceVisibility: "hidden",
                   position: "relative",
                   cursor: selectedCards.size > 0 ? "pointer" : "not-allowed",
@@ -791,9 +963,9 @@ export default function RoomDetail() {
                   color: "#fff",
                   fontWeight: 900,
                   fontSize: "14px",
-                  py: 1.5,
+            py: 1.5,
                   borderRadius: "8px",
-                  textTransform: "none",
+            textTransform: "none",
                   textShadow: selectedCards.size > 0 ? "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)" : "0px -1px 0px rgba(0,0,0,0.3)",
                   border: selectedCards.size > 0 ? "1px solid #d4af37" : "1px solid rgba(212, 175, 55, 0.3)",
                   backgroundImage: selectedCards.size > 0 ? `
@@ -811,7 +983,7 @@ export default function RoomDetail() {
                     0px 0px 20px rgba(255, 215, 0, 0.2)
                   ` : "none",
                   transition: "all 0.2s ease",
-                  "&:hover": selectedCards.size > 0 ? {
+            "&:hover": selectedCards.size > 0 ? {
                     backgroundImage: `
                       repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
                       repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
@@ -836,14 +1008,14 @@ export default function RoomDetail() {
                       0px 2px 8px rgba(212, 175, 55, 0.3),
                       0px 0px 15px rgba(255, 215, 0, 0.15)
                     `,
-                  } : {},
-                  "&:disabled": {
+            } : {},
+            "&:disabled": {
                     opacity: 0.5,
-                  },
-                }}
-              >
-                Inscribirse
-              </Button>
+            },
+          }}
+        >
+          Inscribirse
+        </Button>
             </Box>
           </Stack>
         </Box>
@@ -1033,19 +1205,19 @@ export default function RoomDetail() {
                 position: "relative",
               }}
             >
-              <Typography
-                sx={{
+          <Typography
+            sx={{
                   fontSize: "16px",
-                  textAlign: "center",
+              textAlign: "center",
                   color: "#d4af37",
                   fontWeight: 900,
-                  fontFamily: "'Montserrat', sans-serif",
+              fontFamily: "'Montserrat', sans-serif",
                   textShadow: "0 2px 6px rgba(212, 175, 55, 0.7), 0 0 12px rgba(212, 175, 55, 0.4)",
                   whiteSpace: "nowrap",
-                }}
-              >
-                Cartón #{previewCardIndex !== null ? previewCardIndex + 1 : ""}
-              </Typography>
+            }}
+          >
+                Cartón {previewCardIndex !== null ? codeMap.get(previewCardIndex) ?? "" : ""}
+          </Typography>
             </Box>
 
             {/* Flecha derecha (siguiente) */}
@@ -1085,22 +1257,22 @@ export default function RoomDetail() {
           {previewCardIndex !== null && (() => {
             const isSelected = selectedCards.has(previewCardIndex);
             return (
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                mb: 3,
+                  position: "relative",
+              }}
+            >
               <Box
                 sx={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  mb: 3,
-                  position: "relative",
-                }}
-              >
-                <Box
-                  sx={{
-                    width: "100%",
-                    maxWidth: "400px",
+                  width: "100%",
+                  maxWidth: "400px",
                     backgroundColor: isSelected ? "#f5e6d3" : "#f5e6d3",
-                    borderRadius: "16px",
-                    p: 3,
+                  borderRadius: "16px",
+                  p: 3,
                     border: isSelected 
                       ? "3px solid rgba(212, 175, 55, 0.8)" 
                       : "2px solid rgba(212, 175, 55, 0.2)",
@@ -1171,8 +1343,8 @@ export default function RoomDetail() {
                       pointerEvents: "none",
                       zIndex: 0,
                     },
-                  }}
-                >
+                }}
+              >
                 <Box
                   sx={{
                     display: "grid",
@@ -1211,7 +1383,7 @@ export default function RoomDetail() {
                     zIndex: 2,
                   }}
                 >
-                  {allCards[previewCardIndex].map((row, rowIndex) =>
+                  {previewCardIndex !== null && availableCards[previewCardIndex] && availableCards[previewCardIndex].map((row, rowIndex) =>
                     row.map((num, colIndex) => {
                       const isFree = num === 0;
                       return (
@@ -1284,8 +1456,8 @@ export default function RoomDetail() {
                     >
                       ✓ Seleccionado
                     </Typography>
-                  </Box>
-                )}
+            </Box>
+          )}
               </Box>
             </Box>
             );
@@ -1294,21 +1466,21 @@ export default function RoomDetail() {
         <DialogActions sx={{ p: 4, pt: 0, gap: 2, justifyContent: "center", position: "relative", zIndex: 1 }}>
           {previewCardIndex !== null && selectedCards.has(previewCardIndex) ? (
             <>
-              <Button
-                onClick={handleRejectCard}
-                sx={{
+          <Button
+            onClick={handleRejectCard}
+            sx={{
                   backfaceVisibility: "hidden",
                   position: "relative",
                   cursor: "pointer",
                   display: "inline-block",
                   whiteSpace: "nowrap",
-                  flex: 1,
+              flex: 1,
                   color: "#fff",
                   fontWeight: 900,
                   fontSize: "14px",
-                  py: 1.5,
+              py: 1.5,
                   borderRadius: "8px",
-                  textTransform: "none",
+              textTransform: "none",
                   textShadow: "0px -1px 0px rgba(0,0,0,0.4)",
                   borderColor: "#7c7c7c",
                   borderWidth: "1px",
@@ -1324,7 +1496,7 @@ export default function RoomDetail() {
                     0px 4px 12px rgba(0, 0, 0, 0.2)
                   `,
                   transition: "all 0.2s ease",
-                  "&:hover": {
+              "&:hover": {
                     boxShadow: `
                       inset 0px 1px 0px rgba(255,255,255,1),
                       0px 2px 6px rgba(0,0,0,0.4),
@@ -1453,26 +1625,26 @@ export default function RoomDetail() {
                       0px 1px 2px rgba(0,0,0,0.3),
                       0px 2px 8px rgba(0, 0, 0, 0.15)
                     `,
-                  },
-                }}
-              >
-                Rechazar
-              </Button>
-              <Button
-                onClick={handleAcceptCard}
-                sx={{
+              },
+            }}
+          >
+            Rechazar
+          </Button>
+          <Button
+            onClick={handleAcceptCard}
+            sx={{
                   backfaceVisibility: "hidden",
                   position: "relative",
                   cursor: "pointer",
                   display: "inline-block",
                   whiteSpace: "nowrap",
-                  flex: 1,
+              flex: 1,
                   color: "#fff",
                   fontWeight: 900,
                   fontSize: "14px",
-                  py: 1.5,
+              py: 1.5,
                   borderRadius: "8px",
-                  textTransform: "none",
+              textTransform: "none",
                   textShadow: "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
                   border: "1px solid #d4af37",
                   backgroundImage: `
@@ -1489,7 +1661,7 @@ export default function RoomDetail() {
                     0px 0px 20px rgba(255, 215, 0, 0.2)
                   `,
                   transition: "all 0.2s ease",
-                  "&:hover": {
+              "&:hover": {
                     backgroundImage: `
                       repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
                       repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
@@ -1514,11 +1686,11 @@ export default function RoomDetail() {
                       0px 2px 8px rgba(212, 175, 55, 0.3),
                       0px 0px 15px rgba(255, 215, 0, 0.15)
                     `,
-                  },
-                }}
-              >
-                Aceptar
-              </Button>
+              },
+            }}
+          >
+            Aceptar
+          </Button>
             </>
           )}
         </DialogActions>

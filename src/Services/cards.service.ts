@@ -6,8 +6,6 @@ export type BackendCard = {
   _id: string;
   code: string;
   numbers_json: (number | "FREE")[][];
-  user_id: string | null;
-  room_id: string;
   created_at: string;
 };
 
@@ -60,8 +58,56 @@ export async function assignCardsToUser(
 // GET /cards/user/:userId - obtener todas las rooms en las que el usuario tiene cartones
 export async function getUserRooms(userId: string): Promise<string[]> {
   try {
+    console.log("📡 Llamando a /cards/user/" + userId);
     const response = await api.get<{ success: boolean; data: string[] }>(
       `/cards/user/${userId}`
+    );
+
+    console.log("📥 Respuesta del servidor:", response.data);
+
+    if (response.data.success && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+
+    console.warn("⚠️ Respuesta no tiene el formato esperado:", response.data);
+    return [];
+  } catch (error) {
+    console.error("❌ Error en getUserRooms:", error);
+    throw error;
+  }
+}
+
+// POST /cards/enroll - inscribir cartones específicos seleccionados por el usuario
+export async function enrollCards(
+  userId: string,
+  roomId: string,
+  cardIds: string[] // Array de IDs de cartones
+): Promise<{ success: boolean; message: string; data: any }> {
+  try {
+    const response = await api.post<{ success: boolean; message: string; data: any }>(
+      "/cards/enroll",
+      {
+        userId,
+        roomId,
+        cardIds,
+      }
+    );
+
+    if (response.data.success) {
+      return response.data;
+    }
+
+    throw new Error(response.data.message || "Error al inscribir cartones");
+  } catch (error) {
+    throw error;
+  }
+}
+
+// GET /cards/room/:roomId/available - obtener cartones disponibles para una sala
+export async function getAvailableCards(roomId: string): Promise<BackendCard[]> {
+  try {
+    const response = await api.get<{ success: boolean; data: BackendCard[] }>(
+      `/cards/room/${roomId}/available`
     );
 
     if (response.data.success && Array.isArray(response.data.data)) {
@@ -73,4 +119,5 @@ export async function getUserRooms(userId: string): Promise<string[]> {
     throw error;
   }
 }
+
 

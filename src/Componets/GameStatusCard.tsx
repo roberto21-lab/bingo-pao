@@ -10,6 +10,14 @@ type GameStatusCardProps = {
   countdown?: number;
   isFinished?: boolean;
   timeoutCountdown?: number | null;
+  roundTransitionCountdown?: number | null;
+  nextRoundNumber?: number | null;
+  roomStartCountdown?: number | null;
+  roomScheduledAt?: Date | null;
+  roomFinished?: boolean; // Si la sala está finalizada (no hay más rondas)
+  bingoClaimCountdown?: number | null; // Countdown de ventana de bingo (45, 44, 43, ...)
+  isCallingNumber?: boolean; // Si se están llamando números actualmente
+  isGameStarting?: boolean; // Si el juego está iniciando (después de round-started pero antes del primer número)
 };
 
 export default function GameStatusCard({
@@ -21,6 +29,14 @@ export default function GameStatusCard({
   countdown,
   isFinished = false,
   timeoutCountdown = null,
+  roundTransitionCountdown = null,
+  nextRoundNumber = null,
+  roomStartCountdown = null,
+  roomScheduledAt = null,
+  roomFinished = false,
+  bingoClaimCountdown = null,
+  isCallingNumber = false,
+  isGameStarting = false,
 }: GameStatusCardProps) {
   return (
     <Box
@@ -73,57 +89,67 @@ export default function GameStatusCard({
             sx={{
               display: "inline-block",
               px: 1.5,
-              py: 0.5,
+              py: currentRound === totalRounds ? 1 : 0.5,
               borderRadius: "12px",
-              background: "linear-gradient(135deg, rgba(212, 175, 55, 0.3) 0%, rgba(244, 208, 63, 0.2) 100%)",
-              border: "1px solid rgba(212, 175, 55, 0.4)",
-              boxShadow: "0 2px 8px rgba(212, 175, 55, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+              background: currentRound === totalRounds
+                ? "linear-gradient(135deg, rgba(212, 175, 55, 0.5) 0%, rgba(244, 208, 63, 0.4) 100%)"
+                : "linear-gradient(135deg, rgba(212, 175, 55, 0.3) 0%, rgba(244, 208, 63, 0.2) 100%)",
+              border: currentRound === totalRounds
+                ? "2px solid rgba(212, 175, 55, 0.7)"
+                : "1px solid rgba(212, 175, 55, 0.4)",
+              boxShadow: currentRound === totalRounds
+                ? "0 4px 12px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)"
+                : "0 2px 8px rgba(212, 175, 55, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
             }}
           >
             <Typography
               variant="body2"
               sx={{
-                color: "#f5e6d3",
+                color: currentRound === totalRounds ? "#1a1008" : "#f5e6d3",
                 fontSize: "14px",
                 fontWeight: 700,
-                textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+                textShadow: currentRound === totalRounds
+                  ? "0 1px 2px rgba(255, 255, 255, 0.5)"
+                  : "0 1px 2px rgba(0, 0, 0, 0.3)",
               }}
             >
               Ronda: {currentRound}/{totalRounds}
             </Typography>
           </Box>
-          <Box
-            sx={{
-              display: "inline-block",
-              px: 1,
-              py: 0.3,
-              borderRadius: "8px",
-              background: isFinished 
-                ? "rgba(76, 175, 80, 0.2)" 
-                : timeoutCountdown !== null 
-                ? "rgba(255, 152, 0, 0.2)" 
-                : "rgba(212, 175, 55, 0.2)",
-              border: `1px solid ${isFinished ? "rgba(76, 175, 80, 0.4)" : timeoutCountdown !== null ? "rgba(255, 152, 0, 0.4)" : "rgba(212, 175, 55, 0.4)"}`,
-            }}
-          >
-            <Typography
-              variant="caption"
+          {!roomFinished && (
+            <Box
               sx={{
-                color: isFinished ? "#4caf50" : timeoutCountdown !== null ? "#ff9800" : "#d4af37",
-                fontSize: "10px",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+                display: "inline-block",
+                px: 1,
+                py: 0.3,
+                borderRadius: "8px",
+                background: isFinished 
+                  ? "rgba(76, 175, 80, 0.2)" 
+                  : timeoutCountdown !== null 
+                  ? "rgba(255, 152, 0, 0.2)" 
+                  : "rgba(212, 175, 55, 0.2)",
+                border: `1px solid ${isFinished ? "rgba(76, 175, 80, 0.4)" : timeoutCountdown !== null ? "rgba(255, 152, 0, 0.4)" : "rgba(212, 175, 55, 0.4)"}`,
               }}
             >
-              {isFinished 
-                ? "✓ Finalizada" 
-                : timeoutCountdown !== null 
-                ? `⏱️ ${timeoutCountdown}s`
-                : "▶ En progreso"}
-            </Typography>
-          </Box>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: isFinished ? "#4caf50" : timeoutCountdown !== null ? "#ff9800" : "#d4af37",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+                }}
+              >
+                {isFinished 
+                  ? "✓ Finalizada" 
+                  : timeoutCountdown !== null 
+                  ? `⏱️ ${timeoutCountdown}s`
+                  : "▶ En progreso"}
+              </Typography>
+            </Box>
+          )}
         </Box>
         <Box
           sx={{
@@ -167,6 +193,14 @@ export default function GameStatusCard({
         countdown={countdown}
         isFinished={isFinished}
         timeoutCountdown={timeoutCountdown}
+        roundTransitionCountdown={roundTransitionCountdown}
+        nextRoundNumber={nextRoundNumber}
+        roomStartCountdown={roomStartCountdown}
+        roomScheduledAt={roomScheduledAt}
+        roomFinished={roomFinished}
+        bingoClaimCountdown={bingoClaimCountdown}
+        isCallingNumber={isCallingNumber}
+        isGameStarting={isGameStarting}
       />
     </Box>
   );

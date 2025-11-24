@@ -14,7 +14,7 @@ type BingoValidationModalProps = {
   open: boolean;
   onClose: () => void;
   winningCard: BingoGrid;
-  winningCardId: number;
+  winningCardCode: string;
   markedNumbers: Set<string>;
   calledNumbers: Set<string>;
 };
@@ -23,7 +23,7 @@ export default function BingoValidationModal({
   open,
   onClose,
   winningCard,
-  winningCardId,
+  winningCardCode,
   markedNumbers,
   calledNumbers,
 }: BingoValidationModalProps) {
@@ -86,7 +86,7 @@ export default function BingoValidationModal({
           <Box sx={{ flex: 1, minWidth: { xs: "100%", md: "50%" } }}>
             <WinningCardDisplay
               card={winningCard}
-              cardId={winningCardId}
+              cardCode={winningCardCode}
               markedNumbers={markedNumbers}
             />
           </Box>

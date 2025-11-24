@@ -1,15 +1,17 @@
 // src/Pages/Rooms.tsx
 import * as React from "react";
-import { Box, Container, Typography, CircularProgress, Alert, IconButton } from "@mui/material";
-import { ChevronLeft, ChevronRight } from "@mui/icons-material";
+import { Box, Container, Typography, CircularProgress, Alert } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import BingoLogo from "../Componets/BingoLogo";
 import RoomCard from "../Componets/RoomCard";
+import SectionHeader from "../Componets/SectionHeader";
 import { getRooms, type Room } from "../Services/rooms.service";
 import BackgroundStars from "../Componets/BackgroundStars";
+import { useAuth } from "../hooks/useAuth";
 
 export default function Rooms() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [rooms, setRooms] = React.useState<Room[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -24,9 +26,13 @@ export default function Rooms() {
         console.log("Salas obtenidas:", data);
         setRooms(data);
         setCurrentRoomIndex(0); // Resetear al índice inicial cuando se cargan las salas
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Error al obtener salas:", err);
-        setError(err?.response?.data?.message || err?.message || "Error al cargar las salas. Por favor, intenta nuevamente.");
+        const errorMessage = err instanceof Error 
+          ? err.message 
+          : (err as { response?: { data?: { message?: string } } })?.response?.data?.message 
+          || "Error al cargar las salas. Por favor, intenta nuevamente.";
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -36,6 +42,13 @@ export default function Rooms() {
   }, []);
 
   const handleJoin = (roomId: string) => {
+    // Si no está autenticado, redirigir al login con la sala de destino
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=/room/${roomId}`);
+      return;
+    }
+    
+    // Si está autenticado, ir directamente a la selección de cartones
     navigate(`/room/${roomId}`);
   };
 
@@ -76,107 +89,14 @@ export default function Rooms() {
           </Box>
 
           {/* Título con flechas de navegación */}
-          {!loading && !error && rooms.length > 0 && (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                mb: 2,
-              }}
-            >
-              {/* Flecha izquierda (anterior) */}
-              <IconButton
-                onClick={handlePreviousRoom}
-                disabled={!hasPrevious}
-                sx={{
-                  color: hasPrevious ? "#d4af37" : "rgba(212, 175, 55, 0.3)",
-                  backgroundColor: hasPrevious
-                    ? "rgba(212, 175, 55, 0.1)"
-                    : "transparent",
-                  border: hasPrevious
-                    ? "2px solid rgba(212, 175, 55, 0.4)"
-                    : "2px solid rgba(212, 175, 55, 0.1)",
-                  borderRadius: "12px",
-                  width: "48px",
-                  height: "48px",
-                  "&:hover": hasPrevious
-                    ? {
-                        backgroundColor: "rgba(212, 175, 55, 0.2)",
-                        borderColor: "rgba(212, 175, 55, 0.6)",
-                        transform: "scale(1.05)",
-                      }
-                    : {},
-                  "&:disabled": {
-                    opacity: 0.4,
-                  },
-                  transition: "all 0.2s",
-                }}
-              >
-                <ChevronLeft sx={{ fontSize: "32px" }} />
-              </IconButton>
-
-              <Typography
-                variant="h4"
-                sx={{
-                  fontSize: { xs: "24px", sm: "28px" },
-                  fontWeight: 700,
-                  color: "#f5e6d3",
-                  fontFamily: "'Montserrat', sans-serif",
-                  minWidth: "200px",
-                }}
-              >
-                Salas Disponibles
-              </Typography>
-
-              {/* Flecha derecha (siguiente) */}
-              <IconButton
-                onClick={handleNextRoom}
-                disabled={!hasNext}
-                sx={{
-                  color: hasNext ? "#d4af37" : "rgba(212, 175, 55, 0.3)",
-                  backgroundColor: hasNext
-                    ? "rgba(212, 175, 55, 0.1)"
-                    : "transparent",
-                  border: hasNext
-                    ? "2px solid rgba(212, 175, 55, 0.4)"
-                    : "2px solid rgba(212, 175, 55, 0.1)",
-                  borderRadius: "12px",
-                  width: "48px",
-                  height: "48px",
-                  "&:hover": hasNext
-                    ? {
-                        backgroundColor: "rgba(212, 175, 55, 0.2)",
-                        borderColor: "rgba(212, 175, 55, 0.6)",
-                        transform: "scale(1.05)",
-                      }
-                    : {},
-                  "&:disabled": {
-                    opacity: 0.4,
-                  },
-                  transition: "all 0.2s",
-                }}
-              >
-                <ChevronRight sx={{ fontSize: "32px" }} />
-              </IconButton>
-            </Box>
-          )}
-
-          {/* Título sin flechas cuando no hay salas o está cargando */}
-          {(loading || error || rooms.length === 0) && (
-            <Typography
-              variant="h4"
-              sx={{
-                fontSize: { xs: "24px", sm: "28px" },
-                fontWeight: 700,
-                color: "#f5e6d3",
-                fontFamily: "'Montserrat', sans-serif",
-              }}
-            >
-              Salas Disponibles
-            </Typography>
-          )}
+          <SectionHeader
+            title="Salas Disponibles"
+            onPrevious={handlePreviousRoom}
+            onNext={handleNextRoom}
+            hasPrevious={hasPrevious}
+            hasNext={hasNext}
+            showNavigation={!loading && !error && rooms.length > 0}
+          />
         </Box>
 
         {/* Loading State */}
@@ -207,7 +127,7 @@ export default function Rooms() {
 
         {/* Rooms List */}
         {!loading && !error && (
-          <Box>
+          <Box sx={{ marginTop: 0 }}>
             {rooms.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 4 }}>
                 <Typography variant="body1" sx={{ color: "#f5e6d3", opacity: 0.7 }}>
@@ -218,7 +138,7 @@ export default function Rooms() {
               <Box>
                 {/* Sala actual */}
                 {currentRoom && (
-                  <RoomCard
+                <RoomCard
                     key={currentRoom.id}
                     title={currentRoom.title}
                     price={currentRoom.price}
@@ -228,8 +148,9 @@ export default function Rooms() {
                     rounds={currentRoom.rounds}
                     jackpot={currentRoom.jackpot}
                     players={currentRoom.players}
+                    scheduledAt={currentRoom.scheduledAt}
                     onJoin={() => handleJoin(currentRoom.id)}
-                  />
+                />
                 )}
                 
                 {/* Indicador de posición */}

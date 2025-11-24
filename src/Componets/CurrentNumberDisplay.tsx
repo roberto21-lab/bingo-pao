@@ -6,6 +6,15 @@ type CurrentNumberDisplayProps = {
   countdown?: number; // 5, 4, 3, 2, 1
   isFinished?: boolean; // Si el round está finalizado
   timeoutCountdown?: number | null; // Countdown de timeout (10, 9, 8, ...)
+  roundTransitionCountdown?: number | null; // Countdown de transición entre rondas (15, 14, 13, ...)
+  nextRoundNumber?: number | null; // Número de la siguiente ronda
+  roomStartCountdown?: number | null; // Countdown de inicio de sala (45, 44, 43, ...)
+  roomScheduledAt?: Date | null; // Fecha programada de inicio de la sala
+  timeUntilStart?: number | null; // Tiempo restante hasta el inicio en segundos
+  roomFinished?: boolean; // Si la sala está finalizada (no hay más rondas)
+  bingoClaimCountdown?: number | null; // Countdown de ventana de bingo (45, 44, 43, ...)
+  isCallingNumber?: boolean; // Si se están llamando números actualmente
+  isGameStarting?: boolean; // Si el juego está iniciando (después de round-started pero antes del primer número)
 };
 
 export default function CurrentNumberDisplay({ 
@@ -13,7 +22,16 @@ export default function CurrentNumberDisplay({
   progress = 0,
   countdown,
   isFinished = false,
-  timeoutCountdown = null
+  timeoutCountdown = null,
+  roundTransitionCountdown = null,
+  nextRoundNumber = null,
+  roomStartCountdown = null,
+  roomScheduledAt = null,
+  timeUntilStart = null,
+  roomFinished = false,
+  bingoClaimCountdown = null,
+  isCallingNumber = false,
+  isGameStarting = false,
 }: CurrentNumberDisplayProps) {
   const size = 120;
   const strokeWidth = 4;
@@ -133,10 +151,197 @@ export default function CurrentNumberDisplay({
             },
           }}
         >
-        {isFinished ? (
+        {roomStartCountdown !== null && roomStartCountdown > 0 ? (
+          <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
+            <Typography
+              sx={{
+                fontSize: "48px",
+                fontWeight: 900,
+                background: roomStartCountdown <= 10 
+                  ? "linear-gradient(135deg, #ff9800, #ffb74d, #ff9800)"
+                  : "linear-gradient(135deg, #2196f3, #42a5f5, #2196f3)",
+                backgroundClip: "text",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                animation: roomStartCountdown <= 10 ? "pulse 0.5s infinite" : "none",
+                "@keyframes pulse": {
+                  "0%, 100%": { transform: "scale(1)" },
+                  "50%": { transform: "scale(1.15)" },
+                },
+                mb: 0.5,
+              }}
+            >
+              {roomStartCountdown}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#d4af37",
+                textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+              }}
+            >
+              Iniciando juego...
+            </Typography>
+          </Box>
+        ) : bingoClaimCountdown !== null && bingoClaimCountdown > 0 ? (
+          <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
+            <Typography
+              sx={{
+                fontSize: "48px",
+                fontWeight: 900,
+                background: bingoClaimCountdown <= 10 
+                  ? "linear-gradient(135deg, #ff9800, #ffb74d, #ff9800)"
+                  : "linear-gradient(135deg, #4caf50, #66bb6a, #4caf50)",
+                backgroundClip: "text",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                animation: bingoClaimCountdown <= 10 ? "pulse 0.5s infinite" : "none",
+                "@keyframes pulse": {
+                  "0%, 100%": { transform: "scale(1)" },
+                  "50%": { transform: "scale(1.15)" },
+                },
+                mb: 0.5,
+              }}
+            >
+              {bingoClaimCountdown}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#d4af37",
+                textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+              }}
+            >
+              Otros pueden cantar bingo...
+            </Typography>
+          </Box>
+        ) : isGameStarting ? (
+          <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
+            <Typography
+              sx={{
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#d4af37",
+                textShadow: "0 2px 6px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                mb: 0.5,
+                animation: "pulse 1s ease-in-out infinite",
+                "@keyframes pulse": {
+                  "0%, 100%": { opacity: 1 },
+                  "50%": { opacity: 0.7 },
+                },
+              }}
+            >
+              Iniciando juego...
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#f5e6d3",
+                textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                opacity: 0.8,
+              }}
+            >
+              Preparando números...
+            </Typography>
+          </Box>
+        ) : roomScheduledAt && currentNumber === "" && !isFinished && !isCallingNumber && roomStartCountdown === null && timeUntilStart !== null && timeUntilStart > 0 ? (
+          <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
+            <Typography
+              sx={{
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#d4af37",
+                textShadow: "0 2px 6px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                mb: 0.5,
+              }}
+            >
+              Esperando inicio
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#f5e6d3",
+                textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                opacity: 0.8,
+              }}
+            >
+              {(() => {
+                // Usar el tiempo restante calculado desde el componente padre (sincronizado con servidor)
+                const timeRemaining = timeUntilStart;
+                
+                if (timeRemaining > 0) {
+                  const hours = Math.floor(timeRemaining / 3600);
+                  const minutes = Math.floor((timeRemaining % 3600) / 60);
+                  const seconds = timeRemaining % 60;
+                  
+                  if (hours > 0) {
+                    return `Inicia en ${hours}h ${minutes}m ${seconds}s`;
+                  } else if (minutes > 0) {
+                    return `Inicia en ${minutes}m ${seconds}s`;
+                  } else {
+                    return `Inicia en ${seconds}s`;
+                  }
+                }
+                return "Iniciando...";
+              })()}
+            </Typography>
+          </Box>
+        ) : roundTransitionCountdown !== null && roundTransitionCountdown > 0 ? (
+          <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
+            <Typography
+              sx={{
+                fontSize: "48px",
+                fontWeight: 900,
+                background: roundTransitionCountdown <= 3 
+                  ? "linear-gradient(135deg, #4caf50, #66bb6a, #4caf50)"
+                  : "linear-gradient(135deg, #2196f3, #42a5f5, #2196f3)",
+                backgroundClip: "text",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                animation: roundTransitionCountdown <= 3 ? "pulse 0.5s infinite" : "none",
+                "@keyframes pulse": {
+                  "0%, 100%": { transform: "scale(1)" },
+                  "50%": { transform: "scale(1.15)" },
+                },
+                mb: 0.5,
+              }}
+            >
+              {roundTransitionCountdown}
+            </Typography>
+            {nextRoundNumber && (
+              <Typography
+                sx={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#d4af37",
+                  textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
+                  fontFamily: "'Montserrat', sans-serif",
+                }}
+              >
+                Ronda {nextRoundNumber}
+              </Typography>
+            )}
+          </Box>
+        ) : isFinished ? (
           <Typography
             sx={{
-              fontSize: "20px",
+              fontSize: roomFinished ? "16px" : "20px",
               fontWeight: 900,
               color: "#4caf50",
               textShadow: "0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(76, 175, 80, 0.4)",
@@ -148,7 +353,7 @@ export default function CurrentNumberDisplay({
               padding: "0 8px",
             }}
           >
-            Finalizado
+            {roomFinished ? "Partida Finalizada" : "Finalizado"}
           </Typography>
         ) : timeoutCountdown !== null && timeoutCountdown > 0 ? (
           <Typography
@@ -229,8 +434,16 @@ export default function CurrentNumberDisplay({
           fontWeight: 500,
         }}
       >
-        {isFinished
-          ? "Ronda Finalizada"
+        {roomStartCountdown !== null && roomStartCountdown > 0
+          ? `Iniciando en ${roomStartCountdown}s`
+          : bingoClaimCountdown !== null && bingoClaimCountdown > 0
+          ? `Otros pueden cantar bingo: ${bingoClaimCountdown}s`
+          : roomScheduledAt && currentNumber === "" && !isFinished
+          ? "Esperando inicio del juego"
+          : roundTransitionCountdown !== null && roundTransitionCountdown > 0
+          ? `Próxima ronda en ${roundTransitionCountdown}s`
+          : isFinished
+          ? (roomFinished ? "Partida Finalizada" : "Ronda Finalizada")
           : timeoutCountdown !== null && timeoutCountdown > 0
           ? `Tiempo restante: ${timeoutCountdown}s`
           : countdown !== undefined && countdown > 0 

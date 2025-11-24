@@ -6,6 +6,7 @@ type ActiveRoom = {
   status: "active" | "waiting" | "finished";
   prizeAmount: number;
   currency: string;
+  currentRound?: number; // Número de ronda actual si la sala no está finalizada
 };
 
 type ActiveRoomCardProps = {
@@ -41,13 +42,14 @@ const getStatusColor = (status: ActiveRoom["status"]) => {
 
 export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
   return (
+    <Box sx={{ marginBottom: "16px", marginTop: "0" }}>
     <Card
       onClick={() => onClick(room.id)}
       sx={{
         background: "rgba(26, 26, 46, 0.4)",
         backdropFilter: "blur(20px) saturate(180%)",
         WebkitBackdropFilter: "blur(20px) saturate(180%)",
-        borderRadius: "16px",
+        borderRadius: 0,
         border: "1px solid rgba(255, 255, 255, 0.1)",
         boxShadow: `
           0 8px 32px rgba(0, 0, 0, 0.3),
@@ -56,6 +58,7 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
         cursor: "pointer",
         transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         position: "relative",
+        zIndex: 1,
         overflow: "hidden",
         "&::before": {
           content: '""',
@@ -121,6 +124,20 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
             </Typography>
           </Box>
         </Stack>
+        {room.status !== "finished" && room.currentRound !== undefined && (
+          <Typography
+            variant="body2"
+            sx={{
+              color: "#d4af37",
+              opacity: 0.9,
+              fontSize: "13px",
+              fontWeight: 500,
+              mb: 0.5,
+            }}
+          >
+            Ronda {room.currentRound}
+          </Typography>
+        )}
         <Typography
           variant="body2"
           sx={{
@@ -133,6 +150,7 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
         </Typography>
       </CardContent>
     </Card>
+    </Box>
   );
 }
 

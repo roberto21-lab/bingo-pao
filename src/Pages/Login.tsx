@@ -17,7 +17,7 @@ import {
 import * as React from 'react';
 import BingoLogo from '../Componets/BingoLogo';
 import { loginService } from '../Services/auth.service';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const gold = '#d6bf7b';
@@ -72,7 +72,7 @@ const textFieldSx = {
     fontWeight: 500,
     '&::placeholder': {
       color: 'rgba(245, 230, 211, 0.5)',
-      opacity: 1,
+    opacity: 1,
     },
   },
   '& .MuiFormHelperText-root': {
@@ -91,6 +91,7 @@ export default function Login() {
   });
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAuthenticated, loading: authLoading } = useAuth();
 
   const [showPw, setShowPw] = React.useState(false);
@@ -99,13 +100,32 @@ export default function Login() {
     {}
   );
   const [serverError, setServerError] = React.useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+
+  // Verificar si el usuario viene de registrarse
+  React.useEffect(() => {
+    const registered = searchParams.get('registered');
+    if (registered === 'true') {
+      setSuccessMessage('¡Cuenta creada exitosamente! Por favor inicia sesión.');
+      // Limpiar el parámetro de la URL
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('registered');
+      navigate(`/login?${newSearchParams.toString()}`, { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   // Redirigir si el usuario ya está autenticado
   React.useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      navigate('/', { replace: true });
+      // Si hay un parámetro de redirección, ir allí, sino al home
+      const redirect = searchParams.get('redirect');
+      if (redirect) {
+        navigate(redirect, { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, authLoading, navigate, searchParams]);
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -144,9 +164,13 @@ export default function Login() {
 
     console.log('Usuario logueado:', user, token);
 
-    // Aquí ya tienes todo guardado en localStorage (lo hace loginService)
-    // Opcional: redirigir al home / salas / perfil
-    navigate('/');  // o '/rooms', '/profile', etc.
+    // Si hay un parámetro de redirección, ir allí, sino al home
+    const redirect = searchParams.get('redirect');
+    if (redirect) {
+      navigate(redirect, { replace: true });
+    } else {
+      navigate('/', { replace: true });
+    }
 
   } catch (err: any) {
     console.error('Error en login:', err);
@@ -220,8 +244,8 @@ export default function Login() {
               color: '#fcead0',
               transition: 'color 0.3s ease',
             },
-          }}
-        >
+      }}
+    >
           Ir a Inicio
         </Button>
       </Box>
@@ -316,6 +340,22 @@ export default function Login() {
           }}
         >
           <Stack component="form" spacing={3} onSubmit={handleSubmit} noValidate>
+            {successMessage && (
+              <Typography 
+                textAlign="center"
+                sx={{
+                  color: '#4caf50',
+                  bgcolor: 'rgba(76, 175, 80, 0.15)',
+                  border: '1px solid rgba(76, 175, 80, 0.3)',
+                  borderRadius: '8px',
+                  p: 1.5,
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                }}
+              >
+                {successMessage}
+              </Typography>
+            )}
             {serverError && (
               <Typography 
                 textAlign="center"

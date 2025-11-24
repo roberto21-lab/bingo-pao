@@ -13,6 +13,7 @@ import TabBar from "./Componets/TabBar";
 import Register from "./Pages/Register";
 import WalletPage from "./Pages/WalletPage";
 import Login from "./Pages/Login";
+import ProtectedRoute from "./Componets/ProtectedRoute";
 
 function NotFound() {
   return (
@@ -32,10 +33,10 @@ function AppContent() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/rooms" element={<Rooms />} />
-        <Route path="/wallet" element={<WalletPage />} />
-        <Route path="/room/:roomId" element={<RoomDetail />} />
-        <Route path="/game/:roomId" element={<GameInProgress />} />
-        <Route path="/purchased-cartons" element={<PurchasedCartons />} />
+        <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/room/:roomId" element={<ProtectedRoute><RoomDetail /></ProtectedRoute>} />
+        <Route path="/game/:roomId" element={<ProtectedRoute><GameInProgress /></ProtectedRoute>} />
+        <Route path="/purchased-cartons" element={<ProtectedRoute><PurchasedCartons /></ProtectedRoute>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/404" element={<NotFound />} />
         <Route path="/register" element={<Register />} />

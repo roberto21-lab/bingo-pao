@@ -13,40 +13,47 @@ import {
     InputAdornment,
     Link,
     Divider,
+    MenuItem,
+    Select,
+    FormControl,
+    InputLabel,
+    FormHelperText,
 } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import HomeIcon from '@mui/icons-material/Home';
 import BingoLogo from '../Componets/BingoLogo';
 import { useNavigate } from 'react-router-dom';
+import { getDocumentTypes, type DocumentType } from '../Services/documentTypes.service';
+import { createUser } from '../Services/users.service';
 
 // Inputs estilo glassmorphism mejorado
 const textFieldSx = {
-  '& .MuiOutlinedInput-root': {
+    '& .MuiOutlinedInput-root': {
     bgcolor: 'rgba(31, 19, 9, 0.6)',
     backdropFilter: 'blur(20px) saturate(150%)',
     WebkitBackdropFilter: 'blur(20px) saturate(150%)',
     borderRadius: '12px',
     color: '#f5e6d3',
     transition: 'all 0.3s ease',
-    '& .MuiOutlinedInput-notchedOutline': {
+        '& .MuiOutlinedInput-notchedOutline': {
       borderColor: 'rgba(212, 175, 55, 0.3)',
-      borderWidth: 2,
+            borderWidth: 2,
       transition: 'all 0.3s ease',
-    },
+        },
     '&:hover': {
       bgcolor: 'rgba(31, 19, 9, 0.7)',
       '& .MuiOutlinedInput-notchedOutline': {
         borderColor: 'rgba(212, 175, 55, 0.5)',
         boxShadow: '0 0 0 2px rgba(212, 175, 55, 0.1)',
-      },
+        },
     },
     '&.Mui-focused': {
       bgcolor: 'rgba(31, 19, 9, 0.8)',
       '& .MuiOutlinedInput-notchedOutline': {
         borderColor: 'rgba(212, 175, 55, 0.7)',
         boxShadow: '0 0 0 3px rgba(212, 175, 55, 0.15), 0 0 20px rgba(212, 175, 55, 0.2)',
-      },
+        },
     },
     '&.Mui-error': {
       '& .MuiOutlinedInput-notchedOutline': {
@@ -54,11 +61,11 @@ const textFieldSx = {
       },
     },
   },
-  '& .MuiInputLabel-root': {
+    '& .MuiInputLabel-root': {
     color: 'rgba(245, 230, 211, 0.7)',
     fontWeight: 500,
-  },
-  '& .MuiInputLabel-root.Mui-focused': {
+    },
+    '& .MuiInputLabel-root.Mui-focused': {
     color: 'rgba(212, 175, 55, 0.9)',
     fontWeight: 600,
   },
@@ -70,7 +77,7 @@ const textFieldSx = {
     fontWeight: 500,
     '&::placeholder': {
       color: 'rgba(245, 230, 211, 0.5)',
-      opacity: 1,
+        opacity: 1,
     },
   },
   '& .MuiFormHelperText-root': {
@@ -79,7 +86,7 @@ const textFieldSx = {
     '&.Mui-error': {
       color: 'rgba(244, 67, 54, 0.8)',
     },
-  },
+    },
 };
 
 
@@ -90,6 +97,10 @@ export default function RegisterPage() {
         email: '',
         password: '',
         confirmPassword: '',
+        document_type_id: '',
+        document_number: '',
+        phone: '',
+        address: '',
         acceptTerms: false,
     });
 
@@ -98,10 +109,34 @@ export default function RegisterPage() {
     const [loading, setLoading] = React.useState(false);
     const [errors, setErrors] = React.useState<Record<string, string | false>>({});
     const [serverError, setServerError] = React.useState<string | null>(null);
+    const [documentTypes, setDocumentTypes] = React.useState<DocumentType[]>([]);
+    const [loadingDocumentTypes, setLoadingDocumentTypes] = React.useState(true);
 
-    const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value, type, checked } = e.target;
+    // Cargar tipos de documento al montar el componente
+    React.useEffect(() => {
+        const loadDocumentTypes = async () => {
+            try {
+                setLoadingDocumentTypes(true);
+                const types = await getDocumentTypes(true);
+                setDocumentTypes(types);
+            } catch (error) {
+                console.error('Error al cargar tipos de documento:', error);
+            } finally {
+                setLoadingDocumentTypes(false);
+            }
+        };
+        loadDocumentTypes();
+    }, []);
+
+    const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value, type } = e.target;
+        const checked = (e.target as HTMLInputElement).checked;
         setValues((s) => ({ ...s, [name]: type === 'checkbox' ? checked : value }));
+    };
+
+    const handleSelectChange = (e: any) => {
+        const { name, value } = e.target;
+        setValues((s) => ({ ...s, [name]: value }));
     };
 
     const validateEmail = (email: string) =>
@@ -121,6 +156,22 @@ export default function RegisterPage() {
         else if (values.password !== values.confirmPassword)
             errs.confirmPassword = 'Las contraseñas no coinciden';
 
+        // Validar documento: si se proporciona tipo, también se requiere número y viceversa
+        if (values.document_type_id && !values.document_number.trim()) {
+            errs.document_number = 'Número de documento requerido';
+        }
+        if (values.document_number.trim() && !values.document_type_id) {
+            errs.document_type_id = 'Tipo de documento requerido';
+        }
+
+        // Validar formato de teléfono si se proporciona
+        if (values.phone && values.phone.trim()) {
+            const phoneRegex = /^[0-9+\-\s()]+$/;
+            if (!phoneRegex.test(values.phone.trim())) {
+                errs.phone = 'Formato de teléfono inválido';
+            }
+        }
+
         if (!values.acceptTerms) errs.acceptTerms = 'Debes aceptar los términos';
 
         setErrors(errs);
@@ -134,17 +185,34 @@ export default function RegisterPage() {
 
         try {
             setLoading(true);
-            // const res = await AuthService.register({
-            //   fullName: values.fullName,
-            //   email: values.email,
-            //   password: values.password,
-            // });
-            await new Promise((r) => setTimeout(r, 800)); // Simulación
-            // Redirige al login o dashboard
-            // navigate('/login');
-            alert('¡Cuenta creada!');
+            
+            // Preparar payload para el backend
+            const payload: any = {
+                name: values.fullName.trim(),
+                email: values.email.trim().toLowerCase(),
+                password: values.password,
+            };
+
+            // Agregar información de documento si se proporcionó
+            if (values.document_type_id && values.document_number.trim()) {
+                payload.document_type_id = values.document_type_id;
+                payload.document_number = values.document_number.trim();
+                if (values.phone.trim()) {
+                    payload.phone = values.phone.trim();
+                }
+                if (values.address.trim()) {
+                    payload.address = values.address.trim();
+                }
+            }
+
+            await createUser(payload);
+            
+            // Redirigir al login con mensaje de éxito
+            navigate('/login?registered=true');
         } catch (err: any) {
-            setServerError(err?.message || 'Error al registrar');
+            console.error('Error al registrar:', err);
+            const msg = err?.response?.data?.message || err?.message || 'Error al registrar';
+            setServerError(msg);
         } finally {
             setLoading(false);
         }
@@ -172,8 +240,8 @@ export default function RegisterPage() {
                     top: 16,
                     left: 16,
                     zIndex: 1,
-                }}
-            >
+            }}
+        >
                 <Button
                     onClick={() => navigate('/')}
                     startIcon={<HomeIcon />}
@@ -346,6 +414,114 @@ export default function RegisterPage() {
                             error={!!errors.email}
                             helperText={errors.email || ' '}
                             sx={textFieldSx}
+                        />
+
+                        <FormControl 
+                            fullWidth 
+                            error={!!errors.document_type_id}
+                            sx={{
+                                ...textFieldSx,
+                                '& .MuiOutlinedInput-root': {
+                                    ...textFieldSx['& .MuiOutlinedInput-root'],
+                                },
+                                '& .MuiSelect-select': {
+                                    color: '#f5e6d3',
+                                },
+                            }}
+                        >
+                            <InputLabel 
+                                sx={{
+                                    color: 'rgba(245, 230, 211, 0.7)',
+                                    '&.Mui-focused': {
+                                        color: 'rgba(212, 175, 55, 0.9)',
+                                    },
+                                }}
+                            >
+                                Tipo de documento
+                            </InputLabel>
+                            <Select
+                                name="document_type_id"
+                                value={values.document_type_id}
+                                onChange={handleSelectChange}
+                                label="Tipo de documento"
+                                disabled={loadingDocumentTypes}
+                                sx={{
+                                    color: '#f5e6d3',
+                                    '& .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'rgba(212, 175, 55, 0.3)',
+                                    },
+                                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'rgba(212, 175, 55, 0.5)',
+                                    },
+                                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'rgba(212, 175, 55, 0.7)',
+                                    },
+                                    '& .MuiSvgIcon-root': {
+                                        color: 'rgba(212, 175, 55, 0.7)',
+                                    },
+                                }}
+                            >
+                                <MenuItem value="">
+                                    <em>Selecciona un tipo</em>
+                                </MenuItem>
+                                {documentTypes.map((type) => (
+                                    <MenuItem key={type._id} value={type._id}>
+                                        {type.name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                            {errors.document_type_id && (
+                                <FormHelperText sx={{ 
+                                    color: 'rgba(244, 67, 54, 0.8)',
+                                    fontSize: '0.75rem',
+                                }}>
+                                    {errors.document_type_id}
+                                </FormHelperText>
+                            )}
+                            {!errors.document_type_id && (
+                                <FormHelperText sx={{ 
+                                    color: 'transparent',
+                                    fontSize: '0.75rem',
+                                }}>
+                                    {' '}
+                                </FormHelperText>
+                            )}
+                        </FormControl>
+
+                        <TextField
+                            name="document_number"
+                            label="Número de documento"
+                            value={values.document_number}
+                            onChange={onChange}
+                            fullWidth
+                            error={!!errors.document_number}
+                            helperText={errors.document_number || ' '}
+                            sx={textFieldSx}
+                            placeholder="Ej: 12345678"
+                        />
+
+                        <TextField
+                            name="phone"
+                            label="Teléfono (opcional)"
+                            value={values.phone}
+                            onChange={onChange}
+                            fullWidth
+                            error={!!errors.phone}
+                            helperText={errors.phone || ' '}
+                            sx={textFieldSx}
+                            placeholder="Ej: 04121234567"
+                        />
+
+                        <TextField
+                            name="address"
+                            label="Dirección (opcional)"
+                            value={values.address}
+                            onChange={onChange}
+                            fullWidth
+                            multiline
+                            rows={2}
+                            sx={textFieldSx}
+                            placeholder="Ej: Caracas, Venezuela"
                         />
 
                         <TextField

@@ -8,6 +8,8 @@ type GameHeaderProps = {
   currentBingoType: BingoType;
   isGameActive?: boolean;
   roomName?: string;
+  roomFinished?: boolean; // Si la sala está finalizada
+  totalPrize?: number; // Premio total de todas las rondas (cuando roomFinished es true)
 };
 
 export default function GameHeader({
@@ -16,6 +18,8 @@ export default function GameHeader({
   currentBingoType,
   isGameActive = true,
   roomName = "Juego en Progreso",
+  roomFinished = false,
+  totalPrize = 0,
 }: GameHeaderProps) {
   return (
     <>
@@ -71,7 +75,7 @@ export default function GameHeader({
       <Typography
         variant="h4"
         sx={{
-          textAlign: "center",
+          textAlign: "left",
           fontSize: { xs: "24px", sm: "28px" },
           fontWeight: 900,
           background: "linear-gradient(135deg, #d4af37, #f4d03f, #ffd700, #f4d03f, #d4af37)",
@@ -79,7 +83,7 @@ export default function GameHeader({
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
           mb: 3,
-          mt: "3rem",
+          mt: "4rem",
           fontFamily: "'Montserrat', sans-serif",
           textShadow: "0 2px 8px rgba(212, 175, 55, 0.4)",
           position: "relative",
@@ -117,44 +121,94 @@ export default function GameHeader({
             letterSpacing: "0.5px",
           }}
         >
-          Premio Ronda {currentRound}: ${currentRoundPrize.toLocaleString("es-US", {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          })}
+          {roomFinished 
+            ? `Total Premio Entregado: $${totalPrize.toLocaleString("es-US", {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              })}`
+            : `Premio Ronda ${currentRound}: $${currentRoundPrize.toLocaleString("es-US", {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              })}`}
         </Typography>
       </Box>
 
-      {currentRound <= 2 && (
-        <Box
-          sx={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            mx: "auto",
-            mb: 3,
-            px: 1.5,
-            py: 0.5,
-            borderRadius: "12px",
-            background: "rgba(26, 16, 8, 0.5)",
-            border: "1px solid rgba(212, 175, 55, 0.4)",
-            backdropFilter: "blur(10px)",
-            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
-          }}
-        >
-          <Typography
-            variant="h6"
-            sx={{
-              fontSize: { xs: "14px", sm: "16px" },
-              fontWeight: 700,
-              color: "#d4af37",
-              textAlign: "center",
-              fontFamily: "'Montserrat', sans-serif",
-              textShadow: "0 1px 3px rgba(212, 175, 55, 0.5)",
-            }}
-          >
-            Modo: {getBingoTypeName(currentBingoType)}
-          </Typography>
-        </Box>
+      {!roomFinished && (
+        <>
+          {currentRound <= 2 ? (
+            <Box
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                mx: "auto",
+                mb: 3,
+                px: 1.5,
+                py: 0.5,
+                borderRadius: "12px",
+                background: "rgba(26, 16, 8, 0.5)",
+                border: "1px solid rgba(212, 175, 55, 0.4)",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{
+                  fontSize: { xs: "14px", sm: "16px" },
+                  fontWeight: 700,
+                  color: "#d4af37",
+                  textAlign: "center",
+                  fontFamily: "'Montserrat', sans-serif",
+                  textShadow: "0 1px 3px rgba(212, 175, 55, 0.5)",
+                }}
+              >
+                Modo: {getBingoTypeName(currentBingoType)}
+              </Typography>
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                mx: "auto",
+                mb: 3,
+                px: 2,
+                py: 1,
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, rgba(212, 175, 55, 0.3) 0%, rgba(244, 208, 63, 0.4) 50%, rgba(212, 175, 55, 0.3) 100%)",
+                border: "2px solid rgba(212, 175, 55, 0.6)",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 4px 16px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
+                animation: "pulse 2s infinite",
+                "@keyframes pulse": {
+                  "0%, 100%": {
+                    boxShadow: "0 4px 16px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
+                  },
+                  "50%": {
+                    boxShadow: "0 6px 20px rgba(212, 175, 55, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3)",
+                  },
+                },
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{
+                  fontSize: { xs: "16px", sm: "18px" },
+                  fontWeight: 900,
+                  color: "#1a1008",
+                  textAlign: "center",
+                  fontFamily: "'Montserrat', sans-serif",
+                  textShadow: "0 1px 3px rgba(255, 255, 255, 0.5)",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                🎯 CARTÓN LLENO
+              </Typography>
+            </Box>
+          )}
+        </>
       )}
     </>
   );

@@ -42,3 +42,39 @@ export async function claimBingo(
   }
 }
 
+export type RoomWinner = {
+  round_number: number;
+  card_id: string;
+  card_code: string;
+  card_numbers: (number | "FREE")[][];
+  pattern: string;
+  prize_amount: string;
+  bingo_numbers: string[]; // Números que hicieron bingo
+  called_numbers: string[];
+};
+
+export type GetRoomWinnersResponse = {
+  success: boolean;
+  data: RoomWinner[];
+};
+
+// GET /rooms/:roomId/winners - obtener ganadores de una sala
+export async function getRoomWinners(roomId: string): Promise<RoomWinner[]> {
+  try {
+    const response = await api.get<GetRoomWinnersResponse>(
+      `/rooms/${roomId}/winners`
+    );
+
+    if (response.data.success) {
+      return response.data.data;
+    }
+
+    throw new Error("Error al obtener ganadores");
+  } catch (error: any) {
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    throw error;
+  }
+}
+
