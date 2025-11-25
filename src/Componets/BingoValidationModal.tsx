@@ -5,28 +5,48 @@ import {
   Button,
   Typography,
   Box,
+  IconButton,
 } from "@mui/material";
+import ArrowBackIosNewIcon from "@mui/icons-material/ArrowBackIosNew";
+import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 import type { BingoGrid } from "../utils/bingo";
 import WinningCardDisplay from "./WinningCardDisplay";
 import CalledNumbersTable from "./CalledNumbersTable";
 
+export type WinnerData = {
+  card: BingoGrid;
+  cardCode: string;
+  markedNumbers: Set<string>;
+  bingoPatternNumbers: Set<string>;
+};
+
 type BingoValidationModalProps = {
   open: boolean;
   onClose: () => void;
-  winningCard: BingoGrid;
-  winningCardCode: string;
-  markedNumbers: Set<string>;
+  winners: WinnerData[]; // Múltiples ganadores
+  currentWinnerIndex: number;
+  onPreviousWinner: () => void;
+  onNextWinner: () => void;
   calledNumbers: Set<string>;
 };
 
 export default function BingoValidationModal({
   open,
   onClose,
-  winningCard,
-  winningCardCode,
-  markedNumbers,
+  winners,
+  currentWinnerIndex,
+  onPreviousWinner,
+  onNextWinner,
   calledNumbers,
 }: BingoValidationModalProps) {
+  const currentWinner = winners[currentWinnerIndex];
+  const hasMultipleWinners = winners.length > 1;
+  const canGoPrevious = currentWinnerIndex > 0;
+  const canGoNext = currentWinnerIndex < winners.length - 1;
+
+  if (!currentWinner) {
+    return null;
+  }
   return (
     <Dialog
       open={open}
@@ -82,19 +102,90 @@ export default function BingoValidationModal({
           </Typography>
         </Box>
 
-        <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 3 }}>
+        <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 3, position: "relative" }}>
+          {/* Navegación entre ganadores */}
+          {hasMultipleWinners && (
+            <>
+              <IconButton
+                onClick={onPreviousWinner}
+                disabled={!canGoPrevious}
+                sx={{
+                  position: "absolute",
+                  left: { xs: 8, md: -60 },
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 10,
+                  backgroundColor: "rgba(212, 175, 55, 0.2)",
+                  color: canGoPrevious ? "#d4af37" : "rgba(212, 175, 55, 0.3)",
+                  border: "2px solid rgba(212, 175, 55, 0.5)",
+                  "&:hover": {
+                    backgroundColor: canGoPrevious ? "rgba(212, 175, 55, 0.4)" : "rgba(212, 175, 55, 0.2)",
+                  },
+                  "&.Mui-disabled": {
+                    borderColor: "rgba(212, 175, 55, 0.2)",
+                  },
+                }}
+              >
+                <ArrowBackIosNewIcon />
+              </IconButton>
+
+              <IconButton
+                onClick={onNextWinner}
+                disabled={!canGoNext}
+                sx={{
+                  position: "absolute",
+                  right: { xs: 8, md: -60 },
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 10,
+                  backgroundColor: "rgba(212, 175, 55, 0.2)",
+                  color: canGoNext ? "#d4af37" : "rgba(212, 175, 55, 0.3)",
+                  border: "2px solid rgba(212, 175, 55, 0.5)",
+                  "&:hover": {
+                    backgroundColor: canGoNext ? "rgba(212, 175, 55, 0.4)" : "rgba(212, 175, 55, 0.2)",
+                  },
+                  "&.Mui-disabled": {
+                    borderColor: "rgba(212, 175, 55, 0.2)",
+                  },
+                }}
+              >
+                <ArrowForwardIosIcon />
+              </IconButton>
+
+              {/* Indicador de ganador actual */}
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 16,
+                  right: 16,
+                  backgroundColor: "rgba(212, 175, 55, 0.2)",
+                  color: "#d4af37",
+                  px: 2,
+                  py: 0.5,
+                  borderRadius: "12px",
+                  border: "1px solid rgba(212, 175, 55, 0.5)",
+                  fontSize: "0.875rem",
+                  fontWeight: 600,
+                }}
+              >
+                {currentWinnerIndex + 1} / {winners.length}
+              </Box>
+            </>
+          )}
+
           <Box sx={{ flex: 1, minWidth: { xs: "100%", md: "50%" } }}>
             <WinningCardDisplay
-              card={winningCard}
-              cardCode={winningCardCode}
-              markedNumbers={markedNumbers}
+              card={currentWinner.card}
+              cardCode={currentWinner.cardCode}
+              markedNumbers={currentWinner.markedNumbers}
             />
           </Box>
 
           <Box sx={{ flex: 1, minWidth: { xs: "100%", md: "50%" } }}>
             <CalledNumbersTable
               calledNumbers={calledNumbers}
-              markedNumbers={markedNumbers}
+              markedNumbers={currentWinner.markedNumbers}
+              bingoPatternNumbers={currentWinner.bingoPatternNumbers}
             />
           </Box>
         </Box>

@@ -13,16 +13,12 @@ import CardPreviewModal from "../Componets/CardPreviewModal";
 import BingoValidationModal from "../Componets/BingoValidationModal";
 import ConfettiFireworks from "../Componets/ConfettiFireworks";
 import BackgroundStars from "../Componets/BackgroundStars";
-import { api } from "../Services/api";
 import { getCardsByRoomAndUser } from "../Services/cards.service";
 import { getRoomRounds } from "../Services/rounds.service";
 import { getCalledNumbers } from "../Services/calledNumbers.service";
-import { claimBingo, getRoomWinners, type RoomWinner } from "../Services/bingo.service";
+import { claimBingo, getRoomWinners } from "../Services/bingo.service";
 import {
-  connectSocket,
   disconnectSocket,
-  joinRoom,
-  leaveRoom,
   onNumberCalled,
   onRoundStarted,
   onRoundFinished,
@@ -32,35 +28,20 @@ import {
   onBingoClaimed,
   onRoomStateSync,
   onRoundStartCountdown,
+  onRoomStartCountdown,
+  onRoomPending,
+  onRoomStatusUpdated,
+  onRoomFinished,
 } from "../Services/socket.service";
-
-function mapPatternToBingoType(patternName?: string): BingoType {
-  switch (patternName) {
-    case "horizontal":
-      return "horizontal";
-    case "vertical":
-      return "vertical";
-    case "cross_small":
-      return "smallCross";
-    case "full":
-      return "fullCard";
-    default:
-      return "fullCard";
-  }
-}
-
-function parseDecimal(decimal: unknown): number {
-  if (!decimal) return 0;
-  if (typeof decimal === "string") return parseFloat(decimal) || 0;
-  if (typeof decimal === "object" && decimal !== null && "$numberDecimal" in decimal) {
-    return parseFloat(String((decimal as { $numberDecimal: string }).$numberDecimal)) || 0;
-  }
-  return typeof decimal === "number" ? decimal : 0;
-}
+import { mapPatternToBingoType } from "../utils/patternMapper";
+import { useGameData } from "../hooks/useGameData";
+import { useWebSocketConnection } from "../hooks/useWebSocketConnection";
 
 function convertCardNumbers(numbers: (number | "FREE")[][]): number[][] {
   return numbers.map((row) => row.map((num) => (num === "FREE" ? 0 : num)));
 }
+
+// Funciones auxiliares movidas a hooks/utils
 
 export default function GameInProgress() {
   React.useEffect(() => {
@@ -68,398 +49,85 @@ export default function GameInProgress() {
       disconnectSocket();
     };
   }, []);
+  
   const { roomId } = useParams<{ roomId: string }>();
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
   
-  // Datos del juego
-  const [room, setRoom] = React.useState<Record<string, unknown> | null>(null);
-  const [playerCards, setPlayerCards] = React.useState<BingoGrid[]>([]);
-  const [playerCardsData, setPlayerCardsData] = React.useState<Array<{ _id: string; code: string }>>([]);
+  // Hook para cargar datos iniciales del juego
+  const gameData = useGameData(roomId);
   
-  // Estado del juego
-  const [currentRound, setCurrentRound] = React.useState(1);
-  const [totalRounds, setTotalRounds] = React.useState(3);
-  const [totalPot, setTotalPot] = React.useState(0);
-  const [roundBingoTypes, setRoundBingoTypes] = React.useState<BingoType[]>([]);
-  const [roundsData, setRoundsData] = React.useState<any[]>([]); // Almacenar rounds para obtener pattern directamente
+  const {
+    loading,
+    error,
+    room,
+    playerCards,
+    playerCardsData,
+    currentRound,
+    totalRounds,
+    totalPot,
+    roundBingoTypes,
+    roundsData,
+    calledNumbers,
+    currentNumber,
+    lastNumbers,
+    lastCalledTimestamp,
+    gameStarted,
+    isCallingNumber,
+    roundEnded,
+    roundFinished,
+    roomFinished,
+    winners,
+    winningNumbersMap,
+    roomScheduledAt,
+    serverTimeOffset,
+    setCurrentRound,
+    setCalledNumbers,
+    setCurrentNumber,
+    setLastNumbers,
+    setLastCalledTimestamp,
+    setIsCallingNumber,
+    setRoundEnded,
+    setRoundFinished,
+    setRoundsData,
+    setRoundBingoTypes,
+    setRoom,
+    setRoomFinished,
+    setWinners,
+    setPlayerCards,
+    setPlayerCardsData,
+    setWinningNumbersMap,
+    setTimeUntilStart,
+  } = gameData;
 
-  // Estados del juego
-  const [calledNumbers, setCalledNumbers] = React.useState<Set<string>>(new Set());
-  const [markedNumbers, setMarkedNumbers] = React.useState<Map<number, Set<string>>>(
-    new Map()
-  );
-
+  // Estados locales del componente
+  const [markedNumbers, setMarkedNumbers] = React.useState<Map<number, Set<string>>>(new Map());
   const [modalOpen, setModalOpen] = React.useState(false);
   const [previewCardIndex, setPreviewCardIndex] = React.useState<number | null>(null);
   const [bingoValidationOpen, setBingoValidationOpen] = React.useState(false);
-  const [winningCardIndex, setWinningCardIndex] = React.useState<number | null>(null);
   const [showConfetti, setShowConfetti] = React.useState(false);
-
-  // Estado de números llamados (se irán agregando progresivamente)
-  const [currentNumber, setCurrentNumber] = React.useState<string>("");
-  const [lastNumbers, setLastNumbers] = React.useState<string[]>([]);
-  const [gameStarted, setGameStarted] = React.useState(false);
-  
-  // Estados para countdown y progress bar
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const [progress, setProgress] = React.useState(0);
-  const [isCallingNumber, setIsCallingNumber] = React.useState(false);
-  const [roundEnded, setRoundEnded] = React.useState(false);
-  const [roundFinished, setRoundFinished] = React.useState(false); // Estado del round desde el backend
-
-  // Estado para el timestamp del último número llamado (desde el backend)
-  const [lastCalledTimestamp, setLastCalledTimestamp] = React.useState<number | null>(null);
-  const CALL_INTERVAL = 7000; // 7 segundos entre números
-  const TIMEOUT_COUNTDOWN_DURATION = 10000; // 10 segundos de countdown
-  
-  // Estado para el countdown de timeout
   const [timeoutCountdown, setTimeoutCountdown] = React.useState<number | null>(null);
   const [timeoutStartTime, setTimeoutStartTime] = React.useState<number | null>(null);
-  
-  // Estado para el countdown de transición entre rondas
   const [roundTransitionCountdown, setRoundTransitionCountdown] = React.useState<number | null>(null);
   const [nextRoundNumber, setNextRoundNumber] = React.useState<number | null>(null);
-  
-  // Estado para el countdown de ventana de bingo (45 segundos después de que alguien canta bingo)
   const [bingoClaimCountdown, setBingoClaimCountdown] = React.useState<number | null>(null);
-  
-  // Estado para el countdown de inicio de sala (solo para la primera ronda)
   const [roomStartCountdown, setRoomStartCountdown] = React.useState<number | null>(null);
-  const [roomScheduledAt, setRoomScheduledAt] = React.useState<Date | null>(null);
-  const [serverTimeOffset, setServerTimeOffset] = React.useState<number>(0); // Offset entre cliente y servidor
-  const [timeUntilStart, setTimeUntilStart] = React.useState<number | null>(null); // Tiempo restante en segundos
-  
-  // Estado para indicar que el juego está iniciando (después de round-started pero antes del primer número)
+  const [roomStartCountdownFinish, setRoomStartCountdownFinish] = React.useState<number | null>(null);
+  const [roundStartCountdownFinish, setRoundStartCountdownFinish] = React.useState<number | null>(null);
+  const [roundTransitionCountdownFinish, setRoundTransitionCountdownFinish] = React.useState<number | null>(null);
+  const [bingoClaimCountdownFinish, setBingoClaimCountdownFinish] = React.useState<number | null>(null);
   const [isGameStarting, setIsGameStarting] = React.useState(false);
-  
-  // Estado para salas finalizadas - ganadores
-  const [roomFinished, setRoomFinished] = React.useState(false);
-  const [winners, setWinners] = React.useState<RoomWinner[]>([]);
-  const [winningNumbersMap, setWinningNumbersMap] = React.useState<Map<number, Set<string>>>(new Map());
-
-  // Refs para controlar la sincronización con el backend
+  const [currentRoundWinners, setCurrentRoundWinners] = React.useState<import("../Componets/BingoValidationModal").WinnerData[]>([]);
+  const [currentWinnerIndex, setCurrentWinnerIndex] = React.useState(0);
   const progressIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  const CALL_INTERVAL = 7000;
+  const TIMEOUT_COUNTDOWN_DURATION = 10000;
 
-  // Cargar datos del juego
-  React.useEffect(() => {
-    const fetchGameData = async () => {
-      if (!roomId) {
-        setError("ID de sala no proporcionado");
-        setLoading(false);
-        return;
-      }
+  // Hook para conexión WebSocket
+  useWebSocketConnection(roomId, gameStarted);
 
-      try {
-        setLoading(true);
-        setError(null);
-
-        // El backend devuelve un objeto directo, no envuelto en { success, data }
-        const roomResponse = await api.get(`/rooms/${roomId}`);
-        
-        if (!roomResponse.data) {
-          setError("Sala no encontrada");
-          setLoading(false);
-          return;
-        }
-        
-        const roomData = roomResponse.data;
-        if (!roomData) {
-          setError("Sala no encontrada");
-          setLoading(false);
-          return;
-        }
-        
-        setRoom(roomData);
-        setTotalPot(parseDecimal(roomData.total_pot));
-        setTotalRounds(roomData.max_rounds || 3);
-        
-        // Verificar si la sala está finalizada
-        const roomStatus = roomData && typeof roomData.status_id === "object" && roomData.status_id
-          ? roomData.status_id.name
-          : "";
-        const isRoomFinished = roomStatus === "finished";
-        setRoomFinished(isRoomFinished);
-        
-        // Si la sala está finalizada, cargar ganadores en lugar de cartones del usuario
-        if (isRoomFinished) {
-          try {
-            const winnersData = await getRoomWinners(roomId);
-            setWinners(winnersData);
-            
-            // Convertir ganadores a cartones y crear mapa de números ganadores
-            const winnerCards: BingoGrid[] = [];
-            const winnerCardsData: Array<{ _id: string; code: string }> = [];
-            const winningNumbers = new Map<number, Set<string>>();
-            
-            // Ordenar ganadores por round_number para asegurar orden correcto
-            const sortedWinners = [...winnersData].sort((a, b) => a.round_number - b.round_number);
-            
-            sortedWinners.forEach((winner, index) => {
-              console.log(`[GameInProgress] Procesando ganador - Ronda ${winner.round_number}: Cartón ${winner.card_code} (ID: ${winner.card_id})`);
-              winnerCards.push(convertCardNumbers(winner.card_numbers));
-              winnerCardsData.push({ _id: winner.card_id, code: winner.card_code });
-              winningNumbers.set(index, new Set(winner.bingo_numbers));
-            });
-            
-            console.log(`[GameInProgress] Total ganadores cargados: ${winnerCards.length}`);
-            console.log(`[GameInProgress] Códigos de cartones:`, winnerCardsData.map(c => c.code));
-            
-            setPlayerCards(winnerCards);
-            setPlayerCardsData(winnerCardsData);
-            setWinningNumbersMap(winningNumbers);
-            
-            // Cargar números llamados de todas las rondas para mostrar en los cartones ganadores
-            const allCalledNumbers = new Set<string>();
-            for (const winner of winnersData) {
-              winner.called_numbers.forEach((num: string) => allCalledNumbers.add(num));
-            }
-            setCalledNumbers(allCalledNumbers);
-            
-            // Establecer el round actual al último round (ronda 3)
-            setCurrentRound(roomData.max_rounds || 3);
-            setRoundFinished(true);
-            setRoundEnded(true);
-            setIsCallingNumber(false);
-            setProgress(0);
-            setLoading(false);
-            return;
-          } catch (err) {
-            console.error("Error al cargar ganadores:", err);
-            // Continuar con el flujo normal si hay error
-          }
-        }
-        
-        // Guardar scheduled_at para el countdown de inicio
-        if (roomData.scheduled_at) {
-          const scheduledTime = new Date(roomData.scheduled_at);
-          setRoomScheduledAt(scheduledTime);
-          
-          // Obtener tiempo del servidor para sincronización precisa
-          try {
-            const { api } = await import("../Services/api");
-            const serverTimeResponse = await api.get("/server-time");
-            const serverTime = new Date(serverTimeResponse.data.serverTime);
-            const clientTime = new Date();
-            const offset = serverTime.getTime() - clientTime.getTime();
-            setServerTimeOffset(offset);
-            console.log(`[GameInProgress] Offset del servidor: ${offset}ms`);
-            
-            // Calcular tiempo restante usando tiempo del servidor
-            const adjustedClientTime = new Date(clientTime.getTime() + offset);
-            const timeRemaining = Math.floor((scheduledTime.getTime() - adjustedClientTime.getTime()) / 1000);
-            setTimeUntilStart(timeRemaining > 0 ? timeRemaining : null);
-          } catch (error) {
-            console.error("Error al obtener tiempo del servidor, usando tiempo local:", error);
-            // Fallback: usar tiempo local
-            const now = new Date();
-            const timeRemaining = Math.floor((scheduledTime.getTime() - now.getTime()) / 1000);
-            setTimeUntilStart(timeRemaining > 0 ? timeRemaining : null);
-          }
-        }
-
-        // Obtener rounds
-        const roundsData = await getRoomRounds(roomId);
-        
-        // IMPORTANTE: Ordenar rounds por round_number para asegurar que el índice corresponda al round
-        const sortedRounds = [...roundsData].sort((a, b) => a.round_number - b.round_number);
-        
-        // Guardar rounds para obtener pattern directamente
-        setRoundsData(sortedRounds);
-        
-        // Mapear tipos de bingo desde los rounds ordenados
-        const bingoTypes = sortedRounds.map((round) => {
-          const pattern = typeof round.pattern_id === "object" && round.pattern_id
-            ? round.pattern_id.name
-            : "";
-          return mapPatternToBingoType(pattern);
-        });
-        setRoundBingoTypes(bingoTypes);
-
-        // Encontrar round actual (priorizar "starting" o "in_progress" sobre "finished")
-        // Si hay un round en "starting" o "in_progress", usar ese
-        // Si no, usar el round "finished" con el número más alto
-        let currentRoundData = roundsData.find((r) => {
-          const status = typeof r.status_id === "object" && r.status_id
-            ? r.status_id.name
-            : "";
-          return status === "starting" || status === "in_progress";
-        });
-        
-        // Si no hay round en progreso o starting, buscar el último round finalizado
-        if (!currentRoundData) {
-          const finishedRounds = roundsData.filter((r) => {
-            const status = typeof r.status_id === "object" && r.status_id
-              ? r.status_id.name
-              : "";
-            return status === "finished";
-          });
-          
-          if (finishedRounds.length > 0) {
-            // Ordenar por round_number descendente y tomar el más reciente
-            finishedRounds.sort((a, b) => b.round_number - a.round_number);
-            currentRoundData = finishedRounds[0];
-          }
-        }
-        
-        if (currentRoundData) {
-          setCurrentRound(currentRoundData.round_number);
-          const status = typeof currentRoundData.status_id === "object" && currentRoundData.status_id
-            ? currentRoundData.status_id.name
-            : "";
-          setRoundFinished(status === "finished");
-          
-          console.log(`[GameInProgress] Round actual detectado: Round ${currentRoundData.round_number} (${status})`);
-          
-          // Si el round está en "starting", mostrar countdown y no llamar números
-          if (status === "starting") {
-            setIsCallingNumber(false);
-            setIsGameStarting(true);
-            setRoundEnded(false);
-            setRoundFinished(false);
-            // El countdown se manejará con el evento round-start-countdown
-          } else if (status === "finished") {
-            // Si el round está finalizado, detener el juego
-            setRoundEnded(true);
-            setIsCallingNumber(false);
-            setProgress(0);
-          }
-        } else {
-          // Si no se encuentra ningún round, usar el round 1 por defecto
-          console.log(`[GameInProgress] No se encontró round activo, usando Round 1 por defecto`);
-          setCurrentRound(1);
-        }
-
-        const { getUserId } = await import("../Services/auth.service");
-        const userId = getUserId() || "691c18597217196a8c31da37";
-        const cardsData = await getCardsByRoomAndUser(roomId, userId);
-        
-        if (cardsData.length === 0) {
-          setError("No tienes cartones asignados para esta sala");
-          setLoading(false);
-          return;
-        }
-
-        // Guardar datos completos de los cartones (incluyendo código)
-        setPlayerCardsData(cardsData.map((card) => ({ _id: card._id, code: card.code })));
-
-        // Convertir cartones del backend al formato del frontend
-        const convertedCards = cardsData.map((card) => convertCardNumbers(card.numbers_json));
-        setPlayerCards(convertedCards);
-
-        // Inicializar datos del juego
-        setMarkedNumbers(new Map());
-        
-        // Cargar números ya llamados desde el backend (historial persistente)
-        const calledNumbersData = await getCalledNumbers(roomId, currentRoundData?.round_number);
-        
-        if (calledNumbersData.length > 0) {
-          // Hay números ya llamados, restaurar el estado del juego
-          const calledSet = new Set(calledNumbersData.map(cn => cn.number));
-          setCalledNumbers(calledSet);
-          
-          // Actualizar número actual y últimos números
-          const lastCalled = calledNumbersData[calledNumbersData.length - 1];
-          setCurrentNumber(lastCalled.number);
-          
-          // Últimos 3 números
-          const lastThree = calledNumbersData
-            .slice(-3)
-            .reverse()
-            .map(cn => cn.number);
-          setLastNumbers(lastThree);
-          
-          // Establecer timestamp del último número llamado (sincronización con backend)
-          const timestamp = new Date(lastCalled.called_at).getTime();
-          setLastCalledTimestamp(timestamp);
-          
-          // Si hay números llamados, el juego ya está en progreso
-          // Continuar llamando números sin countdown
-          setProgress(0);
-          setRoundEnded(false);
-          setGameStarted(true);
-          setIsCallingNumber(true);
-          setCountdown(null); // No mostrar countdown si ya hay números llamados
-        } else {
-          // No hay números llamados aún, verificar si el round está en progreso
-          // Verificar que currentRoundData existe antes de acceder a sus propiedades
-          if (currentRoundData) {
-            const roundStatus = typeof currentRoundData.status_id === "object" && currentRoundData.status_id
-              ? currentRoundData.status_id.name
-              : "";
-            
-            // Si el round está en progreso pero no hay números llamados, iniciar countdown
-            if (roundStatus === "in_progress") {
-              setCalledNumbers(new Set());
-              setCurrentNumber("");
-              setLastNumbers([]);
-              setProgress(0);
-              setRoundEnded(false);
-              
-              // Iniciar countdown antes de comenzar
-              setCountdown(5);
-              setGameStarted(true);
-            } else {
-              // El round no está en progreso, no iniciar countdown
-              setCalledNumbers(new Set());
-              setCurrentNumber("");
-              setLastNumbers([]);
-              setProgress(0);
-              setRoundEnded(false);
-              setCountdown(null);
-              setGameStarted(true);
-              setIsCallingNumber(false);
-            }
-          } else {
-            // No hay round data, inicializar valores por defecto
-            setCalledNumbers(new Set());
-            setCurrentNumber("");
-            setLastNumbers([]);
-            setProgress(0);
-            setRoundEnded(false);
-            setCountdown(null);
-            setGameStarted(true);
-            setIsCallingNumber(false);
-          }
-        }
-
-      } catch (err: unknown) {
-        // Extraer mensaje de error del backend si está disponible
-        let errorMessage = "Error al cargar el juego. Por favor, intenta nuevamente.";
-        
-        if (err && typeof err === "object") {
-          if ("response" in err && err.response && typeof err.response === "object") {
-            const response = err.response as { 
-              data?: { 
-                message?: string;
-                requestedId?: string;
-                availableRooms?: Array<{ id: string; name: string }>;
-              } 
-            };
-            if (response.data?.message) {
-              errorMessage = response.data.message;
-              
-              // Si hay salas disponibles, agregar esa información
-              if (response.data.availableRooms && response.data.availableRooms.length > 0) {
-                const roomsList = response.data.availableRooms
-                  .map(r => `- ${r.name} (ID: ${r.id})`)
-                  .join("\n");
-                errorMessage += `\n\nSalas disponibles:\n${roomsList}`;
-              }
-            }
-          } else if ("message" in err && typeof err.message === "string") {
-            errorMessage = err.message;
-          }
-        }
-        
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchGameData();
-  }, [roomId]);
+  // Los datos del juego ahora se cargan con useGameData hook
 
 
   // Countdown de inicio de sala (solo para la primera ronda, antes de que comience el juego)
@@ -508,7 +176,7 @@ export default function GameInProgress() {
     const interval = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(interval);
-  }, [currentRound, roundFinished, roomScheduledAt, calledNumbers.size, serverTimeOffset]);
+  }, [currentRound, roundFinished, roomScheduledAt, calledNumbers.size, serverTimeOffset, setTimeUntilStart]);
 
   // Countdown antes de comenzar (countdown interno de 5 segundos cuando el juego está listo)
   React.useEffect(() => {
@@ -533,10 +201,12 @@ export default function GameInProgress() {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [countdown, lastCalledTimestamp, CALL_INTERVAL]);
+  }, [countdown, lastCalledTimestamp, CALL_INTERVAL, setIsCallingNumber, setLastCalledTimestamp]);
 
   // NO hacer polling de rounds - usar solo eventos de Socket.IO
   // El evento 'round-finished' ya maneja la finalización del round
+
+  // La conexión WebSocket ahora se maneja con useWebSocketConnection hook
 
   // Conexión WebSocket y sincronización en tiempo real
   // IMPORTANTE: Este efecto debe continuar escuchando eventos incluso cuando roundFinished es true
@@ -563,18 +233,6 @@ export default function GameInProgress() {
 
     let isMounted = true; // Flag para evitar actualizaciones después de desmontar
 
-    // Conectar WebSocket y unirse a la room
-    const socket = connectSocket();
-    
-    // Asegurarse de unirse a la room cuando el socket esté conectado
-    if (socket.connected) {
-      joinRoom(roomId);
-    } else {
-      socket.once("connect", () => {
-        joinRoom(roomId);
-      });
-    }
-
     // IMPORTANTE: Sincronizar estado completo cuando te unes a una sala con juego activo
     // Esto asegura que todos los usuarios vean exactamente lo mismo
     const unsubscribeRoomStateSync = onRoomStateSync((data) => {
@@ -598,9 +256,14 @@ export default function GameInProgress() {
           setIsGameStarting(true);
           setRoundEnded(false);
           setRoundFinished(false);
+          // CRÍTICO: Si hay un round activo, la sala NO está finalizada
+          setRoomFinished(false);
           // El countdown se manejará con el evento round-start-countdown
         } else if (roundStatus === "in_progress") {
           console.log(`[GameInProgress] 🔄 Sincronizando estado: Round ${data.round.round_number}, ${data.round.called_count} números llamados`);
+          
+          // CRÍTICO: Si hay un round en progreso, la sala NO está finalizada
+          setRoomFinished(false);
           
           // Sincronizar números llamados
           if (data.round.called_numbers.length > 0) {
@@ -631,10 +294,13 @@ export default function GameInProgress() {
           setIsCallingNumber(false);
           setRoundEnded(true);
           setRoundFinished(roundStatus === "finished");
+          // NOTA: No cambiar roomFinished aquí - solo se cambia cuando la sala completa está finished
         } else {
           // Estado desconocido o pending
           setIsCallingNumber(false);
           setIsGameStarting(true);
+          // CRÍTICO: Si hay un round (aunque esté en pending), la sala NO está finalizada
+          setRoomFinished(false);
         }
       } else {
         // No hay ronda activa
@@ -726,8 +392,8 @@ export default function GameInProgress() {
         
         // Actualizar número actual y últimos números
         setCurrentNumber(data.number);
-        setLastNumbers((prevLast) => {
-          const updated = [data.number, ...prevLast].slice(0, 3);
+        setLastNumbers((prevLast: string[]) => {
+          const updated = [data.number, ...(prevLast || [])].slice(0, 3);
           return updated;
         });
         
@@ -766,9 +432,17 @@ export default function GameInProgress() {
       if (!isMounted) return;
 
       if (data.room_id === roomId) {
-        console.log(`[GameInProgress] Nueva ronda iniciada: Round ${data.round_number}`);
+        // IMPORTANTE: Aceptar cualquier round nuevo (mayor o igual al actual)
+        // Esto permite que el frontend se actualice incluso si hay problemas de sincronización
+        if (data.round_number < currentRound) {
+          console.log(`[GameInProgress] Ignorando round-started para Round ${data.round_number} (round actual: ${currentRound})`);
+          return;
+        }
+
+        console.log(`[GameInProgress] Nueva ronda iniciada: Round ${data.round_number} (round anterior: ${currentRound})`);
         
-        // IMPORTANTE: Recargar rounds para obtener el pattern actualizado del nuevo round
+        // CRÍTICO: Recargar rounds para obtener el pattern actualizado del nuevo round
+        // Esto asegura que el pattern mostrado sea el correcto del round activo
         try {
           const updatedRoundsData = await getRoomRounds(roomId);
           // IMPORTANTE: Ordenar rounds por round_number para asegurar que el índice corresponda al round
@@ -784,6 +458,27 @@ export default function GameInProgress() {
             return mapPatternToBingoType(pattern);
           });
           setRoundBingoTypes(updatedBingoTypes);
+          
+          // CRÍTICO: Buscar el round activo y actualizar currentRound si es necesario
+          // Esto asegura que currentRound siempre apunte al round que realmente está corriendo
+          const activeRound = sortedUpdatedRounds.find((r) => {
+            const status = typeof r.status_id === "object" && r.status_id
+              ? r.status_id.name
+              : "";
+            return status === "in_progress" || status === "starting";
+          });
+          
+          if (activeRound) {
+            console.log(`[GameInProgress] Round activo detectado: Round ${activeRound.round_number}, Pattern: ${typeof activeRound.pattern_id === "object" && activeRound.pattern_id ? activeRound.pattern_id.name : "unknown"}`);
+            if (activeRound.round_number !== currentRound) {
+              setCurrentRound(activeRound.round_number);
+            }
+          } else {
+            // Si no hay round activo, usar el round del evento
+            console.log(`[GameInProgress] No se encontró round activo, usando round del evento: ${data.round_number}`);
+            setCurrentRound(data.round_number);
+          }
+          
           console.log(`[GameInProgress] Patterns actualizados para ${sortedUpdatedRounds.length} rounds`);
         } catch (error) {
           console.error(`[GameInProgress] Error al recargar rounds para actualizar patterns:`, error);
@@ -793,6 +488,8 @@ export default function GameInProgress() {
         // Esto asegura que el UI muestre "Iniciando juego..." en lugar del countdown
         setRoundTransitionCountdown(null);
         setNextRoundNumber(null);
+        setRoundTransitionCountdownFinish(null);
+        setRoundStartCountdownFinish(null);
         
         // Actualizar round actual
         setCurrentRound(data.round_number);
@@ -814,48 +511,52 @@ export default function GameInProgress() {
         setTimeoutCountdown(null);
         setTimeoutStartTime(null);
         setBingoClaimCountdown(null); // Limpiar countdown de bingo claim
-        setWinningCardIndex(null);
+        setBingoClaimCountdownFinish(null);
         setShowConfetti(false);
         setBingoValidationOpen(false);
         setRoomStartCountdown(null); // Limpiar countdown de inicio de sala
+        setRoomStartCountdownFinish(null);
         
         // IMPORTANTE: Indicar que el juego está iniciando (mostrar "Iniciando juego...")
         // Esto se limpiará cuando llegue el primer número
         setIsGameStarting(true);
         
-        // IMPORTANTE: NO cargar números llamados aquí para rondas > 1
-        // Solo esperar a que lleguen los eventos en tiempo real para evitar duplicados
-        // Solo cargar números si es la primera ronda y el usuario se conecta tarde
-        if (data.round_number === 1) {
-          try {
-            const calledNumbersData = await getCalledNumbers(roomId, data.round_number);
-            if (calledNumbersData.length > 0) {
-              const calledSet = new Set(calledNumbersData.map(cn => cn.number));
-              setCalledNumbers(calledSet);
-              
-              const lastCalled = calledNumbersData[calledNumbersData.length - 1];
-              setCurrentNumber(lastCalled.number);
-              setLastCalledTimestamp(new Date(lastCalled.called_at).getTime());
-              
-              const lastThree = calledNumbersData
-                .slice(-3)
-                .reverse()
-                .map((cn) => cn.number);
-              setLastNumbers(lastThree);
-              
-              // Si ya hay números, el juego ya comenzó
-              setIsGameStarting(false);
-              setIsCallingNumber(true);
-            }
-          } catch (error) {
-            console.error("Error al cargar números de la nueva ronda:", error);
+        // CRÍTICO: Cargar números llamados si ya hay números en la nueva ronda
+        // Esto asegura que el usuario vea los números inmediatamente sin necesidad de recargar
+        try {
+          const calledNumbersData = await getCalledNumbers(roomId, data.round_number);
+          if (calledNumbersData.length > 0) {
+            console.log(`[GameInProgress] Cargando ${calledNumbersData.length} números ya llamados para Round ${data.round_number}`);
+            const calledSet = new Set(calledNumbersData.map(cn => cn.number));
+            setCalledNumbers(calledSet);
+            
+            const lastCalled = calledNumbersData[calledNumbersData.length - 1];
+            setCurrentNumber(lastCalled.number);
+            setLastCalledTimestamp(new Date(lastCalled.called_at).getTime());
+            
+            const lastThree = calledNumbersData
+              .slice(-3)
+              .reverse()
+              .map((cn) => cn.number);
+            setLastNumbers(lastThree);
+            
+            // Si ya hay números, el juego ya comenzó
+            setIsGameStarting(false);
+            setIsCallingNumber(true);
+            setRoundEnded(false);
+            setRoundFinished(false);
+            console.log(`[GameInProgress] ✅ Round ${data.round_number} ya tiene ${calledNumbersData.length} números llamados. Estado actualizado.`);
+          } else {
+            console.log(`[GameInProgress] Round ${data.round_number} aún no tiene números llamados. Esperando primer número...`);
           }
+        } catch (error) {
+          console.error(`[GameInProgress] Error al cargar números de Round ${data.round_number}:`, error);
         }
       }
     });
 
     // Escuchar eventos de bingo reclamado
-    const unsubscribeBingoClaimed = onBingoClaimed((data) => {
+    const unsubscribeBingoClaimed = onBingoClaimed(async (data) => {
       if (!isMounted) return;
 
       // IMPORTANTE: Procesar el evento si es para el round actual O si el round_number es mayor
@@ -876,6 +577,97 @@ export default function GameInProgress() {
           setProgress(0);
           setTimeoutCountdown(null);
           setTimeoutStartTime(null);
+          
+          // Cerrar TODOS los modales de cartones cuando hay bingo
+          setModalOpen(false);
+          setPreviewCardIndex(null);
+          
+          // Obtener todos los ganadores de la ronda actual
+          try {
+            console.log(`[GameInProgress] Obteniendo ganadores para Round ${data.round_number}...`);
+            const winnersData = await getRoomWinners(roomId);
+            const roundWinners = winnersData.filter(w => w.round_number === data.round_number);
+            console.log(`[GameInProgress] Encontrados ${roundWinners.length} ganador(es) para Round ${data.round_number}`);
+            
+            // CRÍTICO: Cargar números llamados desde el backend si no están actualizados
+            // Esto asegura que tengamos todos los números necesarios para marcar los cartones
+            let allCalledNumbers = calledNumbers;
+            try {
+              const calledNumbersData = await getCalledNumbers(roomId, data.round_number);
+              if (calledNumbersData.length > 0) {
+                allCalledNumbers = new Set(calledNumbersData.map(cn => cn.number));
+                setCalledNumbers(allCalledNumbers);
+                console.log(`[GameInProgress] Cargados ${calledNumbersData.length} números llamados para validación de bingo`);
+              }
+            } catch (error) {
+              console.error(`[GameInProgress] Error al cargar números llamados para validación:`, error);
+            }
+            
+            // Construir array de WinnerData para el modal
+            const winnersForModal: import("../Componets/BingoValidationModal").WinnerData[] = [];
+            
+            for (const winner of roundWinners) {
+              try {
+                const { api } = await import("../Services/api");
+                const cardResponse = await api.get(`/cards/${winner.card_id}`);
+                
+                if (cardResponse.data) {
+                  const cardData = cardResponse.data;
+                  const cardNumbers = convertCardNumbers(cardData.numbers_json);
+                  const cardMarked = new Set<string>();
+                  
+                  // Obtener los números marcados del cartón ganador usando los números llamados
+                  allCalledNumbers.forEach((num) => {
+                    for (let row = 0; row < cardNumbers.length; row++) {
+                      for (let col = 0; col < cardNumbers[row].length; col++) {
+                        const cardNum = cardNumbers[row][col];
+                        if (cardNum !== 0) {
+                          const numFormat = numberToBingoFormat(cardNum);
+                          if (numFormat === num) {
+                            cardMarked.add(num);
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  });
+                  
+                  // Calcular los números del patrón de bingo
+                  const bingoPatternNumbers = getBingoPatternNumbers(
+                    cardNumbers,
+                    cardMarked,
+                    currentBingoType
+                  );
+                  
+                  winnersForModal.push({
+                    card: cardNumbers,
+                    cardCode: cardData.code || "N/A",
+                    markedNumbers: cardMarked,
+                    bingoPatternNumbers: bingoPatternNumbers,
+                  });
+                  
+                  console.log(`[GameInProgress] ✅ Cartón ganador ${cardData.code} procesado correctamente`);
+                }
+              } catch (cardError) {
+                console.error(`[GameInProgress] Error al obtener cartón ganador ${winner.card_id}:`, cardError);
+              }
+            }
+                  
+            if (winnersForModal.length > 0) {
+              // Encontrar el índice del ganador actual (el que acaba de reclamar bingo)
+              const currentWinnerIdx = roundWinners.findIndex(w => w.card_id === data.winner.card_id);
+              console.log(`[GameInProgress] Abriendo modal de validación con ${winnersForModal.length} ganador(es)`);
+              setCurrentRoundWinners(winnersForModal);
+              setCurrentWinnerIndex(currentWinnerIdx >= 0 ? currentWinnerIdx : 0);
+              setBingoValidationOpen(true);
+              setRoundFinished(true);
+              setRoundEnded(true);
+            } else {
+              console.warn(`[GameInProgress] ⚠️ No se pudieron cargar los datos de los ganadores para mostrar el modal`);
+            }
+          } catch (error) {
+            console.error("[GameInProgress] Error al obtener ganadores de la ronda:", error);
+          }
         }
       }
     });
@@ -896,12 +688,18 @@ export default function GameInProgress() {
           setCurrentRound(data.round_number);
         }
         
-        if (data.seconds_remaining > 0) {
+        if (data.finish_timestamp) {
+          // Usar timestamp para sincronización precisa
+          setBingoClaimCountdownFinish(data.finish_timestamp);
+          // El hook calculará el tiempo restante automáticamente
+        } else if (data.seconds_remaining > 0) {
+          // Fallback si no hay timestamp (compatibilidad hacia atrás)
           setBingoClaimCountdown(data.seconds_remaining);
         } else {
           // Cuando llega a 0, limpiar el countdown (la ronda se finalizará automáticamente)
           console.log(`[GameInProgress] Ventana de bingo cerrada. Finalizando round ${data.round_number}...`);
           setBingoClaimCountdown(null);
+          setBingoClaimCountdownFinish(null);
         }
       }
     });
@@ -929,17 +727,90 @@ export default function GameInProgress() {
 
       if (data.room_id === roomId) {
         console.log(`[GameInProgress] Countdown de transición: ${data.seconds_remaining}s para Round ${data.next_round_number}`);
-        if (data.seconds_remaining > 0) {
+        if (data.finish_timestamp) {
+          // Usar timestamp para sincronización precisa
+          setRoundTransitionCountdownFinish(data.finish_timestamp);
+          setNextRoundNumber(data.next_round_number);
+          setIsCallingNumber(false);
+          // El hook calculará el tiempo restante automáticamente
+        } else if (data.seconds_remaining > 0) {
+          // Fallback si no hay timestamp (compatibilidad hacia atrás)
           setRoundTransitionCountdown(data.seconds_remaining);
           setNextRoundNumber(data.next_round_number);
-          // IMPORTANTE: Asegurar que isCallingNumber esté en false durante el countdown
           setIsCallingNumber(false);
         } else {
           // Cuando llega a 0, limpiar el countdown (la nueva ronda comenzará automáticamente)
           console.log(`[GameInProgress] Countdown de transición completado. Esperando inicio de Round ${data.next_round_number}...`);
           setRoundTransitionCountdown(null);
           setNextRoundNumber(null);
+          setRoundTransitionCountdownFinish(null);
           // El evento round-started se emitirá inmediatamente después, que limpiará todo
+        }
+      }
+    });
+
+    // Escuchar eventos de sala en pending
+    const unsubscribeRoomPending = onRoomPending((data) => {
+      if (!isMounted) return;
+
+      if (data.room_id === roomId) {
+        console.log(`[GameInProgress] Sala ${data.room_name} está en estado 'pending'. Próximo round: ${data.next_round_number || 'N/A'}`);
+        // Limpiar estados de la ronda anterior
+        setRoundFinished(true);
+        setRoundEnded(true);
+        setIsCallingNumber(false);
+        setProgress(0);
+        setBingoClaimCountdown(null);
+        setRoundTransitionCountdown(null);
+        setNextRoundNumber(data.next_round_number || null);
+        // El countdown de transición comenzará automáticamente desde el backend
+      }
+    });
+
+    // Escuchar actualizaciones de status de sala en tiempo real
+    const unsubscribeRoomStatusUpdated = onRoomStatusUpdated((data) => {
+      if (!isMounted) return;
+
+      if (data.room_id === roomId) {
+        console.log(`[GameInProgress] Status de sala actualizado: ${data.status}`);
+        
+        // CRÍTICO: Actualizar roomFinished basado en el nuevo status
+        if (data.status === "finished") {
+          console.log(`[GameInProgress] ⚠️ Sala marcada como 'finished', actualizando roomFinished a true`);
+          setRoomFinished(true);
+        } else if (data.status === "in_progress" || data.status === "pending") {
+          console.log(`[GameInProgress] ✅ Sala marcada como '${data.status}', actualizando roomFinished a false`);
+          setRoomFinished(false);
+        }
+        
+        // Actualizar el status de la sala localmente
+        if (room) {
+          setRoom({
+            ...room,
+            status: data.status === "in_progress" ? "in_progress" : 
+                    data.status === "pending" ? "pending" :
+                    data.status === "finished" ? "finished" : room.status,
+          });
+        }
+      }
+    });
+
+    // Escuchar eventos de countdown de inicio de sala (pending → in_progress)
+    const unsubscribeRoomStartCountdown = onRoomStartCountdown((data) => {
+      if (!isMounted) return;
+
+      if (data.room_id === roomId) {
+        console.log(`[GameInProgress] Countdown de inicio de sala: ${data.seconds_remaining}s`);
+        if (data.finish_timestamp) {
+          // Usar timestamp para sincronización precisa
+          setRoomStartCountdownFinish(data.finish_timestamp);
+          // El hook calculará el tiempo restante automáticamente
+        } else if (data.seconds_remaining > 0) {
+          // Fallback si no hay timestamp (compatibilidad hacia atrás)
+          setRoomStartCountdown(data.seconds_remaining);
+        } else {
+          setRoomStartCountdown(null);
+          setRoomStartCountdownFinish(null);
         }
       }
     });
@@ -948,10 +819,24 @@ export default function GameInProgress() {
     const unsubscribeRoundStartCountdown = onRoundStartCountdown((data) => {
       if (!isMounted) return;
 
-      if (data.room_id === roomId && data.round_number === currentRound) {
+      // IMPORTANTE: Aceptar countdown para el round actual O para un round mayor
+      // Esto permite que el frontend se actualice incluso si hay problemas de sincronización
+      if (data.room_id === roomId && (data.round_number === currentRound || data.round_number >= currentRound)) {
+        // Si el round del evento es mayor, actualizar el round actual
+        if (data.round_number > currentRound) {
+          console.log(`[GameInProgress] Actualizando round actual desde countdown: Round ${data.round_number} (antes: Round ${currentRound})`);
+          setCurrentRound(data.round_number);
+        }
         console.log(`[GameInProgress] Countdown antes de empezar Round ${data.round_number}: ${data.seconds_remaining}s`);
-        if (data.seconds_remaining > 0) {
-          // Mostrar countdown de inicio de ronda
+        if (data.finish_timestamp) {
+          // Usar timestamp para sincronización precisa
+          setRoundStartCountdownFinish(data.finish_timestamp);
+          setNextRoundNumber(data.round_number);
+          setIsCallingNumber(false);
+          setIsGameStarting(true);
+          // El hook calculará el tiempo restante automáticamente
+        } else if (data.seconds_remaining > 0) {
+          // Fallback si no hay timestamp (compatibilidad hacia atrás)
           setRoundTransitionCountdown(data.seconds_remaining);
           setNextRoundNumber(data.round_number);
           setIsCallingNumber(false);
@@ -961,7 +846,70 @@ export default function GameInProgress() {
           console.log(`[GameInProgress] Countdown de inicio completado. Los números comenzarán a llamarse...`);
           setRoundTransitionCountdown(null);
           setNextRoundNumber(null);
+          setRoundStartCountdownFinish(null);
+          setIsGameStarting(false);
           // isCallingNumber se activará cuando llegue el primer número
+        }
+      }
+    });
+
+    // Escuchar eventos de sala finalizada
+    const unsubscribeRoomFinished = onRoomFinished(async (data) => {
+      if (!isMounted) return;
+
+      if (data.room_id === roomId) {
+        console.log(`[GameInProgress] Sala ${data.room_name} finalizada. Cargando ganadores...`);
+        
+        // Marcar la sala como finalizada
+        setRoomFinished(true);
+        setRoundFinished(true);
+        setRoundEnded(true);
+        setIsCallingNumber(false);
+        setProgress(0);
+        setRoundTransitionCountdown(null);
+        setNextRoundNumber(null);
+        setBingoClaimCountdown(null);
+        setTimeoutCountdown(null);
+        setTimeoutStartTime(null);
+
+        // Cargar ganadores de todas las rondas
+        try {
+          const winnersData = await getRoomWinners(roomId);
+          setWinners(winnersData);
+          
+          // Convertir ganadores a cartones y crear mapa de números ganadores
+          const winnerCards: BingoGrid[] = [];
+          const winnerCardsData: Array<{ _id: string; code: string }> = [];
+          const winningNumbers = new Map<number, Set<string>>();
+          
+          // Ordenar ganadores por round_number para asegurar orden correcto
+          const sortedWinners = [...winnersData].sort((a, b) => a.round_number - b.round_number);
+          
+          sortedWinners.forEach((winner, index) => {
+            console.log(`[GameInProgress] Procesando ganador - Ronda ${winner.round_number}: Cartón ${winner.card_code} (ID: ${winner.card_id})`);
+            winnerCards.push(convertCardNumbers(winner.card_numbers));
+            winnerCardsData.push({ _id: winner.card_id, code: winner.card_code });
+            winningNumbers.set(index, new Set(winner.bingo_numbers));
+          });
+          
+          console.log(`[GameInProgress] Total ganadores cargados: ${winnerCards.length}`);
+          console.log(`[GameInProgress] Códigos de cartones:`, winnerCardsData.map(c => c.code));
+          
+          setPlayerCards(winnerCards);
+          setPlayerCardsData(winnerCardsData);
+          setWinningNumbersMap(winningNumbers);
+          
+          // Cargar números llamados de todas las rondas para mostrar en los cartones ganadores
+          const allCalledNumbers = new Set<string>();
+          for (const winner of winnersData) {
+            winner.called_numbers.forEach((num: string) => allCalledNumbers.add(num));
+          }
+          setCalledNumbers(allCalledNumbers);
+          
+          // Establecer el round actual al último round (ronda 3)
+          setCurrentRound(totalRounds);
+        } catch (error) {
+          console.error(`[GameInProgress] Error al cargar ganadores:`, error);
         }
       }
     });
@@ -1126,16 +1074,124 @@ export default function GameInProgress() {
       unsubscribeRoundFinished();
       unsubscribeRoundTransitionCountdown();
       unsubscribeRoundStartCountdown();
+      unsubscribeRoomStartCountdown();
+      unsubscribeRoomPending();
+      unsubscribeRoomStatusUpdated();
+      unsubscribeRoomFinished();
       
-      // Salir de la room
-      leaveRoom(roomId);
+      // CRÍTICO: NO llamar leaveRoom aquí - se maneja en el efecto separado
+      // Esto previene loops infinitos cuando los estados cambian
     };
+    // Nota: Este efecto maneja muchos eventos WebSocket y tiene dependencias intencionalmente limitadas
+    // para evitar re-ejecuciones innecesarias. Los setters son estables y no necesitan estar en las dependencias.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameStarted, roomId, currentRound, countdown, isCallingNumber, roundEnded, roundFinished, lastCalledTimestamp, timeoutCountdown, timeoutStartTime]);
 
+  // Hook para actualizar countdowns basados en timestamps del servidor
+  React.useEffect(() => {
+    if (!gameStarted || !roomId) return;
+
+    const updateCountdowns = () => {
+      const now = Date.now();
+
+      // Actualizar countdown de inicio de sala
+      if (roomStartCountdownFinish) {
+        const remaining = Math.max(0, Math.floor((roomStartCountdownFinish - now) / 1000));
+        if (remaining > 0) {
+          setRoomStartCountdown(remaining);
+        } else {
+          setRoomStartCountdown(null);
+          setRoomStartCountdownFinish(null);
+        }
+      }
+
+      // Actualizar countdown de inicio de round (tiene prioridad sobre transición si ambos están activos)
+      if (roundStartCountdownFinish) {
+        const remaining = Math.max(0, Math.floor((roundStartCountdownFinish - now) / 1000));
+        if (remaining > 0) {
+          setRoundTransitionCountdown(remaining);
+        } else {
+          setRoundTransitionCountdown(null);
+          setRoundStartCountdownFinish(null);
+          setIsGameStarting(false);
+        }
+      } else if (roundTransitionCountdownFinish) {
+        // Actualizar countdown de transición entre rounds (solo si no hay countdown de inicio de round)
+        const remaining = Math.max(0, Math.floor((roundTransitionCountdownFinish - now) / 1000));
+        if (remaining > 0) {
+          setRoundTransitionCountdown(remaining);
+        } else {
+          setRoundTransitionCountdown(null);
+          setRoundTransitionCountdownFinish(null);
+        }
+      }
+
+      // Actualizar countdown de ventana de bingo
+      if (bingoClaimCountdownFinish) {
+        const remaining = Math.max(0, Math.floor((bingoClaimCountdownFinish - now) / 1000));
+        if (remaining > 0) {
+          setBingoClaimCountdown(remaining);
+        } else {
+          setBingoClaimCountdown(null);
+          setBingoClaimCountdownFinish(null);
+        }
+      }
+    };
+
+    // Actualizar cada segundo
+    const interval = setInterval(updateCountdowns, 1000);
+    updateCountdowns(); // Ejecutar inmediatamente
+
+    return () => clearInterval(interval);
+  }, [gameStarted, roomId, roomStartCountdownFinish, roundStartCountdownFinish, roundTransitionCountdownFinish, bingoClaimCountdownFinish]);
+
   // Obtener el pattern del round actual directamente desde roundsData
-  // Esto asegura que siempre obtengamos el pattern correcto del round actual
+  // CRÍTICO: Usar la misma lógica que Home.tsx - buscar el round con status "in_progress" o "starting"
+  // Esto asegura que siempre obtengamos el pattern correcto del round activo
   const currentBingoType: BingoType = React.useMemo(() => {
-    // Buscar el round actual en roundsData
+    // CRÍTICO: Buscar el round activo (in_progress o starting) en lugar de usar currentRound
+    // Esto asegura que siempre obtengamos el pattern del round que realmente está corriendo
+    const activeRound = roundsData.find((r) => {
+      const status = typeof r.status_id === "object" && r.status_id
+        ? r.status_id.name
+        : "";
+      return status === "in_progress" || status === "starting";
+    });
+    
+    // Usar totalRounds del estado (obtenido de room.max_rounds)
+    const maxRounds = totalRounds || 3;
+    
+    // Si hay un round activo, usar su pattern
+    if (activeRound) {
+      const pattern = typeof activeRound.pattern_id === "object" && activeRound.pattern_id
+        ? activeRound.pattern_id.name
+        : "";
+      
+      console.log(`[GameInProgress] Round activo encontrado: Round ${activeRound.round_number}/${maxRounds}, Pattern: ${pattern}`);
+      
+      // Validar que el pattern sea correcto según la ley
+      const isLastRound = activeRound.round_number === maxRounds;
+      
+      if (!isLastRound) {
+        // NO es la última ronda: NUNCA puede ser "full"
+        if (pattern === "full") {
+          console.warn(`[GameInProgress] ⚠️ LEY VIOLADA: Round ${activeRound.round_number} (NO es la última de ${maxRounds}) tiene pattern "full". Usando fallback seguro.`);
+          return "horizontal"; // Pattern seguro para rounds que no son la última
+        }
+      } else {
+        // Es la última ronda: SIEMPRE debe ser "full"
+        if (pattern !== "full") {
+          console.warn(`[GameInProgress] ⚠️ LEY VIOLADA: Round ${activeRound.round_number} (última ronda de ${maxRounds}) tiene pattern "${pattern}" en lugar de "full". Usando "fullCard".`);
+          return "fullCard";
+        }
+      }
+      
+      const bingoType = mapPatternToBingoType(pattern);
+      console.log(`[GameInProgress] ✅ Pattern correcto: Round ${activeRound.round_number} → ${bingoType}`);
+      return bingoType;
+    }
+    
+    // Si no hay round activo, buscar por currentRound como fallback
     const currentRoundData = roundsData.find((r) => r.round_number === currentRound);
     
     if (currentRoundData) {
@@ -1143,17 +1199,19 @@ export default function GameInProgress() {
         ? currentRoundData.pattern_id.name
         : "";
       
+      console.log(`[GameInProgress] Usando round ${currentRound}/${maxRounds} como fallback, Pattern: ${pattern}`);
+      
       // Validar que el pattern sea correcto según la ley
-      if (currentRound === 1 || currentRound === 2) {
-        // Rounds 1 y 2 NUNCA pueden ser "full"
+      const isLastRound = currentRound === maxRounds;
+      
+      if (!isLastRound) {
         if (pattern === "full") {
-          console.warn(`[GameInProgress] ⚠️ LEY VIOLADA: Round ${currentRound} tiene pattern "full". Usando fallback seguro.`);
-          return "horizontal"; // Pattern seguro para rounds 1 y 2
+          console.warn(`[GameInProgress] ⚠️ LEY VIOLADA: Round ${currentRound} (NO es la última de ${maxRounds}) tiene pattern "full". Usando fallback seguro.`);
+          return "horizontal";
         }
-      } else if (currentRound === 3) {
-        // Round 3 SIEMPRE debe ser "full"
+      } else {
         if (pattern !== "full") {
-          console.warn(`[GameInProgress] ⚠️ LEY VIOLADA: Round 3 tiene pattern "${pattern}" en lugar de "full". Usando "fullCard".`);
+          console.warn(`[GameInProgress] ⚠️ LEY VIOLADA: Round ${currentRound} (última ronda de ${maxRounds}) tiene pattern "${pattern}" en lugar de "full". Usando "fullCard".`);
           return "fullCard";
         }
       }
@@ -1163,18 +1221,18 @@ export default function GameInProgress() {
     
     // Fallback: usar roundBingoTypes si roundsData no está disponible
     if (roundBingoTypes.length > 0 && roundBingoTypes[currentRound - 1]) {
+      console.log(`[GameInProgress] Usando roundBingoTypes[${currentRound - 1}] como fallback`);
       return roundBingoTypes[currentRound - 1];
     }
     
     // Fallback final: pattern seguro según el round
-    if (currentRound === 1 || currentRound === 2) {
-      return "horizontal"; // Pattern seguro para rounds 1 y 2 (nunca deben ser fullCard)
-    } else if (currentRound === 3) {
-      return "fullCard"; // Round 3 siempre es fullCard
+    const isLastRound = currentRound === maxRounds;
+    if (!isLastRound) {
+      return "horizontal"; // Pattern seguro para rounds que no son la última
+    } else {
+      return "fullCard"; // Última ronda siempre es fullCard
     }
-    
-    return "horizontal"; // Default seguro
-  }, [roundsData, roundBingoTypes, currentRound]);
+  }, [roundsData, roundBingoTypes, currentRound, totalRounds]);
 
   const getMarkedForCard = React.useCallback((cardIndex: number): Set<string> => {
     return markedNumbers.get(cardIndex) || new Set();
@@ -1217,7 +1275,6 @@ export default function GameInProgress() {
               setRoundEnded(true);
               setIsCallingNumber(false);
               setProgress(0);
-              setWinningCardIndex(i);
               setShowConfetti(true);
               setBingoValidationOpen(true);
               
@@ -1235,6 +1292,7 @@ export default function GameInProgress() {
     };
 
     checkForBingo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calledNumbers, markedNumbers, playerCards, roundEnded, isCallingNumber, currentBingoType, getMarkedForCard, roomId, currentRound]);
 
   const roundPrizes = React.useMemo(
@@ -1345,13 +1403,17 @@ export default function GameInProgress() {
         markedNumbers: markedNumbersArray
       });
 
-      // Si el bingo es válido, mostrar confetti y actualizar estado
+      // Si el bingo es válido, cerrar el modal del cartón y mostrar confetti
       if (result.success) {
-        setRoundFinished(true);
-        setWinningCardIndex(previewCardIndex);
-        setShowConfetti(true);
+        // Cerrar el modal del cartón primero
         handleCloseModal();
-        setBingoValidationOpen(true);
+        
+        // Actualizar estado
+        setRoundFinished(true);
+        setShowConfetti(true);
+        
+        // El modal de validación se abrirá cuando llegue el evento bingo-claimed
+        // que se emite desde el backend para todos los usuarios
         
         // Detener el juego
         setRoundEnded(true);
@@ -1372,7 +1434,20 @@ export default function GameInProgress() {
 
   const handleCloseBingoValidation = () => {
     setBingoValidationOpen(false);
-    setWinningCardIndex(null);
+    setCurrentRoundWinners([]);
+    setCurrentWinnerIndex(0);
+  };
+
+  const handlePreviousWinner = () => {
+    if (currentWinnerIndex > 0) {
+      setCurrentWinnerIndex(currentWinnerIndex - 1);
+    }
+  };
+
+  const handleNextWinner = () => {
+    if (currentWinnerIndex < currentRoundWinners.length - 1) {
+      setCurrentWinnerIndex(currentWinnerIndex + 1);
+    }
   };
 
   // Loading state
@@ -1516,7 +1591,6 @@ export default function GameInProgress() {
               nextRoundNumber={roomFinished ? null : nextRoundNumber}
               roomStartCountdown={roomFinished ? null : roomStartCountdown}
               roomScheduledAt={roomFinished ? null : roomScheduledAt}
-              timeUntilStart={roomFinished ? null : timeUntilStart}
               roomFinished={roomFinished}
               bingoClaimCountdown={roomFinished ? null : bingoClaimCountdown}
               isCallingNumber={isCallingNumber}
@@ -1569,13 +1643,15 @@ export default function GameInProgress() {
         );
       })()}
 
-      {winningCardIndex !== null && playerCards[winningCardIndex] && (
+      {/* Modal de validación con múltiples ganadores */}
+      {currentRoundWinners.length > 0 && (
         <BingoValidationModal
           open={bingoValidationOpen}
           onClose={handleCloseBingoValidation}
-          winningCard={playerCards[winningCardIndex]}
-          winningCardCode={playerCardsData[winningCardIndex]?.code || String(winningCardIndex + 1)}
-          markedNumbers={getMarkedForCard(winningCardIndex)}
+          winners={currentRoundWinners}
+          currentWinnerIndex={currentWinnerIndex}
+          onPreviousWinner={handlePreviousWinner}
+          onNextWinner={handleNextWinner}
           calledNumbers={calledNumbers}
         />
       )}

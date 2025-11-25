@@ -41,6 +41,28 @@ export const hasBingo = (
       return false;
     }
 
+    case "diagonal": {
+      // Diagonal principal (de arriba-izquierda a abajo-derecha)
+      let mainDiagonal = true;
+      for (let i = 0; i < 5; i++) {
+        if (!isMarked(card[i][i])) {
+          mainDiagonal = false;
+          break;
+        }
+      }
+      if (mainDiagonal) return true;
+
+      // Diagonal secundaria (de arriba-derecha a abajo-izquierda)
+      let secondaryDiagonal = true;
+      for (let i = 0; i < 5; i++) {
+        if (!isMarked(card[i][4 - i])) {
+          secondaryDiagonal = false;
+          break;
+        }
+      }
+      return secondaryDiagonal;
+    }
+
     case "fourCorners": {
       return (
         isMarked(card[0][0]) &&
@@ -130,6 +152,44 @@ export const getBingoPatternNumbers = (
           }
           return bingoNumbers;
         }
+      }
+      return bingoNumbers;
+    }
+
+    case "diagonal": {
+      // Diagonal principal (de arriba-izquierda a abajo-derecha)
+      let mainDiagonal = true;
+      const mainDiagNumbers: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const num = card[i][i];
+        if (!isMarked(num)) {
+          mainDiagonal = false;
+          break;
+        }
+        if (num !== 0) {
+          mainDiagNumbers.push(numberToBingoFormat(num));
+        }
+      }
+      if (mainDiagonal) {
+        mainDiagNumbers.forEach(n => bingoNumbers.add(n));
+        return bingoNumbers;
+      }
+
+      // Diagonal secundaria (de arriba-derecha a abajo-izquierda)
+      let secondaryDiagonal = true;
+      const secDiagNumbers: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const num = card[i][4 - i];
+        if (!isMarked(num)) {
+          secondaryDiagonal = false;
+          break;
+        }
+        if (num !== 0) {
+          secDiagNumbers.push(numberToBingoFormat(num));
+        }
+      }
+      if (secondaryDiagonal) {
+        secDiagNumbers.forEach(n => bingoNumbers.add(n));
       }
       return bingoNumbers;
     }

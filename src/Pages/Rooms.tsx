@@ -8,6 +8,7 @@ import SectionHeader from "../Componets/SectionHeader";
 import { getRooms, type Room } from "../Services/rooms.service";
 import BackgroundStars from "../Componets/BackgroundStars";
 import { useAuth } from "../hooks/useAuth";
+import { onRoomStatusUpdated } from "../Services/socket.service";
 
 export default function Rooms() {
   const navigate = useNavigate();
@@ -39,6 +40,27 @@ export default function Rooms() {
     };
 
     fetchRooms();
+  }, []);
+  
+  // Escuchar actualizaciones de status de salas en tiempo real
+  React.useEffect(() => {
+    const unsubscribeStatusUpdated = onRoomStatusUpdated((data) => {
+      console.log(`[Rooms] Status actualizado para sala ${data.room_name}: ${data.status}`);
+      // Refrescar salas cuando se actualiza el status
+      const fetchRooms = async () => {
+        try {
+          const data = await getRooms();
+          setRooms(data);
+        } catch (err: unknown) {
+          console.error("Error al refrescar salas:", err);
+        }
+      };
+      fetchRooms();
+    });
+
+    return () => {
+      unsubscribeStatusUpdated();
+    };
   }, []);
 
   const handleJoin = (roomId: string) => {

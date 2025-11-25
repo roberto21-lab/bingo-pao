@@ -276,6 +276,44 @@ export const onNumberCalled = (
   return () => {};
 };
 
+// Escuchar evento de sala en pending
+export const onRoomPending = (
+  callback: (data: {
+    room_id: string;
+    room_name: string;
+    next_round_number?: number;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "room_name" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          room_name: string;
+          next_round_number?: number;
+        });
+      }
+    };
+    
+    socket.on("room-pending", handler);
+    
+    return () => {
+      socket?.off("room-pending", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 // Escuchar evento de round iniciado
 export const onRoundStarted = (
   callback: (data: {
@@ -350,12 +388,54 @@ export const onRoundFinished = (
   return () => {};
 };
 
+// Escuchar evento de countdown de inicio de sala (pending → in_progress)
+export const onRoomStartCountdown = (
+  callback: (data: {
+    room_id: string;
+    seconds_remaining: number;
+    finish_timestamp?: number;
+    finish_time?: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "seconds_remaining" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          seconds_remaining: number;
+          finish_timestamp?: number;
+          finish_time?: string;
+        });
+      }
+    };
+    
+    socket.on("room-start-countdown", handler);
+    
+    return () => {
+      socket?.off("room-start-countdown", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 // Escuchar evento de countdown antes de empezar a llamar números en una nueva ronda
 export const onRoundStartCountdown = (
   callback: (data: {
     round_number: number;
     room_id: string;
     seconds_remaining: number;
+    finish_timestamp?: number;
+    finish_time?: string;
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -375,6 +455,8 @@ export const onRoundStartCountdown = (
           round_number: number;
           room_id: string;
           seconds_remaining: number;
+          finish_timestamp?: number;
+          finish_time?: string;
         });
       }
     };
@@ -490,6 +572,9 @@ export const onRoundTransitionCountdown = (
     room_id: string;
     seconds_remaining: number;
     next_round_number: number;
+    has_winner?: boolean;
+    finish_timestamp?: number;
+    finish_time?: string;
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -509,6 +594,9 @@ export const onRoundTransitionCountdown = (
           room_id: string;
           seconds_remaining: number;
           next_round_number: number;
+          has_winner?: boolean;
+          finish_timestamp?: number;
+          finish_time?: string;
         });
       }
     };
@@ -529,6 +617,8 @@ export const onBingoClaimCountdown = (
     round_number: number;
     room_id: string;
     seconds_remaining: number;
+    finish_timestamp?: number;
+    finish_time?: string;
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -605,6 +695,82 @@ export const onBingoClaimed = (
     
     return () => {
       socket?.off("bingo-claimed", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de actualización de status de sala
+export const onRoomStatusUpdated = (
+  callback: (data: {
+    room_id: string;
+    room_name: string;
+    status: string;
+    status_id: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "status" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          room_name: string;
+          status: string;
+          status_id: string;
+        });
+      }
+    };
+    
+    socket.on("room-status-updated", handler);
+    
+    return () => {
+      socket?.off("room-status-updated", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de sala finalizada
+export const onRoomFinished = (
+  callback: (data: {
+    room_id: string;
+    room_name: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "room_name" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          room_name: string;
+        });
+      }
+    };
+    
+    socket.on("room-finished", handler);
+    
+    return () => {
+      socket?.off("room-finished", handler);
     };
   }
   

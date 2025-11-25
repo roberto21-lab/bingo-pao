@@ -1,4 +1,4 @@
-export type BingoType = "horizontal" | "vertical" | "fourCorners" | "smallCross" | "fullCard";
+export type BingoType = "horizontal" | "vertical" | "diagonal" | "fourCorners" | "smallCross" | "fullCard";
 
 export const numberToBingoFormat = (num: number): string => {
   if (num === 0) return "FREE";
@@ -16,6 +16,8 @@ export const getBingoTypeName = (type: BingoType): string => {
       return "Línea Horizontal";
     case "vertical":
       return "Línea Vertical";
+    case "diagonal":
+      return "Línea Diagonal";
     case "fourCorners":
       return "4 Esquinas";
     case "smallCross":

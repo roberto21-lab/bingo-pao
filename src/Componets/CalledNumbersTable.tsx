@@ -12,11 +12,13 @@ import {
 type CalledNumbersTableProps = {
   calledNumbers: Set<string>;
   markedNumbers: Set<string>;
+  bingoPatternNumbers?: Set<string>; // Números que forman el patrón de bingo ganador
 };
 
 export default function CalledNumbersTable({
   calledNumbers,
   markedNumbers,
+  bingoPatternNumbers = new Set<string>(),
 }: CalledNumbersTableProps) {
   const getTableData = () => {
     const table = [
@@ -47,10 +49,26 @@ export default function CalledNumbersTable({
       }
     });
 
-    return table;
+    // Agregar números del patrón de bingo
+    const bingoNumbers: number[] = [];
+    bingoPatternNumbers.forEach((numStr) => {
+      if (numStr === "FREE") return;
+      const [letter, num] = numStr.split("-");
+      const numValue = parseInt(num);
+      const index = ["B", "I", "N", "G", "O"].indexOf(letter);
+      if (index !== -1 && !isNaN(numValue) && !bingoNumbers.includes(numValue)) {
+        bingoNumbers.push(numValue);
+        // También agregar a la columna correspondiente
+        if (!table[index].markedNumbers.includes(numValue)) {
+          table[index].markedNumbers.push(numValue);
+        }
+      }
+    });
+
+    return { table, bingoNumbers };
   };
 
-  const tableData = getTableData();
+  const { table: tableData, bingoNumbers } = getTableData();
 
   return (
     <>
@@ -101,26 +119,38 @@ export default function CalledNumbersTable({
                   const num = col.allNumbers[rowIndex];
                   const isCalled = col.calledNumbers.includes(num);
                   const isMarked = col.markedNumbers.includes(num);
+                  const isBingoNumber = bingoNumbers.includes(num);
 
-                  let backgroundColor = "transparent";
+                  let backgroundColor = "rgba(50, 50, 50, 0.5)"; // Gris oscuro para números no llamados
                   let borderColor = "rgba(255, 255, 255, 0.1)";
                   let fontWeight = 400;
+                  let textColor = "rgba(255, 255, 255, 0.3)"; // Gris claro para números no llamados
 
-                  if (isMarked) {
-                    backgroundColor = "rgba(227, 191, 112, 0.4)";
-                    borderColor = "rgba(227, 191, 112, 0.6)";
+                  if (isBingoNumber && isCalled) {
+                    // Números que coinciden con el bingo - DORADO
+                    backgroundColor = "rgba(227, 191, 112, 0.6)";
+                    borderColor = "rgba(227, 191, 112, 0.9)";
                     fontWeight = 900;
+                    textColor = "#ffffff";
+                  } else if (isCalled && !isBingoNumber) {
+                    // Números que salieron pero no coinciden con el bingo - VERDE
+                    backgroundColor = "rgba(76, 175, 80, 0.4)";
+                    borderColor = "rgba(76, 175, 80, 0.7)";
+                    fontWeight = 700;
+                    textColor = "#ffffff";
                   } else if (isCalled) {
+                    // Números llamados (fallback)
                     backgroundColor = "rgba(76, 175, 80, 0.3)";
                     borderColor = "rgba(76, 175, 80, 0.5)";
                     fontWeight = 700;
+                    textColor = "#ffffff";
                   }
 
                   return (
                     <TableCell
                       key={colIndex}
                       sx={{
-                        color: isMarked || isCalled ? "#ffffff" : "rgba(255, 255, 255, 0.5)",
+                        color: textColor,
                         textAlign: "center",
                         border: `1px solid ${borderColor}`,
                         backgroundColor: backgroundColor,

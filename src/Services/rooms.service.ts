@@ -65,7 +65,9 @@ function parseDecimal(decimal: ApiDecimal | string | number | undefined): number
 }
 
 // Función para mapear el status del backend al frontend
-function mapStatus(statusName?: string): "waiting" | "preparing" | "in_progress" | "locked" {
+// CRÍTICO: Esta función debe usarse en TODAS las páginas para unificar el status
+// Exportar para uso en otras páginas
+export function mapStatus(statusName?: string): "waiting" | "preparing" | "in_progress" | "locked" {
   if (!statusName) {
     console.warn("[rooms.service] Status name es undefined, usando 'waiting' por defecto");
     return "waiting";
@@ -74,7 +76,8 @@ function mapStatus(statusName?: string): "waiting" | "preparing" | "in_progress"
   switch (statusName) {
     case "waiting_players":
       return "waiting";
-    case "preparing":
+    case "pending":
+      // CRÍTICO: pending se mapea a "preparing" para mostrar que la sala está preparándose
       return "preparing";
     case "in_progress":
       return "in_progress";

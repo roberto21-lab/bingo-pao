@@ -22,6 +22,8 @@ import AuthToast from "../Componets/AuthToast";
 import AvailableRoomsPreview from "../Componets/AvailableRoomsPreview";
 import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
 import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
+import { getWalletByUser } from "../Services/wallets.service";
+import { onRoomStatusUpdated } from "../Services/socket.service";
 
 type ActiveRoom = {
   id: string;
@@ -33,9 +35,6 @@ type ActiveRoom = {
   currentPattern?: string; // Pattern de la ronda actual si la sala está activa
 };
 
-const AVAILABLE_BALANCE = 1250.75;
-const FROZEN_BALANCE = 0.0;
-
 export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -45,6 +44,9 @@ export default function Home() {
   const [error, setError] = React.useState<string | null>(null);
   const [showToast, setShowToast] = React.useState(true);
   const [openReport, setOpenReport] = React.useState(false);
+  const [availableBalance, setAvailableBalance] = React.useState<number>(0);
+  const [frozenBalance, setFrozenBalance] = React.useState<number>(0);
+  const [walletLoading, setWalletLoading] = React.useState(false);
 
   const BANKS = [
     "Banco de Venezuela",
@@ -65,6 +67,35 @@ export default function Home() {
   React.useEffect(() => {
     setShowToast(true);
   }, [isAuthenticated, user]);
+
+  // Cargar wallet del usuario cuando esté autenticado
+  React.useEffect(() => {
+    const fetchWallet = async () => {
+      if (!userId || !isAuthenticated) {
+        setAvailableBalance(0);
+        setFrozenBalance(0);
+        return;
+      }
+
+      try {
+        setWalletLoading(true);
+        const wallet = await getWalletByUser(userId);
+        setAvailableBalance(wallet.balance || 0);
+        setFrozenBalance(wallet.frozen_balance || 0);
+      } catch (error) {
+        console.error("Error al cargar wallet:", error);
+        // Si no hay wallet, mantener valores en 0
+        setAvailableBalance(0);
+        setFrozenBalance(0);
+      } finally {
+        setWalletLoading(false);
+      }
+    };
+
+    if (!authLoading) {
+      fetchWallet();
+    }
+  }, [userId, isAuthenticated, authLoading]);
 
   // Cargar salas disponibles cuando no hay usuario logueado
   React.useEffect(() => {
@@ -239,8 +270,18 @@ export default function Home() {
                 // Obtener rounds para determinar el estado
                 const rounds = await getRoomRounds(roomId);
 
-                // Determinar el estado basado en los rounds
+                // CRÍTICO: Usar el status real de la sala, no inferirlo de los rounds
+                // Esto asegura que todas las páginas muestren el mismo status
                 let status: "active" | "waiting" | "finished" = "waiting";
+                const roomStatus = room.status;
+                
+                if (roomStatus === "in_progress" || roomStatus === "preparing") {
+                  status = "active";
+                } else if (roomStatus === "locked") {
+                  status = "finished";
+                } else {
+                  status = "waiting";
+                }
 
                 let currentRound: number | undefined = undefined;
                 let currentPattern: string | undefined = undefined;
@@ -255,17 +296,7 @@ export default function Home() {
                     return statusObj?.name === "in_progress" || statusObj?.name === "starting";
                   });
 
-                  // Buscar si todos los rounds están finalizados
-                  const allFinished = rounds.every((round) => {
-                    const statusObj =
-                      typeof round.status_id === "object" && round.status_id
-                        ? round.status_id
-                        : null;
-                    return statusObj?.name === "finished";
-                  });
-
                   if (activeRound) {
-                    status = "active";
                     currentRound = activeRound.round_number;
                     // Obtener el pattern de la ronda activa (starting o in_progress)
                     if (activeRound.pattern_id) {
@@ -273,10 +304,7 @@ export default function Home() {
                         currentPattern = activeRound.pattern_id.name;
                       }
                     }
-                  } else if (allFinished) {
-                    status = "finished";
                   } else {
-                    status = "waiting";
                     // Si hay rounds pero ninguno en progreso, mostrar el último round creado
                     const sortedRounds = [...rounds].sort(
                       (a, b) => b.round_number - a.round_number
@@ -285,9 +313,6 @@ export default function Home() {
                       currentRound = sortedRounds[0].round_number;
                     }
                   }
-                } else {
-                  // Si no hay rounds, la room está esperando
-                  status = "waiting";
                 }
 
                 return {
@@ -575,14 +600,14 @@ export default function Home() {
           <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
             <BalanceCard
               title="Mi Saldo"
-              amount={AVAILABLE_BALANCE}
+              amount={walletLoading ? 0 : availableBalance}
               currency="USD"
               subtitle="Disponible"
               variant="gold"
             />
             <BalanceCard
               title="Saldo Congelado"
-              amount={FROZEN_BALANCE}
+              amount={walletLoading ? 0 : frozenBalance}
               currency="USD"
               subtitle="Pendiente de retiro"
               variant="glass"

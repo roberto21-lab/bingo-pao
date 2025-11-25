@@ -19,12 +19,13 @@ import { ChevronLeft, ChevronRight } from "@mui/icons-material";
 import * as React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import SelectableCard from "../Componets/SelectableCard";
-import { type BackendRoom } from "../Services/rooms.service";
+import { type BackendRoom, mapStatus } from "../Services/rooms.service";
 import { api } from "../Services/api";
 import BackgroundStars from "../Componets/BackgroundStars";
 import { getCardsByRoomAndUser, enrollCards, getAvailableCards, type BackendCard } from "../Services/cards.service";
 import { getUserId } from "../Services/auth.service";
 import { useAuth } from "../hooks/useAuth";
+import { onRoomStatusUpdated } from "../Services/socket.service";
 
 type RoomDetailData = {
   id: string;
@@ -86,29 +87,13 @@ export default function RoomDetail() {
         
         // Obtener el status
         const status = typeof backendRoom.status_id === "object" && backendRoom.status_id
-          ? backendRoom.status_id.name || "waiting"
+          ? backendRoom.status_id.name || "waiting_players"
           : typeof backendRoom.status_id === "string"
           ? backendRoom.status_id
-          : "waiting";
+          : "waiting_players";
         
-        // Mapear el status del backend al formato del frontend
-        const mapStatus = (statusName: string): string => {
-          switch (statusName) {
-            case "waiting_players":
-              return "waiting";
-            case "preparing":
-              return "preparing";
-            case "in_progress":
-              return "in_progress";
-            case "finished":
-            case "closed":
-              return "locked";
-            default:
-              return statusName || "waiting";
-          }
-        };
-        
-        // Mapear BackendRoom a RoomDetailData
+        // CRÍTICO: Usar la función de mapeo unificada de rooms.service
+        // Esto asegura que todas las páginas muestren el mismo status
         const mappedStatus = mapStatus(status);
         
         const roomData: RoomDetailData = {
@@ -132,6 +117,50 @@ export default function RoomDetail() {
     };
 
     fetchRoom();
+  }, [roomId]);
+  
+  // Escuchar actualizaciones de status de sala en tiempo real
+  React.useEffect(() => {
+    if (!roomId) return;
+    
+    const unsubscribeStatusUpdated = onRoomStatusUpdated((data) => {
+      if (data.room_id === roomId) {
+        console.log(`[RoomDetail] Status actualizado para sala ${data.room_name}: ${data.status}`);
+        // Actualizar el status localmente
+        setRoom((prevRoom) => {
+          if (!prevRoom) return prevRoom;
+          
+          // Mapear el status del backend al formato del frontend
+          let mappedStatus: "waiting" | "preparing" | "in_progress" | "locked" = "waiting";
+          switch (data.status) {
+            case "waiting_players":
+              mappedStatus = "waiting";
+              break;
+            case "pending":
+              mappedStatus = "preparing";
+              break;
+            case "in_progress":
+            case "round_winner":
+              mappedStatus = "in_progress";
+              break;
+            case "finished":
+              mappedStatus = "locked";
+              break;
+            default:
+              mappedStatus = "waiting";
+          }
+          
+          return {
+            ...prevRoom,
+            status: mappedStatus,
+          };
+        });
+      }
+    });
+
+    return () => {
+      unsubscribeStatusUpdated();
+    };
   }, [roomId]);
   
   // Obtener cartones disponibles del backend y generar si no existen
