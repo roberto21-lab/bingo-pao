@@ -64,7 +64,7 @@ export default function BalanceCard({
               lineHeight: 1,
             }}
           >
-            ${amount.toLocaleString("en-US", {
+            {amount.toLocaleString("en-US", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}

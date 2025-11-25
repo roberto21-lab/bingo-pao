@@ -191,12 +191,12 @@ const RoomCard: React.FC<RoomCardProps> = ({
           <Stack spacing={1.5} sx={{ mt: 2 }}>
             <RoomInfoRow
               label="Precio por cartón:"
-              value={`$${price.toFixed(2)} ${currency}`}
+              value={`${price.toFixed(2)} ${currency}`}
               valueBold
             />
             <RoomInfoRow
               label="Premio estimado:"
-              value={`$${estimatedPrize.toFixed(2)} ${currency}`}
+              value={`${estimatedPrize.toFixed(2)} ${currency}`}
               valueBold
             />
             {players && <RoomInfoRow label="Jugadores:" value={players} />}

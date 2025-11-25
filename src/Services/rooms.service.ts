@@ -119,7 +119,7 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
 
   const price = parseDecimal(backendRoom.price_per_card);
   const totalPot = parseDecimal(backendRoom.total_pot);
-  const currencyCode = currency?.code || "USD";
+  const currencyCode = currency?.code || "Bs";
   const currencySymbol = currency?.symbol || "$";
 
   // Calcular premio estimado

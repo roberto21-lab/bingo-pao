@@ -17,19 +17,22 @@ import { getTransactionTypeByName } from "../Services/transactionTypes.service";
 import { getStatusByNameAndCategory } from "../Services/status.service";
 import { getWalletByUser } from "../Services/wallets.service";
 import { getUserId } from "../Services/auth.service";
+import { DocumentTypeSelect } from "./DocumentTypeSelect";
 
 
 export type MobilePaymentReportFormState = {
-  refCode: string;
   bankName: string;
-  payerDocType: "V" | "E";
+  document_type_id: string; // ID del tipo de documento
   payerDocId: string;
   payerPhone: string;
   amount: string;
-  paidAt: string;
   notes: string;
-  voucherPreview: string | null;
-  voucherFile: File | null;
+};
+
+type AccountInfo = {
+  document_type_id?: string;
+  docId?: string;
+  phone?: string;
 };
 
 type MobilePaymentReportDialogProps = {
@@ -41,6 +44,8 @@ type MobilePaymentReportDialogProps = {
   currency: string;
   title?: string; // por si luego quieres cambiar el texto
   initialValues?: Partial<MobilePaymentReportFormState>;
+  accountInfo?: AccountInfo; // Datos del perfil del usuario
+  bankAccount?: { bank_name: string } | null; // Cuenta bancaria asociada (si existe)
 };
 
 const textFieldStyles = {
@@ -67,16 +72,12 @@ const textFieldStyles = {
 };
 
 const defaultFormState: MobilePaymentReportFormState = {
-  refCode: "",
   bankName: "",
-  payerDocType: "V",
+  document_type_id: "",
   payerDocId: "",
   payerPhone: "",
   amount: "",
-  paidAt: "",
   notes: "",
-  voucherPreview: null,
-  voucherFile: null,
 };
 
 export const MobilePaymentReportDialog: React.FC<
@@ -90,23 +91,44 @@ export const MobilePaymentReportDialog: React.FC<
   currency,
   title = "Reportar pago móvil",
   initialValues,
+  accountInfo,
+  bankAccount,
 }) => {
-    const [form, setForm] = useState<MobilePaymentReportFormState>({
-      ...defaultFormState,
-      ...initialValues,
-    });
+    // Crear estado inicial basado en accountInfo y bankAccount
+    const createInitialState = React.useCallback((): MobilePaymentReportFormState => {
+      const state = { ...defaultFormState, ...initialValues };
+      
+      // Si hay cuenta bancaria, usar sus datos primero
+      if (bankAccount) {
+        state.bankName = bankAccount.bank_name;
+      }
+      
+      // Si hay accountInfo (perfil), usar esos datos
+      if (accountInfo) {
+        if (accountInfo.document_type_id) {
+          state.document_type_id = accountInfo.document_type_id;
+        }
+        if (accountInfo.docId) {
+          state.payerDocId = accountInfo.docId;
+        }
+        if (accountInfo.phone) {
+          state.payerPhone = accountInfo.phone;
+        }
+      }
+      
+      return state;
+    }, [initialValues, bankAccount, accountInfo]);
 
-    // Si cambian initialValues (por ejemplo al reabrir el modal con datos),
+    const [form, setForm] = useState<MobilePaymentReportFormState>(createInitialState());
+
+    // Si cambian initialValues, accountInfo o bankAccount (por ejemplo al reabrir el modal con datos),
     // sincronizamos el estado interno:
     useEffect(() => {
       if (open) {
-        setForm((prev) => ({
-          ...defaultFormState,
-          ...prev,
-          ...initialValues,
-        }));
+        setForm(createInitialState());
+        setSubmitError(null);
       }
-    }, [open, initialValues]);
+    }, [open, createInitialState]);
 
     const handleChange =
       (field: keyof MobilePaymentReportFormState) =>
@@ -126,25 +148,11 @@ export const MobilePaymentReportDialog: React.FC<
           }));
         };
 
-    const handleFileChange = (file: File | null) => {
-      if (!file) {
+    const handleDocumentTypeChange = (value: string) => {
         setForm((prev) => ({
           ...prev,
-          voucherFile: null,
-          voucherPreview: null,
+        document_type_id: value,
         }));
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        setForm((prev) => ({
-          ...prev,
-          voucherFile: file,
-          voucherPreview: typeof reader.result === "string" ? reader.result : null,
-        }));
-      };
-      reader.readAsDataURL(file);
     };
 
     const handleClose = () => {
@@ -155,19 +163,29 @@ export const MobilePaymentReportDialog: React.FC<
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
 
-  const handleSubmit = async () => {
+const handleSubmit = async () => {
     setSubmitError(null);
     setIsSubmitting(true);
 
     try {
       // Validaciones básicas
-      if (!form.refCode.trim()) {
-        setSubmitError("El código de referencia es obligatorio");
+      if (!form.bankName) {
+        setSubmitError("Debe seleccionar un banco");
         setIsSubmitting(false);
         return;
       }
-      if (!form.bankName) {
-        setSubmitError("Debe seleccionar un banco");
+      if (!form.document_type_id) {
+        setSubmitError("Debe seleccionar un tipo de documento");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!form.payerDocId.trim()) {
+        setSubmitError("El número de documento es obligatorio");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!form.payerPhone.trim()) {
+        setSubmitError("El número de teléfono es obligatorio");
         setIsSubmitting(false);
         return;
       }
@@ -209,9 +227,6 @@ export const MobilePaymentReportDialog: React.FC<
         return;
       }
 
-      // Preparar metadata (excluir voucherFile y voucherPreview del payload)
-      const { voucherFile, voucherPreview, ...metadata } = form;
-
       // Obtener currency_id del wallet (puede ser string o objeto)
       let currencyId: string;
       if (typeof wallet.currency_id === "string") {
@@ -224,19 +239,25 @@ export const MobilePaymentReportDialog: React.FC<
         return;
       }
 
+      // Preparar metadata
+      const metadata = {
+        bank_name: form.bankName,
+        document_type_id: form.document_type_id,
+        document_number: form.payerDocId,
+        phone_number: form.payerPhone,
+        amount: Number(form.amount),
+        notes: form.notes || "",
+      };
+
       // Crear payload
-      const payload: CreateTransactionPayload = {
+  const payload: CreateTransactionPayload = {
         wallet_id: wallet._id,
         transaction_type_id: rechargeType._id,
         amount: Number(form.amount),
         currency_id: currencyId,
         status_id: pendingStatus._id,
-        metadata: {
-          ...metadata,
-          // Si hay voucherFile, podrías subirlo a un servicio de almacenamiento y guardar la URL aquí
-          // Por ahora solo guardamos la metadata sin el archivo
-        },
-      };
+        metadata,
+  };
 
       console.log("🚀 Creando transacción de recarga:", payload);
 
@@ -255,8 +276,8 @@ export const MobilePaymentReportDialog: React.FC<
       setSubmitError(errorMessage);
     } finally {
       setIsSubmitting(false);
-    }
-  };
+  }
+};
 
 
     return (
@@ -325,21 +346,27 @@ export const MobilePaymentReportDialog: React.FC<
 
           <Stack spacing={2}>
             <TextField
-              fullWidth
-              label="Código de referencia"
-              value={form.refCode}
-              onChange={handleChange("refCode")}
-              sx={textFieldStyles}
-            />
-
-            <TextField
               select
               fullWidth
               label="Banco emisor"
               value={form.bankName}
               onChange={handleSelectChange("bankName")}
+              required
+              disabled={!!bankAccount} // Deshabilitar si hay cuenta bancaria asociada
               sx={textFieldStyles}
             >
+              <MenuItem
+                value=""
+                sx={{
+                  bgcolor: "rgba(31, 19, 9, 0.95)",
+                  color: "#f5e6d3",
+                  "&:hover": {
+                    bgcolor: "rgba(212, 175, 55, 0.2)",
+                  },
+                }}
+              >
+                <em>Seleccione un banco</em>
+              </MenuItem>
               {banks.map((b) => (
                 <MenuItem
                   key={b}
@@ -364,51 +391,21 @@ export const MobilePaymentReportDialog: React.FC<
             </TextField>
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                select
+              <DocumentTypeSelect
+                value={form.document_type_id}
+                onChange={handleDocumentTypeChange}
+                label="Tipo de documento"
+                required
                 fullWidth
-                label="Tipo"
-                value={form.payerDocType}
-                onChange={handleSelectChange("payerDocType")}
-                sx={textFieldStyles}
-              >
-                <MenuItem
-                  value="V"
-                  sx={{
-                    bgcolor: "rgba(31, 19, 9, 0.95)",
-                    color: "#f5e6d3",
-                    "&:hover": {
-                      bgcolor: "rgba(212, 175, 55, 0.2)",
-                    },
-                    "&.Mui-selected": {
-                      bgcolor: "rgba(212, 175, 55, 0.3)",
-                    },
-                  }}
-                >
-                  V
-                </MenuItem>
-                <MenuItem
-                  value="E"
-                  sx={{
-                    bgcolor: "rgba(31, 19, 9, 0.95)",
-                    color: "#f5e6d3",
-                    "&:hover": {
-                      bgcolor: "rgba(212, 175, 55, 0.2)",
-                    },
-                    "&.Mui-selected": {
-                      bgcolor: "rgba(212, 175, 55, 0.3)",
-                    },
-                  }}
-                >
-                  E
-                </MenuItem>
-              </TextField>
-
+                disabled={!!accountInfo?.document_type_id} // Deshabilitar si viene del perfil
+              />
               <TextField
                 fullWidth
-                label="Cédula"
+                label="Número de documento"
                 value={form.payerDocId}
                 onChange={handleChange("payerDocId")}
+                required
+                disabled={!!accountInfo?.docId} // Deshabilitar si viene del perfil
                 sx={textFieldStyles}
               />
             </Stack>
@@ -416,10 +413,12 @@ export const MobilePaymentReportDialog: React.FC<
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <TextField
                 fullWidth
-                label="Teléfono del pagador"
+                label="Teléfono"
                 value={form.payerPhone}
                 onChange={handleChange("payerPhone")}
                 placeholder="0412-0000000"
+                required
+                disabled={!!accountInfo?.phone} // Deshabilitar si viene del perfil
                 sx={textFieldStyles}
               />
 
@@ -430,58 +429,10 @@ export const MobilePaymentReportDialog: React.FC<
                 value={form.amount}
                 onChange={handleChange("amount")}
                 inputProps={{ min: 0, step: "any" }}
+                required
                 sx={textFieldStyles}
               />
             </Stack>
-
-            <TextField
-              fullWidth
-              type="datetime-local"
-              label="Fecha y hora del pago"
-              value={form.paidAt}
-              onChange={handleChange("paidAt")}
-              InputLabelProps={{ shrink: true }}
-              sx={textFieldStyles}
-            />
-
-            <Button
-              component="label"
-              variant="outlined"
-              fullWidth
-              sx={{
-                color: "#f5e6d3",
-                borderColor: "rgba(212, 175, 55, 0.3)",
-                "&:hover": {
-                  borderColor: "rgba(212, 175, 55, 0.5)",
-                  bgcolor: "rgba(212, 175, 55, 0.1)",
-                },
-              }}
-            >
-              Subir comprobante (imagen)
-              <input
-                hidden
-                type="file"
-                accept="image/*"
-                onChange={(e) =>
-                  handleFileChange(e.target.files?.[0] ?? null)
-                }
-              />
-            </Button>
-
-            {form.voucherPreview && (
-              <Box
-                component="img"
-                src={form.voucherPreview}
-                alt="Comprobante"
-                sx={{
-                  maxHeight: 220,
-                  borderRadius: 2,
-                  boxShadow: 2,
-                  display: "block",
-                  mx: "auto",
-                }}
-              />
-            )}
 
             <TextField
               fullWidth

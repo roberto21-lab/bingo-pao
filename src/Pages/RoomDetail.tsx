@@ -100,7 +100,7 @@ export default function RoomDetail() {
           id: backendRoom._id || backendRoom.id || "",
           title: backendRoom.name,
           prizeAmount: parseDecimal(backendRoom.total_pot),
-          currency: currency?.code || "USD",
+          currency: currency?.code || "Bs",
           ticketsToStart: backendRoom.min_players || 10,
           ticketPrice: parseDecimal(backendRoom.price_per_card),
           status: mappedStatus || "waiting", // Siempre tener un status por defecto
@@ -956,7 +956,7 @@ export default function RoomDetail() {
                   ${totalPrice.toFixed(2)}
                 </Typography>
                 <Typography variant="caption" sx={{ color: "#f5e6d3", opacity: 0.8 }}>
-                  USD
+                  Bs
                 </Typography>
               </Box>
             </Box>
@@ -972,7 +972,7 @@ export default function RoomDetail() {
                   ${availableBalance.toFixed(2)}
                 </Typography>
                 <Typography variant="caption" sx={{ color: "#f5e6d3", opacity: 0.8 }}>
-                  USD
+                  Bs
                 </Typography>
               </Box>
         </Box>

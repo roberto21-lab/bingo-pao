@@ -19,7 +19,7 @@ export type BankAccount = {
 export type CreateBankAccountWithWithdrawRequest = {
   userId: string;
   bank_name: string;
-  account_number: string;
+  account_number?: string; // Opcional ahora
   phone_number: string;
   document_number: string;
   document_type_id: string;

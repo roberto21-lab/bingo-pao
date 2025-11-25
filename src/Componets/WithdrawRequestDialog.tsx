@@ -10,11 +10,12 @@ import {
   TextField,
   Button,
 } from "@mui/material";
+import { DocumentTypeSelect } from "./DocumentTypeSelect";
+import { WithdrawConfirmationDialog } from "./WithdrawConfirmationDialog";
 
 export type WithdrawRequestFormState = {
   bankName: string;
-  accountNumber: string;
-  docType: "V" | "E";
+  document_type_id: string; // ID del tipo de documento
   docId: string;
   phone: string;
   amount: string;
@@ -30,11 +31,11 @@ type WithdrawRequestDialogProps = {
   title?: string; // por si luego quieres cambiar el texto
   accountInfo?: {
     bankName: string;
-    accountNumber?: string;
-    docType: "V" | "E";
+    document_type_id?: string;
     docId: string;
     phone: string;
   };
+  availableBalance?: number; // Balance disponible para validar
   bankAccount?: {
     _id: string;
     bank_name: string;
@@ -80,8 +81,7 @@ const textFieldStyles = {
 
 const createDefaultState = (accountInfo?: WithdrawRequestDialogProps["accountInfo"]): WithdrawRequestFormState => ({
   bankName: accountInfo?.bankName || "",
-  accountNumber: accountInfo?.accountNumber || "",
-  docType: accountInfo?.docType || "V",
+  document_type_id: accountInfo?.document_type_id || "",
   docId: accountInfo?.docId || "",
   phone: accountInfo?.phone || "",
   amount: "",
@@ -100,29 +100,41 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
   onDeleteBankAccount,
   minAmount = 500,
   hasBankAccount = false,
+  availableBalance,
 }) => {
   const [form, setForm] = useState<WithdrawRequestFormState>(
     createDefaultState(accountInfo)
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   useEffect(() => {
     if (open) {
-      // Si hay cuenta bancaria, usar sus datos, sino usar accountInfo
+      // Si hay cuenta bancaria, usar sus datos, sino usar accountInfo (datos del perfil)
       if (bankAccount) {
         setForm({
           bankName: bankAccount.bank_name,
-          accountNumber: bankAccount.account_number,
-          docType: bankAccount.document_type_id.code === "ci" ? "V" : "E",
+          document_type_id: bankAccount.document_type_id._id,
           docId: bankAccount.document_number,
           phone: bankAccount.phone_number,
           amount: "",
           notes: "",
         });
+      } else if (accountInfo) {
+        // Usar datos del perfil del usuario
+        setForm({
+          bankName: accountInfo.bankName || "",
+          document_type_id: accountInfo.document_type_id || "",
+          docId: accountInfo.docId || "",
+          phone: accountInfo.phone || "",
+          amount: "",
+          notes: "",
+        });
       } else {
-      setForm(createDefaultState(accountInfo));
+        setForm(createDefaultState());
       }
       setLocalError(null);
+      setShowConfirmation(false);
     }
   }, [open, accountInfo, bankAccount]);
 
@@ -132,6 +144,13 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
       setForm((prev) => ({
         ...prev,
         [field]: event.target.value,
+      }));
+    };
+
+  const handleDocumentTypeChange = (value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      document_type_id: value,
       }));
     };
 
@@ -148,21 +167,42 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
       return;
     }
 
-    if (numericAmount < minAmount) {
+    // Validar monto mínimo (siempre debe ser al menos 500)
+    const minimumAmount = Math.max(minAmount, 500);
+    if (numericAmount < minimumAmount) {
       setLocalError(
-        `El monto mínimo para retirar es ${minAmount} ${currency}.`
+        `El monto mínimo para retirar es ${minimumAmount} ${currency}.`
+      );
+      return;
+    }
+
+    // Validar balance disponible
+    if (availableBalance !== undefined && numericAmount > availableBalance) {
+      setLocalError(
+        `Saldo insuficiente. Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`
       );
       return;
     }
 
     // Si no hay cuenta bancaria, validar que todos los campos estén completos
     if (!hasBankAccount) {
-      if (!form.bankName || !form.accountNumber || !form.docId || !form.phone) {
+      // Validar que el banco no sea el placeholder
+      if (!form.bankName || form.bankName === "Seleccione un banco") {
+        setLocalError("Debe seleccionar un banco.");
+        return;
+      }
+      if (!form.document_type_id || !form.docId || !form.phone) {
         setLocalError("Por favor complete todos los campos requeridos.");
         return;
       }
     }
 
+    // Mostrar modal de confirmación
+    setShowConfirmation(true);
+  };
+
+  const handleConfirmWithdraw = () => {
+    setShowConfirmation(false);
     onSubmit(form);
   };
 
@@ -292,24 +332,17 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             disabled
             sx={textFieldStyles}
           />
-              <TextField
-                fullWidth
-                label="Número de cuenta"
-                value={form.accountNumber}
-                disabled
-                sx={textFieldStyles}
-              />
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                <TextField
-                  fullWidth
-                  label="Tipo"
-                  value={form.docType}
+                <DocumentTypeSelect
+                  value={form.document_type_id}
+                  onChange={handleDocumentTypeChange}
                   disabled
-                  sx={textFieldStyles}
+                  label="Tipo de documento"
+                  fullWidth
                 />
                 <TextField
                   fullWidth
-                  label="Cédula"
+                  label="Número de documento"
                   value={form.docId}
                   disabled
                   sx={textFieldStyles}
@@ -355,7 +388,8 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
                   native: true,
                 }}
               >
-                <option value="">Seleccione un banco</option>
+
+                <option value="Seleccione un banco">Seleccione un banco</option>
                 <option value="Banco de Venezuela">Banco de Venezuela</option>
                 <option value="Banco Provincial">Banco Provincial</option>
                 <option value="Banesco">Banesco</option>
@@ -364,37 +398,30 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
                 <option value="Banco del Tesoro">Banco del Tesoro</option>
                 <option value="Bancamiga">Bancamiga</option>
               </TextField>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <DocumentTypeSelect
+                  value={form.document_type_id}
+                  onChange={handleDocumentTypeChange}
+                  disabled={!!accountInfo?.document_type_id}
+                  label="Tipo de documento"
+                  required
+                  fullWidth
+                />
+                <TextField
+                  fullWidth
+                  label="Número de documento"
+                  value={form.docId}
+                  disabled={!!accountInfo?.docId}
+                  sx={textFieldStyles}
+                />
+              </Stack>
               <TextField
                 fullWidth
-                label="Número de cuenta"
-                value={form.accountNumber}
-                onChange={handleChange("accountNumber")}
-                required
+                label="Teléfono asociado"
+                value={form.phone}
+                disabled={!!accountInfo?.phone}
                 sx={textFieldStyles}
               />
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              fullWidth
-              label="Tipo"
-              value={form.docType}
-              disabled
-              sx={textFieldStyles}
-            />
-            <TextField
-              fullWidth
-              label="Cédula"
-              value={form.docId}
-              disabled
-              sx={textFieldStyles}
-            />
-          </Stack>
-          <TextField
-            fullWidth
-            label="Teléfono asociado"
-            value={form.phone}
-            disabled
-            sx={textFieldStyles}
-          />
             </>
           )}
 
@@ -404,9 +431,13 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             label={`Monto a retirar (${currency})`}
             value={form.amount}
             onChange={handleChange("amount")}
-            inputProps={{ min: 0, step: "any" }}
+            inputProps={{ min: 500, step: "any" }}
             sx={textFieldStyles}
-            helperText={`Monto mínimo para retirar: ${minAmount} ${currency}`}
+            helperText={
+              availableBalance !== undefined
+                ? `Monto mínimo: 500 ${currency} | Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`
+                : `Monto mínimo para retirar: 500 ${currency}`
+            }
           />
 
           <TextField
@@ -462,6 +493,20 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
           Confirmar retiro
         </Button>
       </DialogActions>
+
+      {/* Modal de confirmación con comisión */}
+      {showConfirmation && (
+        <WithdrawConfirmationDialog
+          open={showConfirmation}
+          onClose={() => setShowConfirmation(false)}
+          onConfirm={handleConfirmWithdraw}
+          requestedAmount={Number(form.amount)}
+          commissionPercent={5}
+          commissionAmount={Number(form.amount) * 0.05}
+          transferAmount={Number(form.amount) * 0.95}
+          currency={currency}
+        />
+      )}
     </Dialog>
   );
 };

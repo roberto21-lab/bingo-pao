@@ -23,7 +23,6 @@ import AvailableRoomsPreview from "../Componets/AvailableRoomsPreview";
 import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
 import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 import { getWalletByUser } from "../Services/wallets.service";
-import { onRoomStatusUpdated } from "../Services/socket.service";
 import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount, type BankAccount } from "../Services/bankAccounts.service";
 import { getUserById } from "../Services/users.service";
 
@@ -51,7 +50,6 @@ export default function Home() {
   const [walletLoading, setWalletLoading] = React.useState(false);
   const [bankAccount, setBankAccount] = React.useState<BankAccount | null>(null);
   const [userProfile, setUserProfile] = React.useState<{ document_type_id?: { _id: string; code: string }; document_number?: string; phone?: string } | null>(null);
-  const [bankAccountLoading, setBankAccountLoading] = React.useState(false);
 
   const BANKS = [
     "Banco de Venezuela",
@@ -85,7 +83,9 @@ export default function Home() {
       try {
         setWalletLoading(true);
         const wallet = await getWalletByUser(userId);
-        setAvailableBalance(wallet.balance || 0);
+        // El balance ya está reducido por retiros pendientes en el backend
+        // El balance disponible es simplemente el balance (ya incluye la reducción de retiros pendientes)
+        setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
       } catch (error) {
         console.error("Error al cargar wallet:", error);
@@ -112,14 +112,17 @@ export default function Home() {
       }
 
       try {
-        setBankAccountLoading(true);
-        
         // Cargar cuenta bancaria
         try {
           const account = await getBankAccountByUser(userId);
           setBankAccount(account);
-        } catch (error: any) {
-          if (error.response?.status !== 404) {
+        } catch (error: unknown) {
+          if (error && typeof error === "object" && "response" in error) {
+            const httpError = error as { response?: { status?: number } };
+            if (httpError.response?.status !== 404) {
+              console.error("Error al cargar cuenta bancaria:", error);
+            }
+          } else {
             console.error("Error al cargar cuenta bancaria:", error);
           }
           setBankAccount(null);
@@ -134,8 +137,8 @@ export default function Home() {
         } catch (error) {
           console.error("Error al cargar perfil:", error);
         }
-      } finally {
-        setBankAccountLoading(false);
+      } catch (error) {
+        console.error("Error al cargar datos del usuario:", error);
       }
     };
 
@@ -528,18 +531,7 @@ export default function Home() {
   const hasNext = currentRoomIndex < activeRooms.length - 1;
   const currentRoom = activeRooms[currentRoomIndex];
 
-  const submitReport = async (data: {
-    refCode: string;
-    bankName: string;
-    payerDocType: "V" | "E";
-    payerDocId: string;
-    payerPhone: string;
-    amount: string;
-    paidAt: string;
-    notes: string;
-    voucherPreview: string | null;
-    voucherFile: File | null;
-  }) => {
+  const submitReport = async () => {
     setError(null);
     
     // La validación y creación de la transacción se hace en el modal
@@ -564,8 +556,7 @@ export default function Home() {
 
   const handleSubmitWithdrawRequestDialog = async (formData: {
     bankName: string;
-    accountNumber: string;
-    docType: "V" | "E";
+    document_type_id: string;
     docId: string;
     phone: string;
     amount: string;
@@ -584,47 +575,46 @@ export default function Home() {
         // Validar que el perfil tenga los datos necesarios
         if (!userProfile?.document_type_id || !userProfile?.document_number || !userProfile?.phone) {
           setWithdrawError("Debe completar su perfil con documento y teléfono antes de retirar fondos");
-          return;
-        }
+      return;
+    }
 
         // Validar que los datos del formulario coincidan con el perfil
-        const profileDocTypeCode = userProfile.document_type_id.code?.toLowerCase();
-        const formDocType = formData.docType === "V" ? "ci" : "e";
+        const profileDocTypeId = userProfile.document_type_id._id;
         
-        if (profileDocTypeCode !== formDocType) {
+        if (profileDocTypeId !== formData.document_type_id) {
           setWithdrawError("El tipo de documento no coincide con el registrado en su perfil");
-          return;
-        }
+      return;
+    }
 
         if (userProfile.document_number !== formData.docId) {
           setWithdrawError("El número de documento no coincide con el registrado en su perfil");
-          return;
-        }
+      return;
+    }
 
         if (userProfile.phone !== formData.phone) {
           setWithdrawError("El número de teléfono no coincide con el registrado en su perfil");
           return;
         }
 
-        // Validar que bankName y accountNumber estén completos
-        if (!formData.bankName || !formData.accountNumber) {
-          setWithdrawError("Debe completar el banco y número de cuenta");
+        // Validar que bankName esté completo
+        if (!formData.bankName) {
+          setWithdrawError("Debe seleccionar un banco");
           return;
         }
 
-        // Crear cuenta bancaria y transacción de retiro
+        // Crear cuenta bancaria y transacción de retiro (sin account_number)
         const result = await createBankAccountWithWithdraw({
           userId,
           bank_name: formData.bankName,
-          account_number: formData.accountNumber,
+          account_number: "", // Ya no se requiere
           phone_number: formData.phone,
           document_number: formData.docId,
-          document_type_id: userProfile.document_type_id._id,
+          document_type_id: formData.document_type_id,
           amount: parseFloat(formData.amount)
         });
 
-        // Actualizar balances
-        setAvailableBalance(result.new_balance);
+        // Actualizar balances (el balance ya está reducido por retiros pendientes en el backend)
+        setAvailableBalance(Math.max(0, result.new_balance || 0));
         setFrozenBalance(result.new_frozen_balance);
         
         // Actualizar cuenta bancaria
@@ -632,7 +622,7 @@ export default function Home() {
 
         // Recargar wallet para asegurar sincronización
         const wallet = await getWalletByUser(userId);
-        setAvailableBalance(wallet.balance || 0);
+        setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
 
         setOpenWithdrawRequestDialog(false);
@@ -641,24 +631,29 @@ export default function Home() {
         const { createWithdrawOnly } = await import("../Services/bankAccounts.service");
         const result = await createWithdrawOnly(userId, parseFloat(formData.amount));
 
-        // Actualizar balances
-        setAvailableBalance(result.new_balance);
+        // Actualizar balances (el balance ya está reducido por retiros pendientes en el backend)
+        setAvailableBalance(Math.max(0, result.new_balance || 0));
         setFrozenBalance(result.new_frozen_balance);
         
         // Recargar wallet para asegurar sincronización
         const wallet = await getWalletByUser(userId);
-        setAvailableBalance(wallet.balance || 0);
+        setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
 
         setOpenWithdrawRequestDialog(false);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error al procesar retiro:", error);
-      setWithdrawError(
-        error.response?.data?.message || 
-        error.message || 
-        "Error al procesar la solicitud de retiro"
-      );
+      let errorMessage = "Error al procesar la solicitud de retiro";
+      if (error && typeof error === "object") {
+        if ("response" in error) {
+          const httpError = error as { response?: { data?: { message?: string } } };
+          errorMessage = httpError.response?.data?.message || errorMessage;
+        } else if ("message" in error) {
+          errorMessage = String(error.message);
+        }
+      }
+      setWithdrawError(errorMessage);
     }
   };
 
@@ -671,15 +666,17 @@ export default function Home() {
       // Recargar wallet
       if (userId) {
         const wallet = await getWalletByUser(userId);
-        setAvailableBalance(wallet.balance || 0);
+        setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error al eliminar cuenta bancaria:", error);
-      setWithdrawError(
-        error.response?.data?.message || 
-        "Error al eliminar la cuenta bancaria"
-      );
+      let errorMessage = "Error al eliminar la cuenta bancaria";
+      if (error && typeof error === "object" && "response" in error) {
+        const httpError = error as { response?: { data?: { message?: string } } };
+        errorMessage = httpError.response?.data?.message || errorMessage;
+      }
+      setWithdrawError(errorMessage);
     }
   };
 
@@ -753,14 +750,14 @@ export default function Home() {
             <BalanceCard
               title="Mi Saldo"
               amount={walletLoading ? 0 : availableBalance}
-              currency="USD"
+              currency="Bs"
               subtitle="Disponible"
               variant="gold"
             />
             <BalanceCard
               title="Saldo Congelado"
               amount={walletLoading ? 0 : frozenBalance}
-              currency="USD"
+              currency="Bs"
               subtitle="Pendiente de retiro"
               variant="glass"
             />
@@ -950,7 +947,6 @@ export default function Home() {
             </Button>
             <Button
               fullWidth
-              onClick={handleSubmitWithdrawRequestDialog}
               variant="outlined"
               sx={{
                 backfaceVisibility: "hidden",
@@ -996,6 +992,7 @@ export default function Home() {
                 `,
                 },
               }}
+              onClick={() => setOpenWithdrawRequestDialog(true)}
             >
               Retirar Fondos
             </Button>
@@ -1008,16 +1005,20 @@ export default function Home() {
           open={openWithdrawRequestDialog}
           onClose={() => setOpenWithdrawRequestDialog(false)}
           onSubmit={handleSubmitWithdrawRequestDialog}
-          error={error}
+          error={withdrawError}
           currency="Bs"
           // accountInfo={MOCK_ACCOUNT}
           minAmount={500}
           accountInfo={{
             bankName: "",
-            docType: "V",
-            docId: "",
-            phone: "",
+            document_type_id: userProfile?.document_type_id?._id || "",
+            docId: userProfile?.document_number || "",
+            phone: userProfile?.phone || "",
           }}
+          availableBalance={availableBalance}
+          hasBankAccount={!!bankAccount}
+          bankAccount={bankAccount}
+          onDeleteBankAccount={handleDeleteBankAccount}
         />
 
         <MobilePaymentReportDialog
@@ -1026,7 +1027,13 @@ export default function Home() {
           onSubmit={submitReport}
           error={error}
           banks={BANKS}
-          currency={"USD"}
+          currency={"Bs"}
+          accountInfo={{
+            document_type_id: userProfile?.document_type_id?._id || "",
+            docId: userProfile?.document_number || "",
+            phone: userProfile?.phone || "",
+          }}
+          bankAccount={bankAccount}
         />
       </Container>
     </Box>
