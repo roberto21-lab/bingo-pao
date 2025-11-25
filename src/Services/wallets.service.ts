@@ -3,7 +3,7 @@ import { api } from "./api";
 export type Wallet = {
   _id: string;
   user_id: string;
-  currency_id: string;
+  currency_id: string | { _id: string; code?: string; name?: string; symbol?: string };
   balance: number;
   frozen_balance: number;
   created_at: string;

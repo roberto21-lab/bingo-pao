@@ -226,24 +226,26 @@ function ProfileContent() {
       });
   };
 
-  const submitReport = (data: MobilePaymentReportFormState) => {
+  const submitReport = async (data: MobilePaymentReportFormState) => {
     setError("");
-    if (!data.refCode.trim()) {
-      setError("La referencia es obligatoria.");
-      return;
+    
+    // La validación y creación de la transacción se hace en el modal
+    // Aquí solo recargamos el wallet para actualizar los balances
+    try {
+      if (userId) {
+        const { getWalletByUser } = await import("../Services/wallets.service");
+        const updatedWallet = await getWalletByUser(userId);
+        setWallet({
+          balance: updatedWallet.balance || 0,
+          currency_id: updatedWallet.currency_id
+        });
+      }
+    } catch (error) {
+      console.error("Error al recargar wallet después del reporte:", error);
     }
-    if (!data.bankName) {
-      setError("Selecciona el banco.");
-      return;
-    }
-    if (!data.payerDocId.trim()) {
-      setError("La cédula es obligatoria.");
-      return;
-    }
-    if (!data.amount || Number(data.amount) <= 0) {
-      setError("El monto debe ser mayor a 0.");
-      return;
-    }
+
+    // Cerrar el modal
+    setOpenReport(false);
 
     // Preparar datos para enviar al backend
     // const reportData = {

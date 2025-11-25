@@ -13,6 +13,7 @@ import {
 
 export type WithdrawRequestFormState = {
   bankName: string;
+  accountNumber: string;
   docType: "V" | "E";
   docId: string;
   phone: string;
@@ -27,13 +28,28 @@ type WithdrawRequestDialogProps = {
   error?: string | null;
   currency: string;
   title?: string; // por si luego quieres cambiar el texto
-  accountInfo: {
+  accountInfo?: {
     bankName: string;
+    accountNumber?: string;
     docType: "V" | "E";
     docId: string;
     phone: string;
   };
+  bankAccount?: {
+    _id: string;
+    bank_name: string;
+    account_number: string;
+    phone_number: string;
+    document_number: string;
+    document_type_id: {
+      _id: string;
+      name: string;
+      code: string;
+    };
+  } | null;
+  onDeleteBankAccount?: () => void;
   minAmount?: number; // por defecto 500
+  hasBankAccount: boolean; // Indica si el usuario tiene cuenta bancaria
 };
 
 const textFieldStyles = {
@@ -62,11 +78,12 @@ const textFieldStyles = {
   },
 };
 
-const createDefaultState = (accountInfo: WithdrawRequestDialogProps["accountInfo"]): WithdrawRequestFormState => ({
-  bankName: accountInfo.bankName,
-  docType: accountInfo.docType,
-  docId: accountInfo.docId,
-  phone: accountInfo.phone,
+const createDefaultState = (accountInfo?: WithdrawRequestDialogProps["accountInfo"]): WithdrawRequestFormState => ({
+  bankName: accountInfo?.bankName || "",
+  accountNumber: accountInfo?.accountNumber || "",
+  docType: accountInfo?.docType || "V",
+  docId: accountInfo?.docId || "",
+  phone: accountInfo?.phone || "",
   amount: "",
   notes: "",
 });
@@ -79,7 +96,10 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
   currency,
   title = "Solicitar retiro de saldo",
   accountInfo,
+  bankAccount,
+  onDeleteBankAccount,
   minAmount = 500,
+  hasBankAccount = false,
 }) => {
   const [form, setForm] = useState<WithdrawRequestFormState>(
     createDefaultState(accountInfo)
@@ -88,10 +108,23 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
 
   useEffect(() => {
     if (open) {
+      // Si hay cuenta bancaria, usar sus datos, sino usar accountInfo
+      if (bankAccount) {
+        setForm({
+          bankName: bankAccount.bank_name,
+          accountNumber: bankAccount.account_number,
+          docType: bankAccount.document_type_id.code === "ci" ? "V" : "E",
+          docId: bankAccount.document_number,
+          phone: bankAccount.phone_number,
+          amount: "",
+          notes: "",
+        });
+      } else {
       setForm(createDefaultState(accountInfo));
+      }
       setLocalError(null);
     }
-  }, [open, accountInfo]);
+  }, [open, accountInfo, bankAccount]);
 
   const handleChange =
     (field: keyof WithdrawRequestFormState) =>
@@ -120,6 +153,14 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
         `El monto mínimo para retirar es ${minAmount} ${currency}.`
       );
       return;
+    }
+
+    // Si no hay cuenta bancaria, validar que todos los campos estén completos
+    if (!hasBankAccount) {
+      if (!form.bankName || !form.accountNumber || !form.docId || !form.phone) {
+        setLocalError("Por favor complete todos los campos requeridos.");
+        return;
+      }
     }
 
     onSubmit(form);
@@ -172,7 +213,8 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
           color: "#f5e6d3",
         }}
       >
-        {/* Mensaje informativo sobre los datos de la cuenta */}
+        {/* Mensaje informativo */}
+        {hasBankAccount ? (
         <Alert
           severity="info"
           sx={{
@@ -185,9 +227,25 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             },
           }}
         >
-          Asegúrese que sean los datos correctos de su cuenta.  
-          Si no son correctos, diríjase al perfil y cambie sus datos antes de continuar.
+            Se utilizará la cuenta bancaria registrada. Si desea cambiar la cuenta, debe eliminar la actual primero.
+          </Alert>
+        ) : (
+          <Alert
+            severity="warning"
+            sx={{
+              mb: 2,
+              backgroundColor: "rgba(201, 168, 90, 0.16)",
+              color: "#f5e6d3",
+              border: "1px solid rgba(201, 168, 90, 0.4)",
+              "& .MuiAlert-icon": {
+                color: "#f4d03f",
+              },
+            }}
+          >
+            No tiene una cuenta bancaria registrada. Complete el formulario para crear una cuenta y realizar el retiro.
+            Asegúrese que los datos coincidan con su perfil.
         </Alert>
+        )}
 
         {error && (
           <Alert
@@ -224,6 +282,9 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
         )}
 
         <Stack spacing={2}>
+          {hasBankAccount ? (
+            <>
+              {/* Mostrar datos de cuenta bancaria existente */}
           <TextField
             fullWidth
             label="Banco destino"
@@ -231,7 +292,86 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             disabled
             sx={textFieldStyles}
           />
-
+              <TextField
+                fullWidth
+                label="Número de cuenta"
+                value={form.accountNumber}
+                disabled
+                sx={textFieldStyles}
+              />
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                <TextField
+                  fullWidth
+                  label="Tipo"
+                  value={form.docType}
+                  disabled
+                  sx={textFieldStyles}
+                />
+                <TextField
+                  fullWidth
+                  label="Cédula"
+                  value={form.docId}
+                  disabled
+                  sx={textFieldStyles}
+                />
+              </Stack>
+              <TextField
+                fullWidth
+                label="Teléfono asociado"
+                value={form.phone}
+                disabled
+                sx={textFieldStyles}
+              />
+              {onDeleteBankAccount && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={onDeleteBankAccount}
+                  sx={{
+                    borderColor: "rgba(244, 67, 54, 0.5)",
+                    color: "#f44336",
+                    "&:hover": {
+                      borderColor: "rgba(244, 67, 54, 0.8)",
+                      bgcolor: "rgba(244, 67, 54, 0.1)",
+                    },
+                  }}
+                >
+                  Eliminar cuenta bancaria
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Mostrar formulario para crear cuenta bancaria */}
+              <TextField
+                fullWidth
+                label="Banco destino"
+                value={form.bankName}
+                onChange={handleChange("bankName")}
+                required
+                sx={textFieldStyles}
+                select
+                SelectProps={{
+                  native: true,
+                }}
+              >
+                <option value="">Seleccione un banco</option>
+                <option value="Banco de Venezuela">Banco de Venezuela</option>
+                <option value="Banco Provincial">Banco Provincial</option>
+                <option value="Banesco">Banesco</option>
+                <option value="Mercantil">Mercantil</option>
+                <option value="BOD">BOD</option>
+                <option value="Banco del Tesoro">Banco del Tesoro</option>
+                <option value="Bancamiga">Bancamiga</option>
+              </TextField>
+              <TextField
+                fullWidth
+                label="Número de cuenta"
+                value={form.accountNumber}
+                onChange={handleChange("accountNumber")}
+                required
+                sx={textFieldStyles}
+              />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <TextField
               fullWidth
@@ -248,7 +388,6 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
               sx={textFieldStyles}
             />
           </Stack>
-
           <TextField
             fullWidth
             label="Teléfono asociado"
@@ -256,6 +395,8 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             disabled
             sx={textFieldStyles}
           />
+            </>
+          )}
 
           <TextField
             fullWidth

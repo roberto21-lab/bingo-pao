@@ -24,6 +24,8 @@ import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialo
 import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 import { getWalletByUser } from "../Services/wallets.service";
 import { onRoomStatusUpdated } from "../Services/socket.service";
+import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount, type BankAccount } from "../Services/bankAccounts.service";
+import { getUserById } from "../Services/users.service";
 
 type ActiveRoom = {
   id: string;
@@ -47,6 +49,9 @@ export default function Home() {
   const [availableBalance, setAvailableBalance] = React.useState<number>(0);
   const [frozenBalance, setFrozenBalance] = React.useState<number>(0);
   const [walletLoading, setWalletLoading] = React.useState(false);
+  const [bankAccount, setBankAccount] = React.useState<BankAccount | null>(null);
+  const [userProfile, setUserProfile] = React.useState<{ document_type_id?: { _id: string; code: string }; document_number?: string; phone?: string } | null>(null);
+  const [bankAccountLoading, setBankAccountLoading] = React.useState(false);
 
   const BANKS = [
     "Banco de Venezuela",
@@ -94,6 +99,48 @@ export default function Home() {
 
     if (!authLoading) {
       fetchWallet();
+    }
+  }, [userId, isAuthenticated, authLoading]);
+
+  // Cargar cuenta bancaria y perfil del usuario
+  React.useEffect(() => {
+    const fetchBankAccountAndProfile = async () => {
+      if (!userId || !isAuthenticated) {
+        setBankAccount(null);
+        setUserProfile(null);
+        return;
+      }
+
+      try {
+        setBankAccountLoading(true);
+        
+        // Cargar cuenta bancaria
+        try {
+          const account = await getBankAccountByUser(userId);
+          setBankAccount(account);
+        } catch (error: any) {
+          if (error.response?.status !== 404) {
+            console.error("Error al cargar cuenta bancaria:", error);
+          }
+          setBankAccount(null);
+        }
+
+        // Cargar perfil del usuario
+        try {
+          const userData = await getUserById(userId);
+          if (userData?.profile) {
+            setUserProfile(userData.profile);
+          }
+        } catch (error) {
+          console.error("Error al cargar perfil:", error);
+        }
+      } finally {
+        setBankAccountLoading(false);
+      }
+    };
+
+    if (!authLoading) {
+      fetchBankAccountAndProfile();
     }
   }, [userId, isAuthenticated, authLoading]);
 
@@ -481,7 +528,7 @@ export default function Home() {
   const hasNext = currentRoomIndex < activeRooms.length - 1;
   const currentRoom = activeRooms[currentRoomIndex];
 
-  const submitReport = (data: {
+  const submitReport = async (data: {
     refCode: string;
     bankName: string;
     payerDocType: "V" | "E";
@@ -494,41 +541,146 @@ export default function Home() {
     voucherFile: File | null;
   }) => {
     setError(null);
-    if (!data.refCode.trim()) {
-      setError("La referencia es obligatoria.");
-      return;
-    }
-    if (!data.bankName) {
-      setError("Selecciona el banco.");
-      return;
-    }
-    if (!data.payerDocId.trim()) {
-      setError("La cédula es obligatoria.");
-      return;
-    }
-    if (!data.amount || Number(data.amount) <= 0) {
-      setError("El monto debe ser mayor a 0.");
-      return;
+    
+    // La validación y creación de la transacción se hace en el modal
+    // Aquí solo recargamos el wallet para actualizar los balances
+    try {
+      if (userId) {
+        const wallet = await getWalletByUser(userId);
+        setAvailableBalance(wallet.balance || 0);
+        setFrozenBalance(wallet.frozen_balance || 0);
+      }
+    } catch (error) {
+      console.error("Error al recargar wallet después del reporte:", error);
     }
 
-    // Preparar datos para enviar al backend
-    // const reportData = {
-    //   ...data,
-    //   amount: Number(data.amount),
-    //   userId: userId,
-    //   createdAt: new Date().toISOString(),
-    // };
-    // await api.post('/payments/report', reportData);
-
-    // reset suave y cerrar
+    // Cerrar el modal
     setOpenReport(false);
   };
 
   const [openWithdrawRequestDialog, setOpenWithdrawRequestDialog] =
     React.useState(false);
+  const [withdrawError, setWithdrawError] = React.useState<string | null>(null);
 
-  const handleSubmitWithdrawRequestDialog = () => {
-    setOpenWithdrawRequestDialog(!openWithdrawRequestDialog);
+  const handleSubmitWithdrawRequestDialog = async (formData: {
+    bankName: string;
+    accountNumber: string;
+    docType: "V" | "E";
+    docId: string;
+    phone: string;
+    amount: string;
+    notes: string;
+  }) => {
+    if (!userId) {
+      setWithdrawError("No se pudo identificar al usuario");
+      return;
+    }
+
+    try {
+      setWithdrawError(null);
+
+      // Si no hay cuenta bancaria, crear una nueva junto con la transacción
+      if (!bankAccount) {
+        // Validar que el perfil tenga los datos necesarios
+        if (!userProfile?.document_type_id || !userProfile?.document_number || !userProfile?.phone) {
+          setWithdrawError("Debe completar su perfil con documento y teléfono antes de retirar fondos");
+          return;
+        }
+
+        // Validar que los datos del formulario coincidan con el perfil
+        const profileDocTypeCode = userProfile.document_type_id.code?.toLowerCase();
+        const formDocType = formData.docType === "V" ? "ci" : "e";
+        
+        if (profileDocTypeCode !== formDocType) {
+          setWithdrawError("El tipo de documento no coincide con el registrado en su perfil");
+          return;
+        }
+
+        if (userProfile.document_number !== formData.docId) {
+          setWithdrawError("El número de documento no coincide con el registrado en su perfil");
+          return;
+        }
+
+        if (userProfile.phone !== formData.phone) {
+          setWithdrawError("El número de teléfono no coincide con el registrado en su perfil");
+          return;
+        }
+
+        // Validar que bankName y accountNumber estén completos
+        if (!formData.bankName || !formData.accountNumber) {
+          setWithdrawError("Debe completar el banco y número de cuenta");
+          return;
+        }
+
+        // Crear cuenta bancaria y transacción de retiro
+        const result = await createBankAccountWithWithdraw({
+          userId,
+          bank_name: formData.bankName,
+          account_number: formData.accountNumber,
+          phone_number: formData.phone,
+          document_number: formData.docId,
+          document_type_id: userProfile.document_type_id._id,
+          amount: parseFloat(formData.amount)
+        });
+
+        // Actualizar balances
+        setAvailableBalance(result.new_balance);
+        setFrozenBalance(result.new_frozen_balance);
+        
+        // Actualizar cuenta bancaria
+        setBankAccount(result.bank_account);
+
+        // Recargar wallet para asegurar sincronización
+        const wallet = await getWalletByUser(userId);
+        setAvailableBalance(wallet.balance || 0);
+        setFrozenBalance(wallet.frozen_balance || 0);
+
+        setOpenWithdrawRequestDialog(false);
+      } else {
+        // Ya hay cuenta bancaria, solo crear la transacción de retiro
+        const { createWithdrawOnly } = await import("../Services/bankAccounts.service");
+        const result = await createWithdrawOnly(userId, parseFloat(formData.amount));
+
+        // Actualizar balances
+        setAvailableBalance(result.new_balance);
+        setFrozenBalance(result.new_frozen_balance);
+        
+        // Recargar wallet para asegurar sincronización
+        const wallet = await getWalletByUser(userId);
+        setAvailableBalance(wallet.balance || 0);
+        setFrozenBalance(wallet.frozen_balance || 0);
+
+        setOpenWithdrawRequestDialog(false);
+      }
+    } catch (error: any) {
+      console.error("Error al procesar retiro:", error);
+      setWithdrawError(
+        error.response?.data?.message || 
+        error.message || 
+        "Error al procesar la solicitud de retiro"
+      );
+    }
+  };
+
+  const handleDeleteBankAccount = async () => {
+    if (!bankAccount) return;
+
+    try {
+      await deleteBankAccount(bankAccount._id);
+      setBankAccount(null);
+      // Recargar wallet
+      if (userId) {
+        const wallet = await getWalletByUser(userId);
+        setAvailableBalance(wallet.balance || 0);
+        setFrozenBalance(wallet.frozen_balance || 0);
+      }
+    } catch (error: any) {
+      console.error("Error al eliminar cuenta bancaria:", error);
+      setWithdrawError(
+        error.response?.data?.message || 
+        "Error al eliminar la cuenta bancaria"
+      );
+    }
   };
 
   return (

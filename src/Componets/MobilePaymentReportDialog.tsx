@@ -13,6 +13,10 @@ import {
   Box,
 } from "@mui/material";
 import { createTransactionService, type CreateTransactionPayload } from "../Services/transactionService";
+import { getTransactionTypeByName } from "../Services/transactionTypes.service";
+import { getStatusByNameAndCategory } from "../Services/status.service";
+import { getWalletByUser } from "../Services/wallets.service";
+import { getUserId } from "../Services/auth.service";
 
 
 export type MobilePaymentReportFormState = {
@@ -148,33 +152,111 @@ export const MobilePaymentReportDialog: React.FC<
     };
 
 
-const handleSubmit = async () => {
-  // si todavía quieres notificar al padre:
-  onSubmit(form);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
 
-  // ⚠️ Opcional: excluir voucherFile del metadata
-  const { voucherFile, ...safeMetadata } = form;
+  const handleSubmit = async () => {
+    setSubmitError(null);
+    setIsSubmitting(true);
 
-  const payload: CreateTransactionPayload = {
-    wallet_id: "6925bb3c927bb462bc5673f9",
-    transaction_type_id: "691f9e32ed6cc17bc995dad1",
-    amount: Number(form.amount),         // o form.amount si prefieres string
-    currency_id: "691cbf660d374a9d0bb4cdc9",
-    status_id: "691b4797b0a2446494b164cc",
-    metadata: form,              // 👈 aquí va tu form
+    try {
+      // Validaciones básicas
+      if (!form.refCode.trim()) {
+        setSubmitError("El código de referencia es obligatorio");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!form.bankName) {
+        setSubmitError("Debe seleccionar un banco");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!form.amount || Number(form.amount) <= 0) {
+        setSubmitError("El monto debe ser mayor a 0");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Obtener userId
+      const userId = getUserId();
+      if (!userId) {
+        setSubmitError("No se pudo identificar al usuario. Por favor, inicie sesión nuevamente.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Obtener wallet del usuario
+      const wallet = await getWalletByUser(userId);
+      if (!wallet || !wallet._id) {
+        setSubmitError("No se encontró la wallet del usuario");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Obtener transaction type "recharge"
+      const rechargeType = await getTransactionTypeByName("recharge");
+      if (!rechargeType || !rechargeType._id) {
+        setSubmitError("No se encontró el tipo de transacción 'recharge'");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Obtener status "pending" para transactions
+      const pendingStatus = await getStatusByNameAndCategory("pending", "transaction");
+      if (!pendingStatus || !pendingStatus._id) {
+        setSubmitError("No se encontró el status 'pending' para transacciones");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Preparar metadata (excluir voucherFile y voucherPreview del payload)
+      const { voucherFile, voucherPreview, ...metadata } = form;
+
+      // Obtener currency_id del wallet (puede ser string o objeto)
+      let currencyId: string;
+      if (typeof wallet.currency_id === "string") {
+        currencyId = wallet.currency_id;
+      } else if (wallet.currency_id && typeof wallet.currency_id === "object" && "_id" in wallet.currency_id) {
+        currencyId = (wallet.currency_id as any)._id.toString();
+      } else {
+        setSubmitError("No se encontró la moneda de la wallet");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Crear payload
+      const payload: CreateTransactionPayload = {
+        wallet_id: wallet._id,
+        transaction_type_id: rechargeType._id,
+        amount: Number(form.amount),
+        currency_id: currencyId,
+        status_id: pendingStatus._id,
+        metadata: {
+          ...metadata,
+          // Si hay voucherFile, podrías subirlo a un servicio de almacenamiento y guardar la URL aquí
+          // Por ahora solo guardamos la metadata sin el archivo
+        },
+      };
+
+      console.log("🚀 Creando transacción de recarga:", payload);
+
+      // Crear la transacción
+      const transaction = await createTransactionService(payload);
+      console.log("✅ Transacción creada exitosamente:", transaction);
+
+      // Notificar al padre (para que pueda actualizar el wallet, cerrar el modal, etc.)
+      onSubmit(form);
+
+      // Cerrar el modal
+      onClose();
+    } catch (err: any) {
+      console.error("❌ Error al crear transacción:", err);
+      const errorMessage = err?.response?.data?.message || err?.message || "Error al crear la transacción de recarga";
+      setSubmitError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-
-  console.log("🚀 Payload que se enviará:", payload);
-
-  try {
-    const tx = await createTransactionService(payload);
-    console.log("Transacción creada:", tx);
-    // aquí puedes cerrar el modal, limpiar form, etc.
-  } catch (err) {
-    console.error("Error al crear transacción:", err);
-    // setError en tu estado si quieres
-  }
-};
 
 
     return (
@@ -224,20 +306,20 @@ const handleSubmit = async () => {
             color: "#f5e6d3",
           }}
         >
-          {error && (
+          {(error || submitError) && (
             <Alert
               severity="error"
               sx={{
                 mb: 2,
-                backgroundColor: "rgba(201, 168, 90, 0.2)",
-                color: "#c9a85a",
-                border: "1px solid rgba(201, 168, 90, 0.4)",
+                backgroundColor: "rgba(201, 100, 90, 0.2)",
+                color: "#ffbdbd",
+                border: "1px solid rgba(201, 100, 90, 0.4)",
                 "& .MuiAlert-icon": {
-                  color: "#c9a85a",
+                  color: "#ffbdbd",
                 },
               }}
             >
-              {error}
+              {error || submitError}
             </Alert>
           )}
 
@@ -437,6 +519,7 @@ const handleSubmit = async () => {
           <Button
             variant="contained"
             onClick={handleSubmit}
+            disabled={isSubmitting}
             sx={{
               background:
                 "linear-gradient(135deg, rgba(212, 175, 55, 0.9) 0%, rgba(244, 208, 63, 1) 50%, rgba(212, 175, 55, 0.9) 100%)",
@@ -449,9 +532,13 @@ const handleSubmit = async () => {
                   "linear-gradient(135deg, rgba(244, 208, 63, 1) 0%, rgba(255, 223, 0, 1) 50%, rgba(244, 208, 63, 1) 100%)",
                 boxShadow: "0 4px 16px rgba(212, 175, 55, 0.7)",
               },
+              "&:disabled": {
+                opacity: 0.6,
+                cursor: "not-allowed",
+              },
             }}
           >
-            Enviar reporte
+            {isSubmitting ? "Enviando..." : "Enviar reporte"}
           </Button>
         </DialogActions>
       </Dialog>
