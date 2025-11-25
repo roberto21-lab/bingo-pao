@@ -2,20 +2,27 @@
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogActions,
   Alert,
   Stack,
   TextField,
+  Box,
+  Typography,
   Button,
 } from "@mui/material";
 import { DocumentTypeSelect } from "./DocumentTypeSelect";
-import { WithdrawConfirmationDialog } from "./WithdrawConfirmationDialog";
+import { COLORS } from "../constants/colors";
+import { commonInputStyles } from "./shared/formStyles";
+import { BankSelect } from "./shared/BankSelect";
+import { FormStepper } from "./shared/FormStepper";
+import { DialogHeader } from "./shared/DialogHeader";
+import { DialogFooter } from "./shared/DialogFooter";
+import { BankAccountInfoCard } from "./shared/BankAccountInfoCard";
+import { WithdrawalSummaryCard } from "./shared/WithdrawalSummaryCard";
 
 export type WithdrawRequestFormState = {
   bankName: string;
-  document_type_id: string; // ID del tipo de documento
+  document_type_id: string;
   docId: string;
   phone: string;
   amount: string;
@@ -28,14 +35,14 @@ type WithdrawRequestDialogProps = {
   onSubmit: (data: WithdrawRequestFormState) => void;
   error?: string | null;
   currency: string;
-  title?: string; // por si luego quieres cambiar el texto
+  title?: string;
   accountInfo?: {
     bankName: string;
     document_type_id?: string;
     docId: string;
     phone: string;
   };
-  availableBalance?: number; // Balance disponible para validar
+  availableBalance?: number;
   bankAccount?: {
     _id: string;
     bank_name: string;
@@ -49,35 +56,19 @@ type WithdrawRequestDialogProps = {
     };
   } | null;
   onDeleteBankAccount?: () => void;
-  minAmount?: number; // por defecto 500
-  hasBankAccount: boolean; // Indica si el usuario tiene cuenta bancaria
+  minAmount?: number;
+  hasBankAccount: boolean;
 };
 
-const textFieldStyles = {
-  "& .MuiOutlinedInput-root": {
-    bgcolor: "rgba(31, 19, 9, 0.95)",
-    borderRadius: 2,
-    "& fieldset": {
-      borderColor: "rgba(212, 175, 55, 0.4)",
-    },
-    "&:hover fieldset": {
-      borderColor: "rgba(244, 208, 63, 0.8)",
-    },
-    "&.Mui-focused fieldset": {
-      borderColor: "rgba(244, 208, 63, 1)",
-      boxShadow: "0 0 0 1px rgba(244, 208, 63, 0.6)",
-    },
-  },
-  "& .MuiInputLabel-root": {
-    color: "rgba(245, 230, 211, 0.8)",
-  },
-  "& .MuiInputBase-input": {
-    color: "#f5e6d3",
-  },
-  "& .Mui-disabled": {
-    WebkitTextFillColor: "#f5e6d3 !important",
-  },
-};
+const BANKS = [
+  "Banco de Venezuela",
+  "Banco Provincial",
+  "Banesco",
+  "Mercantil",
+  "BOD",
+  "Banco del Tesoro",
+  "Bancamiga",
+];
 
 const createDefaultState = (accountInfo?: WithdrawRequestDialogProps["accountInfo"]): WithdrawRequestFormState => ({
   bankName: accountInfo?.bankName || "",
@@ -102,15 +93,16 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
   hasBankAccount = false,
   availableBalance,
 }) => {
-  const [form, setForm] = useState<WithdrawRequestFormState>(
-    createDefaultState(accountInfo)
-  );
+  const [form, setForm] = useState<WithdrawRequestFormState>(createDefaultState(accountInfo));
   const [localError, setLocalError] = useState<string | null>(null);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+
+  const steps = hasBankAccount
+    ? ["Monto a retirar", "Confirmación"]
+    : ["Datos bancarios", "Monto a retirar", "Confirmación"];
 
   useEffect(() => {
     if (open) {
-      // Si hay cuenta bancaria, usar sus datos, sino usar accountInfo (datos del perfil)
       if (bankAccount) {
         setForm({
           bankName: bankAccount.bank_name,
@@ -121,7 +113,6 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
           notes: "",
         });
       } else if (accountInfo) {
-        // Usar datos del perfil del usuario
         setForm({
           bankName: accountInfo.bankName || "",
           document_type_id: accountInfo.document_type_id || "",
@@ -134,379 +125,326 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
         setForm(createDefaultState());
       }
       setLocalError(null);
-      setShowConfirmation(false);
+      setActiveStep(0);
     }
   }, [open, accountInfo, bankAccount]);
 
-  const handleChange =
-    (field: keyof WithdrawRequestFormState) =>
+  const handleChange = (field: keyof WithdrawRequestFormState) =>
     (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setForm((prev) => ({
-        ...prev,
-        [field]: event.target.value,
-      }));
+      setForm((prev) => ({ ...prev, [field]: event.target.value }));
     };
 
   const handleDocumentTypeChange = (value: string) => {
-    setForm((prev) => ({
-      ...prev,
-      document_type_id: value,
-      }));
-    };
+    setForm((prev) => ({ ...prev, document_type_id: value }));
+  };
 
-  const handleClose = () => {
-    onClose();
+  const validateStep = (step: number): boolean => {
+    setLocalError(null);
+    
+    if (hasBankAccount) {
+      if (step === 0) {
+        const numericAmount = Number(form.amount);
+        if (isNaN(numericAmount) || numericAmount <= 0) {
+          setLocalError("Ingrese un monto válido.");
+          return false;
+        }
+        const minimumAmount = Math.max(minAmount, 500);
+        if (numericAmount < minimumAmount) {
+          setLocalError(`El monto mínimo para retirar es ${minimumAmount} ${currency}.`);
+          return false;
+        }
+        if (availableBalance !== undefined && numericAmount > availableBalance) {
+          setLocalError(`Saldo insuficiente. Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`);
+          return false;
+        }
+      }
+    } else {
+      if (step === 0) {
+        if (!form.bankName || form.bankName === "Seleccione un banco") {
+          setLocalError("Debe seleccionar un banco.");
+          return false;
+        }
+        if (!form.document_type_id || !form.docId || !form.phone) {
+          setLocalError("Por favor complete todos los campos requeridos.");
+          return false;
+        }
+      } else if (step === 1) {
+        const numericAmount = Number(form.amount);
+        if (isNaN(numericAmount) || numericAmount <= 0) {
+          setLocalError("Ingrese un monto válido.");
+          return false;
+        }
+        const minimumAmount = Math.max(minAmount, 500);
+        if (numericAmount < minimumAmount) {
+          setLocalError(`El monto mínimo para retirar es ${minimumAmount} ${currency}.`);
+          return false;
+        }
+        if (availableBalance !== undefined && numericAmount > availableBalance) {
+          setLocalError(`Saldo insuficiente. Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`);
+          return false;
+        }
+      }
+    }
+    
+    return true;
+  };
+
+  const handleNext = () => {
+    if (validateStep(activeStep)) {
+      setActiveStep((prevStep) => prevStep + 1);
+    }
+  };
+
+  const handleBack = () => {
+    setLocalError(null);
+    setActiveStep((prevStep) => prevStep - 1);
   };
 
   const handleSubmit = () => {
-    setLocalError(null);
-    const numericAmount = Number(form.amount);
-
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      setLocalError("Ingrese un monto válido.");
-      return;
+    if (validateStep(activeStep)) {
+      onSubmit(form);
     }
-
-    // Validar monto mínimo (siempre debe ser al menos 500)
-    const minimumAmount = Math.max(minAmount, 500);
-    if (numericAmount < minimumAmount) {
-      setLocalError(
-        `El monto mínimo para retirar es ${minimumAmount} ${currency}.`
-      );
-      return;
-    }
-
-    // Validar balance disponible
-    if (availableBalance !== undefined && numericAmount > availableBalance) {
-      setLocalError(
-        `Saldo insuficiente. Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`
-      );
-      return;
-    }
-
-    // Si no hay cuenta bancaria, validar que todos los campos estén completos
-    if (!hasBankAccount) {
-      // Validar que el banco no sea el placeholder
-      if (!form.bankName || form.bankName === "Seleccione un banco") {
-        setLocalError("Debe seleccionar un banco.");
-        return;
-      }
-      if (!form.document_type_id || !form.docId || !form.phone) {
-        setLocalError("Por favor complete todos los campos requeridos.");
-        return;
-      }
-    }
-
-    // Mostrar modal de confirmación
-    setShowConfirmation(true);
   };
 
-  const handleConfirmWithdraw = () => {
-    setShowConfirmation(false);
-    onSubmit(form);
+  const renderStepContent = (step: number) => {
+    if (hasBankAccount) {
+      if (step === 0) {
+        return (
+          <Stack spacing={3}>
+            <Typography variant="h6" sx={{ color: COLORS.TEXT.PRIMARY, fontWeight: 600, mb: 1 }}>
+              Monto a retirar
+            </Typography>
+            
+            <Alert severity="info" sx={{ bgcolor: "#e3f2fd", color: "#1565c0", border: "1px solid #90caf9" }}>
+              Se utilizará la cuenta bancaria registrada. Si desea cambiar la cuenta, debe eliminar la actual primero.
+            </Alert>
+
+            <BankAccountInfoCard
+              bankName={form.bankName}
+              documentId={form.docId}
+              phone={form.phone}
+            />
+
+            {onDeleteBankAccount && (
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={onDeleteBankAccount}
+                sx={{
+                  borderColor: "#f44336",
+                  color: "#f44336",
+                  "&:hover": { borderColor: "#d32f2f", bgcolor: "#ffebee" },
+                }}
+              >
+                Eliminar cuenta bancaria
+              </Button>
+            )}
+
+            <TextField
+              fullWidth
+              type="number"
+              label={`Monto a retirar (${currency})`}
+              value={form.amount}
+              onChange={handleChange("amount")}
+              inputProps={{ min: 500, step: "any" }}
+              required
+              helperText={
+                availableBalance !== undefined
+                  ? `Monto mínimo: 500 ${currency} | Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`
+                  : `Monto mínimo para retirar: 500 ${currency}`
+              }
+              sx={commonInputStyles}
+            />
+
+            <TextField
+              fullWidth
+              label="Notas (opcional)"
+              multiline
+              minRows={3}
+              value={form.notes}
+              onChange={handleChange("notes")}
+              sx={commonInputStyles}
+            />
+          </Stack>
+        );
+      } else if (step === 1) {
+        const numericAmount = Number(form.amount);
+        const commissionPercent = 5;
+        const commissionAmount = numericAmount * (commissionPercent / 100);
+        const transferAmount = numericAmount - commissionAmount;
+
+        return (
+          <WithdrawalSummaryCard
+            requestedAmount={numericAmount}
+            commissionPercent={commissionPercent}
+            commissionAmount={commissionAmount}
+            transferAmount={transferAmount}
+            bankName={form.bankName}
+            currency={currency}
+          />
+        );
+      }
+    } else {
+      if (step === 0) {
+        return (
+          <Stack spacing={3}>
+            <Typography variant="h6" sx={{ color: COLORS.TEXT.PRIMARY, fontWeight: 600, mb: 1 }}>
+              Información bancaria
+            </Typography>
+
+            <Alert severity="warning" sx={{ bgcolor: "#fff3e0", color: "#e65100", border: "1px solid #ffb74d" }}>
+              No tiene una cuenta bancaria registrada. Complete el formulario para crear una cuenta y realizar el retiro.
+              Asegúrese que los datos coincidan con su perfil.
+            </Alert>
+
+            <BankSelect
+              value={form.bankName}
+              onChange={(value) => setForm((prev) => ({ ...prev, bankName: value }))}
+              banks={BANKS}
+              required
+              label="Banco destino"
+            />
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <DocumentTypeSelect
+                value={form.document_type_id}
+                onChange={handleDocumentTypeChange}
+                disabled={!!accountInfo?.document_type_id}
+                label="Tipo de documento"
+                required
+                fullWidth
+                sx={commonInputStyles}
+              />
+              <TextField
+                fullWidth
+                label="Número de documento"
+                value={form.docId}
+                onChange={handleChange("docId")}
+                required
+                disabled={!!accountInfo?.docId}
+                sx={commonInputStyles}
+              />
+            </Stack>
+
+            <TextField
+              fullWidth
+              label="Teléfono asociado"
+              value={form.phone}
+              onChange={handleChange("phone")}
+              required
+              disabled={!!accountInfo?.phone}
+              sx={commonInputStyles}
+            />
+          </Stack>
+        );
+      } else if (step === 1) {
+        return (
+          <Stack spacing={3}>
+            <Typography variant="h6" sx={{ color: COLORS.TEXT.PRIMARY, fontWeight: 600, mb: 1 }}>
+              Monto a retirar
+            </Typography>
+
+            <TextField
+              fullWidth
+              type="number"
+              label={`Monto a retirar (${currency})`}
+              value={form.amount}
+              onChange={handleChange("amount")}
+              inputProps={{ min: 500, step: "any" }}
+              required
+              helperText={
+                availableBalance !== undefined
+                  ? `Monto mínimo: 500 ${currency} | Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`
+                  : `Monto mínimo para retirar: 500 ${currency}`
+              }
+              sx={commonInputStyles}
+            />
+
+            <TextField
+              fullWidth
+              label="Notas (opcional)"
+              multiline
+              minRows={3}
+              value={form.notes}
+              onChange={handleChange("notes")}
+              sx={commonInputStyles}
+            />
+          </Stack>
+        );
+      } else if (step === 2) {
+        const numericAmount = Number(form.amount);
+        const commissionPercent = 5;
+        const commissionAmount = numericAmount * (commissionPercent / 100);
+        const transferAmount = numericAmount - commissionAmount;
+
+        return (
+          <WithdrawalSummaryCard
+            requestedAmount={numericAmount}
+            commissionPercent={commissionPercent}
+            commissionAmount={commissionAmount}
+            transferAmount={transferAmount}
+            bankName={form.bankName}
+            currency={currency}
+          />
+        );
+      }
+    }
+    
+    return null;
   };
 
   return (
     <Dialog
       open={open}
-      onClose={handleClose}
-      maxWidth="sm"
+      onClose={onClose}
+      maxWidth="md"
       fullWidth
-      slotProps={{
-        backdrop: {
-          sx: {
-            backgroundColor: "rgba(0, 0, 0, 0.6)",
-            backdropFilter: "blur(25px) saturate(120%)",
-            WebkitBackdropFilter: "blur(25px) saturate(120%)",
-          },
-        },
-      }}
       PaperProps={{
         sx: {
-          backgroundColor: "rgba(31, 19, 9, 0.92)",
-          backdropFilter: "blur(40px) saturate(150%)",
-          WebkitBackdropFilter: "blur(40px) saturate(150%)",
-          borderRadius: "24px",
-          border: "2px solid rgba(212, 175, 55, 0.3)",
+          bgcolor: COLORS.BACKGROUND.WHITE,
+          borderRadius: 3,
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+          width: { xs: "95%", sm: "90%", md: "600px" },
+          maxWidth: { xs: "95%", sm: "90%", md: "600px" },
+          m: { xs: 2, sm: 3 },
         },
       }}
     >
-      <DialogTitle
-        sx={{
-          fontWeight: 800,
-          background: "linear-gradient(135deg, #d4af37, #f4d03f, #d4af37)",
-          backgroundClip: "text",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          fontFamily: "'Montserrat', sans-serif",
-          borderBottom: "1px solid rgba(212, 175, 55, 0.25)",
-          pb: 2,
-        }}
-      >
-        {title}
-      </DialogTitle>
+      <DialogHeader title={title} />
 
-      <DialogContent
-        dividers
-        sx={{
-          bgcolor: "transparent",
-          color: "#f5e6d3",
-        }}
-      >
-        {/* Mensaje informativo */}
-        {hasBankAccount ? (
-        <Alert
-          severity="info"
-          sx={{
-            mb: 2,
-            backgroundColor: "rgba(201, 168, 90, 0.16)",
-            color: "#f5e6d3",
-            border: "1px solid rgba(201, 168, 90, 0.4)",
-            "& .MuiAlert-icon": {
-              color: "#f4d03f",
-            },
-          }}
-        >
-            Se utilizará la cuenta bancaria registrada. Si desea cambiar la cuenta, debe eliminar la actual primero.
-          </Alert>
-        ) : (
-          <Alert
-            severity="warning"
-            sx={{
-              mb: 2,
-              backgroundColor: "rgba(201, 168, 90, 0.16)",
-              color: "#f5e6d3",
-              border: "1px solid rgba(201, 168, 90, 0.4)",
-              "& .MuiAlert-icon": {
-                color: "#f4d03f",
-              },
-            }}
-          >
-            No tiene una cuenta bancaria registrada. Complete el formulario para crear una cuenta y realizar el retiro.
-            Asegúrese que los datos coincidan con su perfil.
-        </Alert>
-        )}
+      <DialogContent sx={{ py: { xs: 3, sm: 4 }, px: { xs: 2, sm: 3 }, bgcolor: COLORS.BACKGROUND.WHITE }}>
+        <FormStepper steps={steps} activeStep={activeStep} />
 
-        {error && (
+        {(error || localError) && (
           <Alert
             severity="error"
             sx={{
-              mb: 2,
-              backgroundColor: "rgba(201, 100, 90, 0.2)",
-              color: "#ffbdbd",
-              border: "1px solid rgba(201, 100, 90, 0.4)",
-              "& .MuiAlert-icon": {
-                color: "#ffbdbd",
-              },
+              mb: 3,
+              bgcolor: "#fee",
+              color: "#c00",
+              border: "2px solid #fcc",
+              "& .MuiAlert-icon": { color: "#c00" },
             }}
           >
-            {error}
+            {error || localError}
           </Alert>
         )}
 
-        {localError && (
-          <Alert
-            severity="warning"
-            sx={{
-              mb: 2,
-              backgroundColor: "rgba(201, 168, 90, 0.2)",
-              color: "#f5e6d3",
-              border: "1px solid rgba(201, 168, 90, 0.4)",
-              "& .MuiAlert-icon": {
-                color: "#f4d03f",
-              },
-            }}
-          >
-            {localError}
-          </Alert>
-        )}
-
-        <Stack spacing={2}>
-          {hasBankAccount ? (
-            <>
-              {/* Mostrar datos de cuenta bancaria existente */}
-          <TextField
-            fullWidth
-            label="Banco destino"
-            value={form.bankName}
-            disabled
-            sx={textFieldStyles}
-          />
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                <DocumentTypeSelect
-                  value={form.document_type_id}
-                  onChange={handleDocumentTypeChange}
-                  disabled
-                  label="Tipo de documento"
-                  fullWidth
-                />
-                <TextField
-                  fullWidth
-                  label="Número de documento"
-                  value={form.docId}
-                  disabled
-                  sx={textFieldStyles}
-                />
-              </Stack>
-              <TextField
-                fullWidth
-                label="Teléfono asociado"
-                value={form.phone}
-                disabled
-                sx={textFieldStyles}
-              />
-              {onDeleteBankAccount && (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={onDeleteBankAccount}
-                  sx={{
-                    borderColor: "rgba(244, 67, 54, 0.5)",
-                    color: "#f44336",
-                    "&:hover": {
-                      borderColor: "rgba(244, 67, 54, 0.8)",
-                      bgcolor: "rgba(244, 67, 54, 0.1)",
-                    },
-                  }}
-                >
-                  Eliminar cuenta bancaria
-                </Button>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Mostrar formulario para crear cuenta bancaria */}
-              <TextField
-                fullWidth
-                label="Banco destino"
-                value={form.bankName}
-                onChange={handleChange("bankName")}
-                required
-                sx={textFieldStyles}
-                select
-                SelectProps={{
-                  native: true,
-                }}
-              >
-
-                <option value="Seleccione un banco">Seleccione un banco</option>
-                <option value="Banco de Venezuela">Banco de Venezuela</option>
-                <option value="Banco Provincial">Banco Provincial</option>
-                <option value="Banesco">Banesco</option>
-                <option value="Mercantil">Mercantil</option>
-                <option value="BOD">BOD</option>
-                <option value="Banco del Tesoro">Banco del Tesoro</option>
-                <option value="Bancamiga">Bancamiga</option>
-              </TextField>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                <DocumentTypeSelect
-                  value={form.document_type_id}
-                  onChange={handleDocumentTypeChange}
-                  disabled={!!accountInfo?.document_type_id}
-                  label="Tipo de documento"
-                  required
-                  fullWidth
-                />
-                <TextField
-                  fullWidth
-                  label="Número de documento"
-                  value={form.docId}
-                  disabled={!!accountInfo?.docId}
-                  sx={textFieldStyles}
-                />
-              </Stack>
-              <TextField
-                fullWidth
-                label="Teléfono asociado"
-                value={form.phone}
-                disabled={!!accountInfo?.phone}
-                sx={textFieldStyles}
-              />
-            </>
-          )}
-
-          <TextField
-            fullWidth
-            type="number"
-            label={`Monto a retirar (${currency})`}
-            value={form.amount}
-            onChange={handleChange("amount")}
-            inputProps={{ min: 500, step: "any" }}
-            sx={textFieldStyles}
-            helperText={
-              availableBalance !== undefined
-                ? `Monto mínimo: 500 ${currency} | Saldo disponible: ${availableBalance.toFixed(2)} ${currency}`
-                : `Monto mínimo para retirar: 500 ${currency}`
-            }
-          />
-
-          <TextField
-            fullWidth
-            label="Notas (opcional)"
-            multiline
-            minRows={2}
-            value={form.notes}
-            onChange={handleChange("notes")}
-            sx={textFieldStyles}
-          />
-        </Stack>
+        <Box sx={{ minHeight: { xs: 250, sm: 300 } }}>
+          {renderStepContent(activeStep)}
+        </Box>
       </DialogContent>
 
-      <DialogActions
-        sx={{
-          bgcolor: "transparent",
-          borderTop: "1px solid rgba(212, 175, 55, 0.25)",
-          p: 3,
-          gap: 2,
-        }}
-      >
-        <Button
-          onClick={handleClose}
-          sx={{
-            color: "#f5e6d3",
-            borderColor: "rgba(212, 175, 55, 0.3)",
-            "&:hover": {
-              borderColor: "rgba(212, 175, 55, 0.5)",
-              bgcolor: "rgba(212, 175, 55, 0.1)",
-            },
-          }}
-        >
-          Cancelar
-        </Button>
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          sx={{
-            background:
-              "linear-gradient(135deg, rgba(212, 175, 55, 0.9) 0%, rgba(244, 208, 63, 1) 50%, rgba(212, 175, 55, 0.9) 100%)",
-            border: "1.5px solid rgba(212, 175, 55, 1)",
-            boxShadow: "0 2px 8px rgba(212, 175, 55, 0.5)",
-            color: "#1a1008",
-            fontWeight: 700,
-            "&:hover": {
-              background:
-                "linear-gradient(135deg, rgba(244, 208, 63, 1) 0%, rgba(255, 223, 0, 1) 50%, rgba(244, 208, 63, 1) 100%)",
-              boxShadow: "0 4px 16px rgba(212, 175, 55, 0.7)",
-            },
-          }}
-        >
-          Confirmar retiro
-        </Button>
-      </DialogActions>
-
-      {/* Modal de confirmación con comisión */}
-      {showConfirmation && (
-        <WithdrawConfirmationDialog
-          open={showConfirmation}
-          onClose={() => setShowConfirmation(false)}
-          onConfirm={handleConfirmWithdraw}
-          requestedAmount={Number(form.amount)}
-          commissionPercent={5}
-          commissionAmount={Number(form.amount) * 0.05}
-          transferAmount={Number(form.amount) * 0.95}
-          currency={currency}
-        />
-      )}
+      <DialogFooter
+        onClose={onClose}
+        onBack={handleBack}
+        onNext={handleNext}
+        onSubmit={handleSubmit}
+        showBack={activeStep > 0}
+        showNext={activeStep < steps.length - 1}
+        showSubmit={activeStep === steps.length - 1}
+        submitLabel="Confirmar retiro"
+      />
     </Dialog>
   );
 };

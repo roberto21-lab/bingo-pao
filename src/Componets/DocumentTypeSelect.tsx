@@ -14,29 +14,70 @@ type DocumentTypeSelectProps = {
   sx?: any;
 };
 
+// Estilos consistentes con los otros modales
 const textFieldStyles = {
   "& .MuiOutlinedInput-root": {
-    bgcolor: "rgba(31, 19, 9, 0.95)",
+    bgcolor: "#ffffff",
     borderRadius: 2,
     "& fieldset": {
-      borderColor: "rgba(212, 175, 55, 0.4)",
+      borderColor: "#d4af37",
+      borderWidth: 2,
     },
     "&:hover fieldset": {
-      borderColor: "rgba(244, 208, 63, 0.8)",
+      borderColor: "#b8941f",
     },
     "&.Mui-focused fieldset": {
-      borderColor: "rgba(244, 208, 63, 1)",
-      boxShadow: "0 0 0 1px rgba(244, 208, 63, 0.6)",
+      borderColor: "#d4af37",
+      boxShadow: "0 0 0 2px rgba(212, 175, 55, 0.2)",
+    },
+    "&.Mui-disabled": {
+      bgcolor: "#f5f5f5",
+      "& fieldset": {
+        borderColor: "#e0e0e0",
+      },
     },
   },
   "& .MuiInputLabel-root": {
-    color: "rgba(245, 230, 211, 0.8)",
+    color: "#1a1008",
+    fontWeight: 600,
+    "&.Mui-focused": {
+      color: "#d4af37",
+    },
+    "&.Mui-disabled": {
+      color: "#999",
+    },
   },
   "& .MuiInputBase-input": {
-    color: "#f5e6d3",
+    color: "#1a1008",
+    fontWeight: 500,
+    "&.Mui-disabled": {
+      WebkitTextFillColor: "#666 !important",
+      color: "#666 !important",
+    },
   },
-  "& .Mui-disabled": {
-    WebkitTextFillColor: "#f5e6d3 !important",
+  "& .MuiFormHelperText-root": {
+    color: "#666",
+    fontSize: "0.75rem",
+    fontWeight: 500,
+  },
+  "& .MuiSelect-icon": {
+    color: "#1a1008",
+  },
+};
+
+const menuItemStyles = {
+  color: "#1a1008",
+  bgcolor: "#ffffff",
+  "&:hover": {
+    bgcolor: "#fff9e6",
+  },
+  "&.Mui-selected": {
+    bgcolor: "#fff9e6",
+    color: "#1a1008",
+    fontWeight: 600,
+    "&:hover": {
+      bgcolor: "#fff3cc",
+    },
   },
 };
 
@@ -125,36 +166,11 @@ export const DocumentTypeSelect: React.FC<DocumentTypeSelectProps> = ({
       helperText={helperText}
       sx={{ ...textFieldStyles, ...sx }}
     >
-      <MenuItem
-        value=""
-        sx={{
-          bgcolor: "rgba(31, 19, 9, 0.95)",
-          color: "#f5e6d3",
-          "&:hover": {
-            bgcolor: "rgba(212, 175, 55, 0.2)",
-          },
-        }}
-      >
+      <MenuItem value="" sx={menuItemStyles}>
         <em>Seleccione un tipo</em>
       </MenuItem>
       {documentTypes.map((type) => (
-        <MenuItem
-          key={type._id}
-          value={type._id}
-          sx={{
-            bgcolor: "rgba(31, 19, 9, 0.95)",
-            color: "#f5e6d3",
-            "&:hover": {
-              bgcolor: "rgba(212, 175, 55, 0.2)",
-            },
-            "&.Mui-selected": {
-              bgcolor: "rgba(212, 175, 55, 0.3)",
-              "&:hover": {
-                bgcolor: "rgba(212, 175, 55, 0.4)",
-              },
-            },
-          }}
-        >
+        <MenuItem key={type._id} value={type._id} sx={menuItemStyles}>
           {type.name}
         </MenuItem>
       ))}
