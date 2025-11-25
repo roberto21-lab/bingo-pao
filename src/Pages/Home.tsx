@@ -30,6 +30,7 @@ type ActiveRoom = {
   prizeAmount: number;
   currency: string;
   currentRound?: number; // Número de ronda actual si la sala no está finalizada
+  currentPattern?: string; // Pattern de la ronda actual si la sala está activa
 };
 
 const AVAILABLE_BALANCE = 1250.75;
@@ -128,15 +129,16 @@ export default function Home() {
               // Determinar el estado basado en los rounds
               let status: "active" | "waiting" | "finished" = "waiting";
               let currentRound: number | undefined = undefined;
+              let currentPattern: string | undefined = undefined;
 
               if (rounds.length > 0) {
-                // Buscar si hay algún round en progreso
-                const inProgressRound = rounds.find((round) => {
+                // Buscar si hay algún round en progreso o en countdown (starting)
+                const activeRound = rounds.find((round) => {
                   const statusObj =
                     typeof round.status_id === "object" && round.status_id
                       ? round.status_id
                       : null;
-                  return statusObj?.name === "in_progress";
+                  return statusObj?.name === "in_progress" || statusObj?.name === "starting";
                 });
 
                 // Buscar si todos los rounds están finalizados
@@ -148,9 +150,15 @@ export default function Home() {
                   return statusObj?.name === "finished";
                 });
 
-                if (inProgressRound) {
+                if (activeRound) {
                   status = "active";
-                  currentRound = inProgressRound.round_number;
+                  currentRound = activeRound.round_number;
+                  // Obtener el pattern de la ronda activa (starting o in_progress)
+                  if (activeRound.pattern_id) {
+                    if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
+                      currentPattern = activeRound.pattern_id.name;
+                    }
+                  }
                 } else if (allFinished) {
                   status = "finished";
                 } else {
@@ -175,6 +183,7 @@ export default function Home() {
                 prizeAmount: room.estimatedPrize || room.jackpot || 0,
                 currency: room.currency,
                 currentRound,
+                currentPattern,
               };
             } catch {
               return null;
@@ -234,15 +243,16 @@ export default function Home() {
                 let status: "active" | "waiting" | "finished" = "waiting";
 
                 let currentRound: number | undefined = undefined;
+                let currentPattern: string | undefined = undefined;
 
                 if (rounds.length > 0) {
-                  // Buscar si hay algún round en progreso
-                  const inProgressRound = rounds.find((round) => {
+                  // Buscar si hay algún round en progreso o en countdown (starting)
+                  const activeRound = rounds.find((round) => {
                     const statusObj =
                       typeof round.status_id === "object" && round.status_id
                         ? round.status_id
                         : null;
-                    return statusObj?.name === "in_progress";
+                    return statusObj?.name === "in_progress" || statusObj?.name === "starting";
                   });
 
                   // Buscar si todos los rounds están finalizados
@@ -254,9 +264,15 @@ export default function Home() {
                     return statusObj?.name === "finished";
                   });
 
-                  if (inProgressRound) {
+                  if (activeRound) {
                     status = "active";
-                    currentRound = inProgressRound.round_number;
+                    currentRound = activeRound.round_number;
+                    // Obtener el pattern de la ronda activa (starting o in_progress)
+                    if (activeRound.pattern_id) {
+                      if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
+                        currentPattern = activeRound.pattern_id.name;
+                      }
+                    }
                   } else if (allFinished) {
                     status = "finished";
                   } else {
@@ -281,6 +297,7 @@ export default function Home() {
                   prizeAmount: room.estimatedPrize || room.jackpot || 0,
                   currency: room.currency,
                   currentRound,
+                  currentPattern,
                 };
               } catch {
                 return null;
@@ -334,15 +351,16 @@ export default function Home() {
                   // Determinar el estado basado en los rounds
                   let status: "active" | "waiting" | "finished" = "waiting";
                   let currentRound: number | undefined = undefined;
+                  let currentPattern: string | undefined = undefined;
 
                   if (rounds.length > 0) {
-                    // Buscar si hay algún round en progreso
-                    const inProgressRound = rounds.find((round) => {
+                    // Buscar si hay algún round en progreso o en countdown (starting)
+                    const activeRound = rounds.find((round) => {
                       const statusObj =
                         typeof round.status_id === "object" && round.status_id
                           ? round.status_id
                           : null;
-                      return statusObj?.name === "in_progress";
+                      return statusObj?.name === "in_progress" || statusObj?.name === "starting";
                     });
 
                     // Buscar si todos los rounds están finalizados
@@ -354,9 +372,15 @@ export default function Home() {
                       return statusObj?.name === "finished";
                     });
 
-                    if (inProgressRound) {
+                    if (activeRound) {
                       status = "active";
-                      currentRound = inProgressRound.round_number;
+                      currentRound = activeRound.round_number;
+                      // Obtener el pattern de la ronda activa (starting o in_progress)
+                      if (activeRound.pattern_id) {
+                        if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
+                          currentPattern = activeRound.pattern_id.name;
+                        }
+                      }
                     } else if (allFinished) {
                       status = "finished";
                     } else {
@@ -381,6 +405,7 @@ export default function Home() {
                     prizeAmount: room.estimatedPrize || room.jackpot || 0,
                     currency: room.currency,
                     currentRound,
+                    currentPattern,
                   };
                 } catch {
                   return null;
@@ -654,6 +679,29 @@ export default function Home() {
                     ))}
                   </Box>
                 )}
+
+                {/* Botón para ir al listado de salas */}
+                <Button
+                  fullWidth
+                  onClick={() => navigate("/rooms")}
+                  sx={{
+                    mt: 2,
+                    py: 1.5,
+                    borderRadius: "8px",
+                    textTransform: "none",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#ffffff",
+                    backgroundColor: "rgba(212, 175, 55, 0.1)",
+                    border: "1px solid rgba(212, 175, 55, 0.3)",
+                    "&:hover": {
+                      backgroundColor: "rgba(212, 175, 55, 0.2)",
+                      borderColor: "rgba(212, 175, 55, 0.5)",
+                    },
+                  }}
+                >
+                  Ver todas las salas disponibles
+                </Button>
               </Box>
             )}
           </Box>

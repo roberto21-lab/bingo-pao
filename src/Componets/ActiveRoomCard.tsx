@@ -7,6 +7,7 @@ type ActiveRoom = {
   prizeAmount: number;
   currency: string;
   currentRound?: number; // Número de ronda actual si la sala no está finalizada
+  currentPattern?: string; // Pattern de la ronda actual si la sala está activa
 };
 
 type ActiveRoomCardProps = {
@@ -38,6 +39,19 @@ const getStatusColor = (status: ActiveRoom["status"]) => {
     default:
       return "#ffffff";
   }
+};
+
+const formatPatternName = (pattern: string): string => {
+  const patternMap: Record<string, string> = {
+    horizontal: "Línea Horizontal",
+    vertical: "Línea Vertical",
+    diagonal: "Línea Diagonal",
+    cross_small: "Cruz Pequeña",
+    cross_big: "Cruz Grande",
+    full: "Cartón Lleno",
+    random: "Aleatorio",
+  };
+  return patternMap[pattern] || pattern.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 };
 
 export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
@@ -125,18 +139,45 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
           </Box>
         </Stack>
         {room.status !== "finished" && room.currentRound !== undefined && (
-          <Typography
-            variant="body2"
-            sx={{
-              color: "#d4af37",
-              opacity: 0.9,
-              fontSize: "13px",
-              fontWeight: 500,
-              mb: 0.5,
-            }}
-          >
-            Ronda {room.currentRound}
-          </Typography>
+          <Box sx={{ mb: 0.5 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "#d4af37",
+                opacity: 0.9,
+                fontSize: "13px",
+                fontWeight: 500,
+              }}
+            >
+              Ronda {room.currentRound}
+            </Typography>
+            {room.status === "active" && room.currentPattern && (
+              <Box
+                sx={{
+                  mt: 0.5,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: "6px",
+                  backgroundColor: "rgba(212, 175, 55, 0.1)",
+                  border: "1px solid rgba(212, 175, 55, 0.3)",
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "#d4af37",
+                    opacity: 0.9,
+                    fontSize: "10px",
+                    fontWeight: 600,
+                  }}
+                >
+                  {formatPatternName(room.currentPattern)}
+                </Typography>
+              </Box>
+            )}
+          </Box>
         )}
         <Typography
           variant="body2"

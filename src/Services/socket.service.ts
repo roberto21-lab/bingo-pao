@@ -350,6 +350,101 @@ export const onRoundFinished = (
   return () => {};
 };
 
+// Escuchar evento de countdown antes de empezar a llamar números en una nueva ronda
+export const onRoundStartCountdown = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+    seconds_remaining: number;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "round_number" in data &&
+        "room_id" in data &&
+        "seconds_remaining" in data
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          seconds_remaining: number;
+        });
+      }
+    };
+    
+    socket.on("round-start-countdown", handler);
+    
+    return () => {
+      socket?.off("round-start-countdown", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de sincronización de estado de sala (cuando te unes a una sala con juego activo)
+export const onRoomStateSync = (
+  callback: (data: {
+    room_id: string;
+    round: {
+      round_number: number;
+      pattern: string | null;
+      called_numbers: Array<{
+        number: string;
+        called_at: string;
+      }>;
+      last_called_at: string | null;
+      called_count: number;
+      status: string;
+    } | null;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "round" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          round: {
+            round_number: number;
+            pattern: string | null;
+            called_numbers: Array<{
+              number: string;
+              called_at: string;
+            }>;
+            last_called_at: string | null;
+            called_count: number;
+            status: string;
+          } | null;
+        });
+      }
+    };
+    
+    socket.on("room-state-sync", handler);
+    
+    return () => {
+      socket?.off("room-state-sync", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 // Escuchar evento de countdown de timeout
 export const onTimeoutCountdown = (
   callback: (data: {
