@@ -1,8 +1,8 @@
 // src/Componets/shared/GlassDialog.tsx
 import React from "react";
-import { Dialog, DialogProps } from "@mui/material";
+import { Dialog } from "@mui/material";
 
-type GlassDialogProps = Omit<DialogProps, "PaperProps"> & {
+type GlassDialogProps = Omit<React.ComponentProps<typeof Dialog>, "PaperProps"> & {
   children: React.ReactNode;
 };
 

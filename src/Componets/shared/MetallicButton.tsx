@@ -1,10 +1,10 @@
 // src/Componets/shared/MetallicButton.tsx
 import React from "react";
-import { Button, ButtonProps } from "@mui/material";
+import { Button } from "@mui/material";
 
 type MetallicButtonVariant = "gold" | "gray" | "red";
 
-type MetallicButtonProps = Omit<ButtonProps, "variant"> & {
+type MetallicButtonProps = Omit<React.ComponentProps<typeof Button>, "variant"> & {
   variant?: MetallicButtonVariant;
   fullWidth?: boolean;
 };
