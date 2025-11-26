@@ -891,6 +891,16 @@ export default function GameInProgress() {
           console.log(
             `[GameInProgress] Countdown de transición: ${data.seconds_remaining}s para Round ${data.next_round_number}`
           );
+          
+          // CRÍTICO: Actualizar el round actual cuando comienza la transición
+          // Esto asegura que el UI muestre el round correcto durante el countdown
+          if (data.next_round_number && data.next_round_number > currentRound) {
+            console.log(
+              `[GameInProgress] Actualizando round actual durante transición: Round ${data.next_round_number} (antes: Round ${currentRound})`
+            );
+            setCurrentRound(data.next_round_number);
+          }
+          
           if (data.finish_timestamp) {
             // Usar timestamp para sincronización precisa
             setRoundTransitionCountdownFinish(data.finish_timestamp);
