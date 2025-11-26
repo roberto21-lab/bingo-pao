@@ -10,6 +10,13 @@ export type BackendStatus = {
   category: string;
 };
 
+// Función helper para normalizar VES a Bs
+export const normalizeCurrency = (currencyCode?: string | null): string => {
+  if (!currencyCode) return "Bs";
+  const normalized = currencyCode.toLowerCase().trim();
+  return normalized === "ves" ? "Bs" : currencyCode;
+};
+
 // Tipo para la currency del backend
 export type BackendCurrency = {
   _id: string;
@@ -119,8 +126,9 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
 
   const price = parseDecimal(backendRoom.price_per_card);
   const totalPot = parseDecimal(backendRoom.total_pot);
-  const currencyCode = currency?.code || "Bs";
-  const currencySymbol = currency?.symbol || "$";
+  // Normalizar VES a Bs
+  const currencyCode = normalizeCurrency(currency?.code);
+  const currencySymbol = currency?.symbol || "Bs";
 
   // Calcular premio estimado
   // Si total_pot ya está calculado, usarlo directamente

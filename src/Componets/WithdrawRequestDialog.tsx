@@ -46,7 +46,7 @@ type WithdrawRequestDialogProps = {
   bankAccount?: {
     _id: string;
     bank_name: string;
-    account_number: string;
+    account_number?: string;
     phone_number: string;
     document_number: string;
     document_type_id: {

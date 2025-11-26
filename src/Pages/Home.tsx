@@ -1027,13 +1027,13 @@ export default function Home() {
           onSubmit={submitReport}
           error={error}
           banks={BANKS}
-          currency={"Bs"}
+          currency="Bs"
           accountInfo={{
             document_type_id: userProfile?.document_type_id?._id || "",
             docId: userProfile?.document_number || "",
             phone: userProfile?.phone || "",
           }}
-          bankAccount={bankAccount}
+          bankAccount={bankAccount ? { bank_name: bankAccount.bank_name } : null}
         />
       </Container>
     </Box>

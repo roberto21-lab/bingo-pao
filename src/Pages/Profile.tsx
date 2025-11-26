@@ -17,15 +17,13 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import IconButton from "@mui/material/IconButton";
 import { useNavigate } from "react-router";
 import BackgroundStars from "../Componets/BackgroundStars";
-import {
-  MobilePaymentReportDialog,
-  type MobilePaymentReportFormState,
-} from "../Componets/MobilePaymentReportDialog";
+import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
 import { logout } from "../Services/auth.service";
 import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 import { getUserById, type User } from "../Services/users.service";
 import { useAuth } from "../hooks/useAuth";
 import ProtectedRoute from "../Componets/ProtectedRoute";
+import { type BankAccount } from "../Services/bankAccounts.service";
 
 type MobilePayData = {
   bankName: string;
@@ -137,11 +135,15 @@ function ProfileContent() {
 
         // Cargar wallet del usuario
         try {
-          const { api } = await import("../Services/api");
-          const walletResponse = await api.get(`/wallets/user/${userId}`);
-          if (walletResponse.data) {
-            setWallet(walletResponse.data);
-          }
+          const { getWalletByUser } = await import("../Services/wallets.service");
+          const walletData = await getWalletByUser(userId);
+          const currencyId = typeof walletData.currency_id === "string"
+            ? undefined
+            : walletData.currency_id;
+          setWallet({
+            balance: walletData.balance || 0,
+            currency_id: currencyId
+          });
         } catch (walletError: unknown) {
           // Si no hay wallet, no es un error crítico
           if (
@@ -208,10 +210,17 @@ function ProfileContent() {
   };
 
   const balance = wallet?.balance || 0;
+  // Función helper para normalizar VES a Bs
+  const normalizeCurrency = (currencyCode?: string | null): string => {
+    if (!currencyCode) return "Bs";
+    const normalized = currencyCode.toLowerCase().trim();
+    return normalized === "ves" ? "Bs" : currencyCode;
+  };
+  
   const currency =
     typeof wallet?.currency_id === "string"
-      ? wallet.currency_id
-      : wallet?.currency_id?.code || wallet?.currency_id?.name || "Bs";
+      ? normalizeCurrency(wallet.currency_id)
+      : normalizeCurrency(wallet?.currency_id?.code || wallet?.currency_id?.name) || "Bs";
 
   // Funciones helper - deben ir antes de los returns condicionales
   const handleCopy = (value: string) => {
@@ -226,7 +235,7 @@ function ProfileContent() {
       });
   };
 
-  const submitReport = async (data: MobilePaymentReportFormState) => {
+  const submitReport = async () => {
     setError("");
     
     // La validación y creación de la transacción se hace en el modal
@@ -235,9 +244,12 @@ function ProfileContent() {
       if (userId) {
         const { getWalletByUser } = await import("../Services/wallets.service");
         const updatedWallet = await getWalletByUser(userId);
+        const currencyId = typeof updatedWallet.currency_id === "string"
+          ? undefined
+          : updatedWallet.currency_id;
         setWallet({
           balance: updatedWallet.balance || 0,
-          currency_id: updatedWallet.currency_id
+          currency_id: currencyId
         });
       }
     } catch (error) {
@@ -245,18 +257,6 @@ function ProfileContent() {
     }
 
     // Cerrar el modal
-    setOpenReport(false);
-
-    // Preparar datos para enviar al backend
-    // const reportData = {
-    //   ...data,
-    //   amount: Number(data.amount),
-    //   userId: user?._id,
-    //   createdAt: new Date().toISOString(),
-    // };
-    // await api.post('/payments/report', reportData);
-
-    // reset suave y cerrar
     setOpenReport(false);
   };
 
@@ -267,9 +267,164 @@ function ProfileContent() {
 
   const [openWithdrawRequestDialog, setOpenWithdrawRequestDialog] =
     React.useState(false);
+  const [withdrawError, setWithdrawError] = React.useState<string | null>(null);
+  const [bankAccount, setBankAccount] = React.useState<{
+    _id: string;
+    bank_name: string;
+    account_number?: string;
+    phone_number: string;
+    document_number: string;
+    document_type_id: {
+      _id: string;
+      name: string;
+      code: string;
+    };
+  } | null>(null);
+  const [availableBalance, setAvailableBalance] = React.useState<number>(0);
 
-  const handleSubmitWithdrawRequestDialog = () => {
-    setOpenWithdrawRequestDialog(!openWithdrawRequestDialog);
+  // Cargar cuenta bancaria y balance disponible
+  React.useEffect(() => {
+    const loadBankAccountAndBalance = async () => {
+      if (!userId) return;
+
+      try {
+        // Cargar cuenta bancaria
+        try {
+          const { getBankAccountByUser } = await import("../Services/bankAccounts.service");
+          const account = await getBankAccountByUser(userId);
+          setBankAccount(account);
+        } catch (error: unknown) {
+          if (error && typeof error === "object" && "response" in error) {
+            const httpError = error as { response?: { status?: number } };
+            if (httpError.response?.status !== 404) {
+              console.error("Error al cargar cuenta bancaria:", error);
+            }
+          }
+          setBankAccount(null);
+        }
+
+        // Cargar wallet para obtener balance disponible
+        try {
+          const { getWalletByUser } = await import("../Services/wallets.service");
+          const wallet = await getWalletByUser(userId);
+          const frozen = wallet.frozen_balance || 0;
+          const total = wallet.balance || 0;
+          setAvailableBalance(Math.max(0, total - frozen));
+        } catch (error) {
+          console.error("Error al cargar wallet:", error);
+        }
+      } catch (error) {
+        console.error("Error al cargar datos:", error);
+      }
+    };
+
+    loadBankAccountAndBalance();
+  }, [userId]);
+
+  const handleSubmitWithdrawRequestDialog = async (
+    formData: {
+      bankName: string;
+      document_type_id: string;
+      docId: string;
+      phone: string;
+      amount: string;
+      notes: string;
+    }
+  ) => {
+    setWithdrawError(null);
+    if (!userId) {
+      setWithdrawError("No se pudo identificar al usuario");
+      return;
+    }
+
+    try {
+      const { createBankAccountWithWithdraw, createWithdrawOnly } = await import("../Services/bankAccounts.service");
+
+      if (!bankAccount) {
+        // No hay cuenta bancaria, crear cuenta y retiro
+        if (!formData.bankName) {
+          setWithdrawError("Debe seleccionar un banco");
+          return;
+        }
+
+        const result = await createBankAccountWithWithdraw({
+          userId,
+          bank_name: formData.bankName,
+          account_number: "",
+          phone_number: formData.phone,
+          document_number: formData.docId,
+          document_type_id: formData.document_type_id,
+          amount: parseFloat(formData.amount)
+        });
+
+        setBankAccount(result.bank_account);
+        setAvailableBalance(Math.max(0, result.new_balance || 0));
+
+        // Recargar wallet
+        const { getWalletByUser } = await import("../Services/wallets.service");
+        const updatedWallet = await getWalletByUser(userId);
+        const currencyId = typeof updatedWallet.currency_id === "string"
+          ? undefined
+          : updatedWallet.currency_id;
+        setWallet({
+          balance: updatedWallet.balance || 0,
+          currency_id: currencyId
+        });
+
+        setOpenWithdrawRequestDialog(false);
+      } else {
+        // Ya hay cuenta bancaria, solo crear la transacción de retiro
+        const result = await createWithdrawOnly(userId, parseFloat(formData.amount));
+
+        setAvailableBalance(Math.max(0, result.new_balance || 0));
+
+        // Recargar wallet
+        const { getWalletByUser } = await import("../Services/wallets.service");
+        const updatedWallet = await getWalletByUser(userId);
+        const currencyId = typeof updatedWallet.currency_id === "string"
+          ? undefined
+          : updatedWallet.currency_id;
+        setWallet({
+          balance: updatedWallet.balance || 0,
+          currency_id: currencyId
+        });
+
+        setOpenWithdrawRequestDialog(false);
+      }
+    } catch (error: unknown) {
+      console.error("Error al procesar retiro:", error);
+      let errorMessage = "Error al procesar la solicitud de retiro";
+      if (error && typeof error === "object") {
+        if ("response" in error) {
+          const httpError = error as { response?: { data?: { message?: string } } };
+          errorMessage = httpError.response?.data?.message || errorMessage;
+        } else if ("message" in error) {
+          errorMessage = String(error.message);
+        }
+      }
+      setWithdrawError(errorMessage);
+    }
+  };
+
+  const handleDeleteBankAccount = async () => {
+    if (!bankAccount || !userId) return;
+    try {
+      const { deleteBankAccount } = await import("../Services/bankAccounts.service");
+      await deleteBankAccount(bankAccount._id);
+      setBankAccount(null);
+      // Recargar wallet
+      const { getWalletByUser } = await import("../Services/wallets.service");
+      const updatedWallet = await getWalletByUser(userId);
+      const currencyId = typeof updatedWallet.currency_id === "string"
+        ? undefined
+        : updatedWallet.currency_id;
+      setWallet({
+        balance: updatedWallet.balance || 0,
+        currency_id: currencyId
+      });
+    } catch (error) {
+      console.error("Error al eliminar cuenta bancaria:", error);
+    }
   };
 
   // Ahora sí, los returns condicionales DESPUÉS de todos los hooks y funciones
@@ -748,7 +903,7 @@ function ProfileContent() {
                 </Button>
                 <Button
                   fullWidth
-                  onClick={handleSubmitWithdrawRequestDialog}
+                  onClick={() => setOpenWithdrawRequestDialog(true)}
                   variant="outlined"
                   sx={{
                     backfaceVisibility: "hidden",
@@ -876,25 +1031,34 @@ function ProfileContent() {
         open={openWithdrawRequestDialog}
         onClose={() => setOpenWithdrawRequestDialog(false)}
         onSubmit={handleSubmitWithdrawRequestDialog}
-        error={error}
-        currency="Bs"
-        // accountInfo={MOCK_ACCOUNT}
+        error={withdrawError}
+        currency={currency}
         minAmount={500}
         accountInfo={{
           bankName: "",
-          docType: "V",
-          docId: "",
-          phone: "",
+          document_type_id: profile?.document_type_id?._id || "",
+          docId: profile?.document_number || "",
+          phone: profile?.phone || "",
         }}
+        availableBalance={availableBalance}
+        hasBankAccount={!!bankAccount}
+        bankAccount={bankAccount}
+        onDeleteBankAccount={handleDeleteBankAccount}
       />
 
       <MobilePaymentReportDialog
         open={openReport}
         onClose={() => setOpenReport(false)}
         onSubmit={submitReport}
-        error={error}
+        error={error || null}
         banks={BANKS}
         currency={currency}
+        accountInfo={{
+          document_type_id: profile?.document_type_id?._id || "",
+          docId: profile?.document_number || "",
+          phone: profile?.phone || "",
+        }}
+        bankAccount={bankAccount ? { bank_name: bankAccount.bank_name } : null}
       />
     </>
   );

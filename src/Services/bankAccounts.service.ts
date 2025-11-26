@@ -4,7 +4,7 @@ export type BankAccount = {
   _id: string;
   profile_id: string;
   bank_name: string;
-  account_number: string;
+  account_number?: string; // Opcional porque puede no existir
   phone_number: string;
   document_number: string;
   document_type_id: {
