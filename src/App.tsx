@@ -35,6 +35,7 @@ function AppContent() {
         <Route path="/rooms" element={<Rooms />} />
         <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
         <Route path="/room/:roomId" element={<ProtectedRoute><RoomDetail /></ProtectedRoute>} />
+        <Route path="/room/enroll" element={<ProtectedRoute><RoomDetail /></ProtectedRoute>} />
         <Route path="/game/:roomId" element={<ProtectedRoute><GameInProgress /></ProtectedRoute>} />
         <Route path="/purchased-cartons" element={<ProtectedRoute><PurchasedCartons /></ProtectedRoute>} />
         <Route path="/profile" element={<Profile />} />

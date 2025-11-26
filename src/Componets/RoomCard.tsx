@@ -16,6 +16,9 @@ type RoomCardProps = {
   players?: string; // formato "35/50"
   scheduledAt?: Date | null;
   onJoin?: () => void;
+  // Nuevos props para listas de inscripciones
+  queueNumber?: number;
+  showPrizeInsteadOfPlayers?: boolean; // Mostrar premio acumulado en lugar de jugadores
 };
 
 const getStatusLabel = (status: RoomStatus) => {
@@ -90,6 +93,8 @@ const RoomCard: React.FC<RoomCardProps> = ({
   players,
   scheduledAt,
   onJoin,
+  queueNumber,
+  showPrizeInsteadOfPlayers = false,
 }) => {
   // Crear objeto Room para el componente RoomCountdown
   const roomForCountdown: Room = {
@@ -189,22 +194,39 @@ const RoomCard: React.FC<RoomCardProps> = ({
           </Stack>
 
           <Stack spacing={1.5} sx={{ mt: 2 }}>
+            {queueNumber && (
+              <RoomInfoRow
+                label="Lista de inscripciones:"
+                value={`#${queueNumber}`}
+                valueBold
+              />
+            )}
             <RoomInfoRow
               label="Precio por cartón:"
               value={`${price.toFixed(2)} ${currency}`}
               valueBold
             />
+            {showPrizeInsteadOfPlayers ? (
+              <RoomInfoRow
+                label="Premio acumulado:"
+                value={`${estimatedPrize.toFixed(2)} ${currency}`}
+                valueBold
+              />
+            ) : (
+              <>
             <RoomInfoRow
               label="Premio estimado:"
               value={`${estimatedPrize.toFixed(2)} ${currency}`}
               valueBold
             />
             {players && <RoomInfoRow label="Jugadores:" value={players} />}
+              </>
+            )}
             {rounds && <RoomInfoRow label="Rondas:" value={rounds} />}
             {jackpot && (
               <RoomInfoRow
                 label="Jackpot:"
-                value={`$${jackpot.toFixed(2)} ${currency}`}
+                value={`${jackpot.toFixed(2)} ${currency}`}
                 valueBold
               />
             )}

@@ -78,9 +78,10 @@ export async function getUserRooms(userId: string): Promise<string[]> {
 }
 
 // POST /cards/enroll - inscribir cartones específicos seleccionados por el usuario
+// AHORA USA enrollmentQueueId en lugar de roomId
 export async function enrollCards(
   userId: string,
-  roomId: string,
+  enrollmentQueueId: string, // NUEVO: ID de la lista de inscripciones
   cardIds: string[] // Array de IDs de cartones
 ): Promise<{ success: boolean; message: string; data: any }> {
   try {
@@ -88,7 +89,7 @@ export async function enrollCards(
       "/cards/enroll",
       {
         userId,
-        roomId,
+        enrollmentQueueId, // NUEVO: usar enrollmentQueueId
         cardIds,
       }
     );
@@ -108,6 +109,23 @@ export async function getAvailableCards(roomId: string): Promise<BackendCard[]> 
   try {
     const response = await api.get<{ success: boolean; data: BackendCard[] }>(
       `/cards/room/${roomId}/available`
+    );
+
+    if (response.data.success && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+
+    return [];
+  } catch (error) {
+    throw error;
+  }
+}
+
+// GET /cards/enrollment-queue/:enrollmentQueueId/available - obtener cartones disponibles para una lista de inscripciones
+export async function getAvailableCardsForQueue(enrollmentQueueId: string): Promise<BackendCard[]> {
+  try {
+    const response = await api.get<{ success: boolean; data: BackendCard[] }>(
+      `/cards/enrollment-queue/${enrollmentQueueId}/available`
     );
 
     if (response.data.success && Array.isArray(response.data.data)) {

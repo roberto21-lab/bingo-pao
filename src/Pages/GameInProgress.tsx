@@ -1037,14 +1037,15 @@ export default function GameInProgress() {
           setRoundStartCountdownFinish(data.finish_timestamp);
           setNextRoundNumber(data.round_number);
           setIsCallingNumber(false);
-          setIsGameStarting(true);
-          // El hook calculará el tiempo restante automáticamente
+          // NO establecer isGameStarting aquí - el countdown se mostrará desde roundTransitionCountdown
+          // isGameStarting solo se mostrará cuando NO hay countdown activo
+          // El hook calculará el tiempo restante automáticamente y actualizará roundTransitionCountdown
         } else if (data.seconds_remaining > 0) {
           // Fallback si no hay timestamp (compatibilidad hacia atrás)
           setRoundTransitionCountdown(data.seconds_remaining);
           setNextRoundNumber(data.round_number);
           setIsCallingNumber(false);
-          setIsGameStarting(true);
+          // NO establecer isGameStarting aquí - el countdown se mostrará
         } else {
           // Cuando llega a 0, limpiar el countdown (los números comenzarán a llamarse)
           console.log(
@@ -1053,7 +1054,7 @@ export default function GameInProgress() {
           setRoundTransitionCountdown(null);
           setNextRoundNumber(null);
           setRoundStartCountdownFinish(null);
-          setIsGameStarting(false);
+          // NO limpiar isGameStarting aquí - se limpiará cuando llegue el primer número
           // isCallingNumber se activará cuando llegue el primer número
         }
       }
@@ -1381,10 +1382,13 @@ export default function GameInProgress() {
         );
         if (remaining > 0) {
           setRoundTransitionCountdown(remaining);
+          // Cuando hay countdown activo, NO mostrar "Iniciando juego..." (el countdown tiene prioridad)
+          setIsGameStarting(false);
         } else {
           setRoundTransitionCountdown(null);
           setRoundStartCountdownFinish(null);
-          setIsGameStarting(false);
+          // Cuando el countdown termina (llega a 0), mostrar "Iniciando juego..." brevemente hasta que llegue el primer número
+          setIsGameStarting(true);
         }
       } else if (roundTransitionCountdownFinish) {
         // Actualizar countdown de transición entre rounds (solo si no hay countdown de inicio de round)

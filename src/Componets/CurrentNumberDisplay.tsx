@@ -187,6 +187,44 @@ export default function CurrentNumberDisplay({
               Iniciando juego...
             </Typography>
           </Box>
+        ) : roundTransitionCountdown !== null && roundTransitionCountdown > 0 ? (
+          <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
+            <Typography
+              sx={{
+                fontSize: "48px",
+                fontWeight: 900,
+                background: roundTransitionCountdown <= 3 
+                  ? "linear-gradient(135deg, #4caf50, #66bb6a, #4caf50)"
+                  : "linear-gradient(135deg, #2196f3, #42a5f5, #2196f3)",
+                backgroundClip: "text",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                animation: roundTransitionCountdown <= 3 ? "pulse 0.5s infinite" : "none",
+                "@keyframes pulse": {
+                  "0%, 100%": { transform: "scale(1)" },
+                  "50%": { transform: "scale(1.15)" },
+                },
+                mb: 0.5,
+              }}
+            >
+              {roundTransitionCountdown}
+            </Typography>
+            {nextRoundNumber && (
+              <Typography
+                sx={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#d4af37",
+                  textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
+                  fontFamily: "'Montserrat', sans-serif",
+                }}
+              >
+                Ronda {nextRoundNumber}
+              </Typography>
+            )}
+          </Box>
         ) : bingoClaimCountdown !== null && bingoClaimCountdown > 0 ? (
           <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
             <Typography
@@ -300,43 +338,37 @@ export default function CurrentNumberDisplay({
               })()}
             </Typography>
           </Box>
-        ) : roundTransitionCountdown !== null && roundTransitionCountdown > 0 ? (
+        ) : isGameStarting && !roundTransitionCountdown ? (
           <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
             <Typography
               sx={{
-                fontSize: "48px",
-                fontWeight: 900,
-                background: roundTransitionCountdown <= 3 
-                  ? "linear-gradient(135deg, #4caf50, #66bb6a, #4caf50)"
-                  : "linear-gradient(135deg, #2196f3, #42a5f5, #2196f3)",
-                backgroundClip: "text",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                textShadow: "0 2px 8px rgba(0, 0, 0, 0.5)",
+                fontSize: "20px",
+                fontWeight: 700,
+                color: "#d4af37",
+                textShadow: "0 2px 6px rgba(0, 0, 0, 0.5)",
                 fontFamily: "'Montserrat', sans-serif",
-                animation: roundTransitionCountdown <= 3 ? "pulse 0.5s infinite" : "none",
-                "@keyframes pulse": {
-                  "0%, 100%": { transform: "scale(1)" },
-                  "50%": { transform: "scale(1.15)" },
-                },
                 mb: 0.5,
+                animation: "pulse 1s ease-in-out infinite",
+                "@keyframes pulse": {
+                  "0%, 100%": { opacity: 1 },
+                  "50%": { opacity: 0.7 },
+                },
               }}
             >
-              {roundTransitionCountdown}
+              Iniciando juego...
             </Typography>
-            {nextRoundNumber && (
               <Typography
                 sx={{
                   fontSize: "12px",
-                  fontWeight: 600,
-                  color: "#d4af37",
+                fontWeight: 500,
+                color: "#f5e6d3",
                   textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
                   fontFamily: "'Montserrat', sans-serif",
+                opacity: 0.8,
                 }}
               >
-                Ronda {nextRoundNumber}
+              Preparando números...
               </Typography>
-            )}
           </Box>
         ) : isFinished ? (
           <Typography

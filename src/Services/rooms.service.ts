@@ -59,6 +59,43 @@ export type Room = {
   scheduledAt?: Date | null; // Hora programada de inicio
 };
 
+// Tipo para la lista de inscripciones del backend
+export type BackendEnrollmentQueue = {
+  _id: string;
+  id?: string;
+  queue_number: number;
+  status: BackendStatus;
+  scheduled_start_time: string | Date;
+  total_prize: number;
+  estimated_duration_minutes: number;
+  room_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+// Tipo para la respuesta combinada (lista + partida)
+export type BackendEnrollmentQueueResponse = {
+  enrollment_queue: BackendEnrollmentQueue;
+  room: BackendRoom | null;
+  is_playing: boolean;
+  is_active: boolean;
+  is_waiting: boolean;
+};
+
+// Tipo para la lista de inscripciones del frontend
+export type EnrollmentQueue = {
+  id: string;
+  queueNumber: number;
+  status: "waiting" | "active" | "playing" | "finished";
+  scheduledStartTime: Date;
+  totalPrize: number;
+  estimatedDurationMinutes: number;
+  room: Room | null; // Partida asociada si está en progreso
+  isPlaying: boolean;
+  isActive: boolean;
+  isWaiting: boolean;
+};
+
 // Función para convertir Decimal128 a número
 function parseDecimal(decimal: ApiDecimal | string | number | undefined): number {
   if (!decimal) return 0;
@@ -175,19 +212,63 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
   };
 }
 
-// GET /rooms - obtener todas las salas
-export async function getRooms(): Promise<Room[]> {
+// Función para mapear lista de inscripciones del backend al frontend
+function mapBackendEnrollmentQueueToEnrollmentQueue(
+  backendData: BackendEnrollmentQueueResponse
+): EnrollmentQueue {
+  const queue = backendData.enrollment_queue;
+  const room = backendData.room;
+
+  // Mapear status de enrollment_queue
+  let status: "waiting" | "active" | "playing" | "finished" = "waiting";
+  if (queue.status.name === "waiting") status = "waiting";
+  else if (queue.status.name === "active") status = "active";
+  else if (queue.status.name === "playing") status = "playing";
+  else if (queue.status.name === "finished") status = "finished";
+
+  // Parsear scheduled_start_time
+  let scheduledStartTime: Date;
+  if (queue.scheduled_start_time instanceof Date) {
+    scheduledStartTime = queue.scheduled_start_time;
+  } else if (typeof queue.scheduled_start_time === "string") {
+    scheduledStartTime = new Date(queue.scheduled_start_time);
+  } else {
+    scheduledStartTime = new Date();
+  }
+
+  // Mapear room si existe
+  let mappedRoom: Room | null = null;
+  if (room) {
+    mappedRoom = mapBackendRoomToRoom(room);
+  }
+
+  return {
+    id: queue._id || queue.id || "",
+    queueNumber: queue.queue_number,
+    status,
+    scheduledStartTime,
+    totalPrize: queue.total_prize,
+    estimatedDurationMinutes: queue.estimated_duration_minutes,
+    room: mappedRoom,
+    isPlaying: backendData.is_playing,
+    isActive: backendData.is_active,
+    isWaiting: backendData.is_waiting,
+  };
+}
+
+// GET /rooms - obtener todas las listas de inscripciones (ahora retorna listas en lugar de salas)
+export async function getRooms(): Promise<EnrollmentQueue[]> {
   try {
-    // El backend devuelve un array directo, no un objeto con success/data
-    const response = await api.get<BackendRoom[]>("/rooms");
+    // El backend ahora devuelve un array de objetos con enrollment_queue y room
+    const response = await api.get<BackendEnrollmentQueueResponse[]>("/rooms");
     
     if (Array.isArray(response.data)) {
-      return response.data.map(mapBackendRoomToRoom);
+      return response.data.map(mapBackendEnrollmentQueueToEnrollmentQueue);
     }
     
     return [];
   } catch (error) {
-    console.error("Error al obtener salas:", error);
+    console.error("Error al obtener listas de inscripciones:", error);
     throw error;
   }
 }
