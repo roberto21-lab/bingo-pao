@@ -19,6 +19,8 @@ import { getRoomRounds } from "../Services/rounds.service";
 import { getUserId } from "../Services/auth.service";
 import { useAuth } from "../hooks/useAuth";
 import AuthToast from "../Componets/AuthToast";
+import SuccessToast from "../Componets/SuccessToast";
+import ErrorToast from "../Componets/ErrorToast";
 import AvailableRoomsPreview from "../Componets/AvailableRoomsPreview";
 import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
 import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
@@ -542,8 +544,14 @@ export default function Home() {
         setAvailableBalance(wallet.balance || 0);
         setFrozenBalance(wallet.frozen_balance || 0);
       }
+      
+      // Mostrar toaster de éxito
+      setShowRechargeSuccessToast(true);
     } catch (error) {
       console.error("Error al recargar wallet después del reporte:", error);
+      const errorMessage = error instanceof Error ? error.message : "Error al procesar la recarga";
+      setRechargeErrorMessage(errorMessage);
+      setShowRechargeErrorToast(true);
     }
 
     // Cerrar el modal
@@ -553,6 +561,12 @@ export default function Home() {
   const [openWithdrawRequestDialog, setOpenWithdrawRequestDialog] =
     React.useState(false);
   const [withdrawError, setWithdrawError] = React.useState<string | null>(null);
+  const [showRechargeSuccessToast, setShowRechargeSuccessToast] = React.useState(false);
+  const [showRechargeErrorToast, setShowRechargeErrorToast] = React.useState(false);
+  const [rechargeErrorMessage, setRechargeErrorMessage] = React.useState<string>("");
+  const [showWithdrawSuccessToast, setShowWithdrawSuccessToast] = React.useState(false);
+  const [showWithdrawErrorToast, setShowWithdrawErrorToast] = React.useState(false);
+  const [withdrawErrorMessage, setWithdrawErrorMessage] = React.useState<string>("");
 
   const handleSubmitWithdrawRequestDialog = async (formData: {
     bankName: string;
@@ -625,6 +639,8 @@ export default function Home() {
         setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
 
+        // Mostrar toaster de éxito
+        setShowWithdrawSuccessToast(true);
         setOpenWithdrawRequestDialog(false);
       } else {
         // Ya hay cuenta bancaria, solo crear la transacción de retiro
@@ -640,6 +656,8 @@ export default function Home() {
         setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
 
+        // Mostrar toaster de éxito
+        setShowWithdrawSuccessToast(true);
         setOpenWithdrawRequestDialog(false);
       }
     } catch (error: unknown) {
@@ -654,6 +672,8 @@ export default function Home() {
         }
       }
       setWithdrawError(errorMessage);
+      setWithdrawErrorMessage(errorMessage);
+      setShowWithdrawErrorToast(true);
     }
   };
 
@@ -1025,6 +1045,10 @@ export default function Home() {
           open={openReport}
           onClose={() => setOpenReport(false)}
           onSubmit={submitReport}
+          onError={(errorMessage) => {
+            setRechargeErrorMessage(errorMessage);
+            setShowRechargeErrorToast(true);
+          }}
           error={error}
           banks={BANKS}
           currency="Bs"
@@ -1035,6 +1059,46 @@ export default function Home() {
           }}
           bankAccount={bankAccount ? { bank_name: bankAccount.bank_name } : null}
         />
+
+        {/* Toast de éxito para recarga */}
+        {showRechargeSuccessToast && (
+          <SuccessToast
+            message="¡Recarga registrada exitosamente! 🎉"
+            subMessage="Tu solicitud está en revisión"
+            onClose={() => setShowRechargeSuccessToast(false)}
+          />
+        )}
+
+        {/* Toast de error para recarga */}
+        {showRechargeErrorToast && (
+          <ErrorToast
+            message={rechargeErrorMessage}
+            onClose={() => {
+              setShowRechargeErrorToast(false);
+              setRechargeErrorMessage("");
+            }}
+          />
+        )}
+
+        {/* Toast de éxito para retiro */}
+        {showWithdrawSuccessToast && (
+          <SuccessToast
+            message="¡Solicitud de retiro creada exitosamente! 🎉"
+            subMessage="Tu solicitud está en revisión"
+            onClose={() => setShowWithdrawSuccessToast(false)}
+          />
+        )}
+
+        {/* Toast de error para retiro */}
+        {showWithdrawErrorToast && (
+          <ErrorToast
+            message={withdrawErrorMessage}
+            onClose={() => {
+              setShowWithdrawErrorToast(false);
+              setWithdrawErrorMessage("");
+            }}
+          />
+        )}
       </Container>
     </Box>
   );

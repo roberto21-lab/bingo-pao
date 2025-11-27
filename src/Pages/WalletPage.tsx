@@ -175,17 +175,35 @@ const WalletPage: React.FC = () => {
         });
         setTransactionTypeMap(typeMap);
 
-        const mappedTransactions: TransactionDisplay[] = walletTransactions.map((tx: Transaction) => {
-          const typeId = typeof tx.transaction_type_id === 'string' ? tx.transaction_type_id : tx.transaction_type_id._id;
-          const statusId = typeof tx.status_id === 'string' ? tx.status_id : tx.status_id._id;
-          // Obtener el nombre del tipo desde el map o desde el objeto si está poblado
-          let typeName = typeMap[typeId] || 'unknown';
-          if (typeName === 'unknown' && typeof tx.transaction_type_id === 'object' && tx.transaction_type_id.name) {
-            typeName = tx.transaction_type_id.name;
-          }
-          const statusName = statusMap[statusId] || 'unknown';
+        const mappedTransactions: TransactionDisplay[] = walletTransactions
+          .map((tx: Transaction) => {
+            // Validar que transaction_type_id y status_id existan
+            if (!tx.transaction_type_id || !tx.status_id) {
+              console.warn('Transacción con datos incompletos:', tx);
+              return null;
+            }
 
-          // Generar descripción basada en el tipo y metadata
+            const typeId = typeof tx.transaction_type_id === 'string' 
+              ? tx.transaction_type_id 
+              : (tx.transaction_type_id as any)?._id;
+            const statusId = typeof tx.status_id === 'string' 
+              ? tx.status_id 
+              : (tx.status_id as any)?._id;
+
+            // Si no se pudo obtener el ID, saltar esta transacción
+            if (!typeId || !statusId) {
+              console.warn('Transacción sin IDs válidos:', tx);
+              return null;
+            }
+
+            // Obtener el nombre del tipo desde el map o desde el objeto si está poblado
+            let typeName = typeMap[typeId] || 'unknown';
+            if (typeName === 'unknown' && typeof tx.transaction_type_id === 'object' && (tx.transaction_type_id as any)?.name) {
+              typeName = (tx.transaction_type_id as any).name;
+            }
+            const statusName = statusMap[statusId] || 'unknown';
+
+            // Generar descripción basada en el tipo y metadata
           let description = getTransactionLabel(typeName);
           if (tx.metadata) {
             if (tx.metadata.bank_name) {
@@ -215,7 +233,8 @@ const WalletPage: React.FC = () => {
             statusLabel: statusName === 'pending' ? 'Pendiente' : statusName === 'completed' ? 'Completado' : statusName === 'unknown' ? 'Desconocido' : undefined,
             createdAt: tx.created_at,
           };
-        });
+          })
+          .filter((tx): tx is TransactionDisplay => tx !== null);
 
         // Ordenar por fecha más reciente primero
         mappedTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -268,22 +287,27 @@ const WalletPage: React.FC = () => {
       return transactions;
     }
     if (tab === 1) {
-      // Filtrar retiros: puede ser 'withdrawal' o 'withdraw'
+      // Filtrar retiros: puede ser 'withdrawal', 'withdraw' o 'game_entry' (entradas a juegos)
       // También verificamos el typeLabel por si acaso
       return transactions.filter((t) => {
         const typeLower = t.type.toLowerCase();
         const labelLower = t.typeLabel.toLowerCase();
         return typeLower === 'withdrawal' || 
                typeLower === 'withdraw' || 
-               labelLower === 'retiro';
+               typeLower === 'game_entry' ||
+               labelLower === 'retiro' ||
+               labelLower === 'entrada a juego';
       });
     }
     if (tab === 2) {
-      // Filtrar recargas
+      // Filtrar recargas y premios (ambos suman al balance)
       return transactions.filter((t) => {
         const typeLower = t.type.toLowerCase();
         const labelLower = t.typeLabel.toLowerCase();
-        return typeLower === 'recharge' || labelLower === 'recarga';
+        return typeLower === 'recharge' || 
+               typeLower === 'prize' ||
+               labelLower === 'recarga' ||
+               labelLower === 'premio';
       });
     }
     return transactions;

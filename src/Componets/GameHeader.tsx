@@ -122,14 +122,14 @@ export default function GameHeader({
           }}
         >
           {roomFinished 
-            ? `Total Premio Entregado: $${totalPrize.toLocaleString("es-US", {
+            ? `Total Premio Entregado: ${totalPrize.toLocaleString("es-US", {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 0,
-              })}`
-            : `Premio Ronda ${currentRound}: $${currentRoundPrize.toLocaleString("es-US", {
+              })} Bs`
+            : `Premio Ronda ${currentRound}: ${currentRoundPrize.toLocaleString("es-US", {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 0,
-              })}`}
+              })} Bs`}
         </Typography>
       </Box>
 

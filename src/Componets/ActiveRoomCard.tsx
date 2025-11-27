@@ -187,7 +187,7 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
             fontSize: "14px",
           }}
         >
-          Premio: ${room.prizeAmount.toLocaleString()} {room.currency}
+          Premio: {room.prizeAmount.toLocaleString()} {room.currency}
         </Typography>
       </CardContent>
     </Card>

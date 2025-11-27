@@ -46,7 +46,7 @@ export const EnrollmentSummary: React.FC<EnrollmentSummaryProps> = ({
               variant="body2"
               sx={{ color: "#f5e6d3", fontWeight: 700, fontSize: "16px" }}
             >
-              ${totalPrice.toFixed(2)}
+              {totalPrice.toFixed(2)}
             </Typography>
             <Typography variant="caption" sx={{ color: "#f5e6d3", opacity: 0.8 }}>
               {currency}
@@ -62,7 +62,7 @@ export const EnrollmentSummary: React.FC<EnrollmentSummaryProps> = ({
               variant="body2"
               sx={{ color: "#f5e6d3", fontWeight: 700, fontSize: "16px" }}
             >
-              ${availableBalance.toFixed(2)}
+              {availableBalance.toFixed(2)}
             </Typography>
             <Typography variant="caption" sx={{ color: "#f5e6d3", opacity: 0.8 }}>
               {currency}

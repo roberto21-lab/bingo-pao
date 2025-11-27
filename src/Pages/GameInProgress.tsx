@@ -1009,9 +1009,9 @@ export default function GameInProgress() {
         // CRÍTICO: NO iniciar countdown de sala si hay un countdown de transición activo
         // Esto previene que el countdown de sala interfiera con la transición entre rounds
         if (roundTransitionCountdown !== null && roundTransitionCountdown > 0) {
-          console.log(
+        console.log(
             `[GameInProgress] Ignorando countdown de inicio de sala: hay countdown de transición activo (${roundTransitionCountdown}s)`
-          );
+        );
           return;
         }
         
@@ -1523,11 +1523,11 @@ export default function GameInProgress() {
         const transitionFinish = roundTransitionCountdownFinishRef.current;
         if (transitionFinish) {
           const remaining = Math.max(0, Math.floor((transitionFinish - now) / 1000));
-          if (remaining > 0) {
-            setRoundTransitionCountdown(remaining);
-          } else {
-            setRoundTransitionCountdown(null);
-            setRoundTransitionCountdownFinish(null);
+        if (remaining > 0) {
+          setRoundTransitionCountdown(remaining);
+        } else {
+          setRoundTransitionCountdown(null);
+          setRoundTransitionCountdownFinish(null);
           }
         }
       }

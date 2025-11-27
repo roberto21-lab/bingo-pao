@@ -23,6 +23,10 @@ import { CardSelectionPreview } from "../Componets/shared/CardSelectionPreview";
 import { ConfirmDeselectDialog } from "../Componets/shared/ConfirmDeselectDialog";
 import { EnrollmentSummary } from "../Componets/shared/EnrollmentSummary";
 import { MetallicButton } from "../Componets/shared/MetallicButton";
+import SuccessToast from "../Componets/SuccessToast";
+import ErrorToast from "../Componets/ErrorToast";
+import { getWalletByUser } from "../Services/wallets.service";
+import { getUserId } from "../Services/auth.service";
 
 type RoomDetailData = {
   id: string;
@@ -45,6 +49,11 @@ export default function RoomDetail() {
   const [enrolling, setEnrolling] = React.useState(false);
   const [availableCardsFromDB, setAvailableCardsFromDB] = React.useState<BackendCard[]>([]);
   const [loadingCards, setLoadingCards] = React.useState(true);
+  const [showSuccessToast, setShowSuccessToast] = React.useState(false);
+  const [showErrorToast, setShowErrorToast] = React.useState(false);
+  const [errorToastMessage, setErrorToastMessage] = React.useState<string>("");
+  const [availableBalance, setAvailableBalance] = React.useState<number>(0);
+  const [walletLoading, setWalletLoading] = React.useState(false);
 
   React.useEffect(() => {
     const fetchRoom = async () => {
@@ -166,6 +175,35 @@ export default function RoomDetail() {
       unsubscribeStatusUpdated();
     };
   }, [roomId]);
+
+  // Cargar wallet del usuario para obtener el saldo disponible
+  React.useEffect(() => {
+    const fetchWallet = async () => {
+      const userId = user?.id || getUserId();
+      if (!userId || !user) {
+        setAvailableBalance(0);
+        return;
+      }
+
+      try {
+        setWalletLoading(true);
+        const wallet = await getWalletByUser(userId);
+        // El balance ya está reducido por retiros pendientes en el backend
+        // El balance disponible es simplemente el balance (ya incluye la reducción de retiros pendientes)
+        setAvailableBalance(Math.max(0, wallet.balance || 0));
+      } catch (error) {
+        console.error("Error al cargar wallet:", error);
+        // Si no hay wallet, mantener valor en 0
+        setAvailableBalance(0);
+      } finally {
+        setWalletLoading(false);
+      }
+    };
+
+    if (user) {
+      fetchWallet();
+    }
+  }, [user]);
   
   // Obtener cartones disponibles del backend y generar si no existen
   React.useEffect(() => {
@@ -279,7 +317,6 @@ export default function RoomDetail() {
   }, [availableCardsFromDB, enrolledCards, loadingCards]);
   
   const [selectedCards, setSelectedCards] = React.useState<Set<number>>(new Set());
-  const [availableBalance] = React.useState(1250.75);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [previewCardIndex, setPreviewCardIndex] = React.useState<number | null>(null);
   const [confirmDeselectModalOpen, setConfirmDeselectModalOpen] = React.useState(false);
@@ -386,6 +423,14 @@ export default function RoomDetail() {
       
       console.log("Cartones inscritos:", result);
       
+      // Actualizar el balance disponible después de la compra
+      try {
+        const wallet = await getWalletByUser(user.id);
+        setAvailableBalance(Math.max(0, wallet.balance || 0));
+      } catch (error) {
+        console.error("Error al actualizar balance:", error);
+      }
+      
       // Actualizar la lista de cartones inscritos
       const updatedCards = await getCardsByRoomAndUser(roomId, user.id);
       setEnrolledCards(updatedCards);
@@ -403,13 +448,22 @@ export default function RoomDetail() {
       // Limpiar selección
       setSelectedCards(new Set());
       
-      // Navegar al juego
+      // Mostrar toaster de éxito
+      setShowSuccessToast(true);
+      
+      // Navegar al juego después de un breve delay para que se vea el toaster
+      setTimeout(() => {
     navigate(`/game/${roomId}`);
+      }, 2000);
     } catch (err: unknown) {
       console.error("Error al inscribir cartones:", err);
       const errorMessage = err instanceof Error ? err.message : "Error al inscribir cartones. Por favor, intenta nuevamente.";
       const responseMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(responseMessage || errorMessage);
+      const finalErrorMessage = responseMessage || errorMessage;
+      
+      // Mostrar toaster de error en lugar de redirigir
+      setErrorToastMessage(finalErrorMessage);
+      setShowErrorToast(true);
     } finally {
       setEnrolling(false);
     }
@@ -472,11 +526,11 @@ export default function RoomDetail() {
   return (
     <Box
       sx={{
+        position: "relative",
         minHeight: "100vh",
         backgroundColor: "#1a1008", // Fondo de madera oscura
         color: "#f5e6d3", // Texto crema
         paddingBottom: "80px",
-        position: "relative",
         overflow: "hidden",
         // Textura de madera de fondo (más sutil)
         backgroundImage: `
@@ -655,7 +709,7 @@ export default function RoomDetail() {
                 fontFamily: "'Montserrat', sans-serif",
               }}
             >
-              Precio por cartón: ${room?.ticketPrice}
+              Precio por cartón: {room?.ticketPrice.toFixed(2)} {room?.currency}
             </Typography>
           </Box>
 
@@ -870,6 +924,26 @@ export default function RoomDetail() {
         onClose={handleCancelDeselect}
         onConfirm={handleConfirmDeselect}
       />
+
+      {/* Toast de éxito cuando se completan los cartones */}
+      {showSuccessToast && (
+        <SuccessToast
+          message="¡Cartones comprados exitosamente! 🎉"
+          subMessage="Estás listo para jugar"
+          onClose={() => setShowSuccessToast(false)}
+        />
+      )}
+
+      {/* Toast de error cuando hay problemas al inscribir cartones */}
+      {showErrorToast && (
+        <ErrorToast
+          message={errorToastMessage}
+          onClose={() => {
+            setShowErrorToast(false);
+            setErrorToastMessage("");
+          }}
+        />
+      )}
     </Box>
   );
 }

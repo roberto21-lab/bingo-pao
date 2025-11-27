@@ -48,6 +48,7 @@ type MobilePaymentReportDialogProps = {
   open: boolean;
   onClose: () => void;
   onSubmit: (data: MobilePaymentReportFormState) => void;
+  onError?: (errorMessage: string) => void;
   error?: string | null;
   banks: string[];
   currency: string;
@@ -79,6 +80,7 @@ export const MobilePaymentReportDialog: React.FC<MobilePaymentReportDialogProps>
   open,
   onClose,
   onSubmit,
+  onError,
   error,
   banks,
   currency,
@@ -246,6 +248,10 @@ export const MobilePaymentReportDialog: React.FC<MobilePaymentReportDialogProps>
                           (err as { message?: string })?.message || 
                           "Error al crear la transacción de recarga";
       setSubmitError(errorMessage);
+      // Notificar al componente padre si hay un callback de error
+      if (onError) {
+        onError(errorMessage);
+      }
     } finally {
       setIsSubmitting(false);
     }
