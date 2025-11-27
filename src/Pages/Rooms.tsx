@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import BingoLogo from "../Componets/BingoLogo";
 import RoomCard from "../Componets/RoomCard";
 import SectionHeader from "../Componets/SectionHeader";
-import { getRooms, type EnrollmentQueue } from "../Services/rooms.service";
+import { getRooms, type Room } from "../Services/rooms.service";
 import BackgroundStars from "../Componets/BackgroundStars";
 import { useAuth } from "../hooks/useAuth";
 import { onRoomStatusUpdated } from "../Services/socket.service";
@@ -13,7 +13,7 @@ import { onRoomStatusUpdated } from "../Services/socket.service";
 export default function Rooms() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [enrollmentQueues, setEnrollmentQueues] = React.useState<EnrollmentQueue[]>([]);
+  const [rooms, setRooms] = React.useState<Room[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [currentRoomIndex, setCurrentRoomIndex] = React.useState(0);
@@ -24,9 +24,9 @@ export default function Rooms() {
         setLoading(true);
         setError(null);
         const data = await getRooms();
-        console.log("Listas de inscripciones obtenidas:", data);
-        setEnrollmentQueues(data);
-        setCurrentRoomIndex(0); // Resetear al índice inicial cuando se cargan las listas
+        console.log("Salas obtenidas:", data);
+        setRooms(data);
+        setCurrentRoomIndex(0); // Resetear al índice inicial cuando se cargan las salas
       } catch (err: unknown) {
         console.error("Error al obtener salas:", err);
         const errorMessage = err instanceof Error 
@@ -50,7 +50,7 @@ export default function Rooms() {
       const fetchRooms = async () => {
         try {
           const data = await getRooms();
-          setEnrollmentQueues(data);
+          setRooms(data);
         } catch (err: unknown) {
           console.error("Error al refrescar salas:", err);
         }
@@ -63,25 +63,15 @@ export default function Rooms() {
     };
   }, []);
 
-  const handleJoin = (enrollmentQueueId: string, roomId?: string | null) => {
-    // Si no está autenticado, redirigir al login
+  const handleJoin = (roomId: string) => {
+    // Si no está autenticado, redirigir al login con la sala de destino
     if (!isAuthenticated) {
-      if (roomId) {
       navigate(`/login?redirect=/room/${roomId}`);
-      } else {
-        navigate(`/login?redirect=/enroll/${enrollmentQueueId}`);
-      }
       return;
     }
     
-    // Si la lista tiene una partida en progreso, ir a la partida
-    if (roomId) {
+    // Si está autenticado, ir directamente a la selección de cartones
     navigate(`/room/${roomId}`);
-    } else {
-      // Si no tiene partida, ir a la selección de cartones para inscribirse en la lista
-      // Usar query param para pasar el enrollmentQueueId
-      navigate(`/room/enroll?queueId=${enrollmentQueueId}`);
-    }
   };
 
   const handlePreviousRoom = () => {
@@ -91,14 +81,14 @@ export default function Rooms() {
   };
 
   const handleNextRoom = () => {
-    if (currentRoomIndex < enrollmentQueues.length - 1) {
+    if (currentRoomIndex < rooms.length - 1) {
       setCurrentRoomIndex(currentRoomIndex + 1);
     }
   };
 
   const hasPrevious = currentRoomIndex > 0;
-  const hasNext = currentRoomIndex < enrollmentQueues.length - 1;
-  const currentQueue = enrollmentQueues[currentRoomIndex];
+  const hasNext = currentRoomIndex < rooms.length - 1;
+  const currentRoom = rooms[currentRoomIndex];
 
   return (
     <Box
@@ -122,12 +112,12 @@ export default function Rooms() {
 
           {/* Título con flechas de navegación */}
           <SectionHeader
-            title="Listas de Inscripciones"
+            title="Salas Disponibles"
             onPrevious={handlePreviousRoom}
             onNext={handleNextRoom}
             hasPrevious={hasPrevious}
             hasNext={hasNext}
-            showNavigation={!loading && !error && enrollmentQueues.length > 0}
+            showNavigation={!loading && !error && rooms.length > 0}
           />
         </Box>
 
@@ -157,50 +147,36 @@ export default function Rooms() {
           </Box>
         )}
 
-        {/* Enrollment Queues List */}
+        {/* Rooms List */}
         {!loading && !error && (
           <Box sx={{ marginTop: 0 }}>
-            {enrollmentQueues.length === 0 ? (
+            {rooms.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 4 }}>
                 <Typography variant="body1" sx={{ color: "#f5e6d3", opacity: 0.7 }}>
-                  No hay listas de inscripciones disponibles en este momento
+                  No hay salas disponibles en este momento
                 </Typography>
               </Box>
             ) : (
               <Box>
-                {/* Lista actual */}
-                {currentQueue && (
+                {/* Sala actual */}
+                {currentRoom && (
                 <RoomCard
-                    key={currentQueue.id}
-                    title={
-                      currentQueue.room
-                        ? currentQueue.room.title
-                        : `Inscripciones #${currentQueue.queueNumber}`
-                    }
-                    price={currentQueue.room?.price || 50}
-                    estimatedPrize={currentQueue.totalPrize}
-                    currency={currentQueue.room?.currency || "Bs"}
-                    status={
-                      currentQueue.isPlaying
-                        ? "in_progress"
-                        : currentQueue.isActive
-                        ? "preparing"
-                        : "waiting"
-                    }
-                    rounds={currentQueue.room?.rounds || 3}
-                    jackpot={currentQueue.totalPrize}
-                    players={currentQueue.room?.players}
-                    scheduledAt={currentQueue.scheduledStartTime}
-                    queueNumber={currentQueue.queueNumber}
-                    showPrizeInsteadOfPlayers={true}
-                    onJoin={() =>
-                      handleJoin(currentQueue.id, currentQueue.room?.id)
-                    }
+                    key={currentRoom.id}
+                    title={currentRoom.title}
+                    price={currentRoom.price}
+                    estimatedPrize={currentRoom.estimatedPrize}
+                    currency={currentRoom.currency}
+                    status={currentRoom.status}
+                    rounds={currentRoom.rounds}
+                    jackpot={currentRoom.jackpot}
+                    players={currentRoom.players}
+                    scheduledAt={currentRoom.scheduledAt}
+                    onJoin={() => handleJoin(currentRoom.id)}
                 />
                 )}
                 
                 {/* Indicador de posición */}
-                {enrollmentQueues.length > 1 && (
+                {rooms.length > 1 && (
                   <Box
                     sx={{
                       display: "flex",
@@ -210,7 +186,7 @@ export default function Rooms() {
                       mt: 2,
                     }}
                   >
-                    {enrollmentQueues.map((_, index) => (
+                    {rooms.map((_, index) => (
                       <Box
                         key={index}
                         sx={{

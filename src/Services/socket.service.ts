@@ -741,6 +741,48 @@ export const onRoomStatusUpdated = (
   return () => {};
 };
 
+// Escuchar evento de cambio de status de round
+export const onRoundStatusChanged = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+    previous_status: string;
+    new_status: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "round_number" in data &&
+        "room_id" in data &&
+        "previous_status" in data &&
+        "new_status" in data
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          previous_status: string;
+          new_status: string;
+        });
+      }
+    };
+    
+    socket.on("round-status-changed", handler);
+    
+    return () => {
+      socket?.off("round-status-changed", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 // Escuchar evento de sala finalizada
 export const onRoomFinished = (
   callback: (data: {

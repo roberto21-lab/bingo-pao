@@ -32,6 +32,7 @@ import {
   onRoomPending,
   onRoomStatusUpdated,
   onRoomFinished,
+  onRoundStatusChanged,
 } from "../Services/socket.service";
 import { mapPatternToBingoType } from "../utils/patternMapper";
 import { useGameData } from "../hooks/useGameData";
@@ -299,7 +300,7 @@ export default function GameInProgress() {
             `[GameInProgress] Round ${data.round.round_number} está en countdown (starting), esperando...`
           );
           setIsCallingNumber(false);
-          setIsGameStarting(true);
+          // NO establecer isGameStarting aquí - el useEffect lo manejará basado en countdowns activos
           setRoundEnded(false);
           setRoundFinished(false);
           // CRÍTICO: Si hay un round activo, la sala NO está finalizada
@@ -354,7 +355,7 @@ export default function GameInProgress() {
         } else {
           // Estado desconocido o pending
           setIsCallingNumber(false);
-          setIsGameStarting(true);
+          // NO establecer isGameStarting aquí - el useEffect lo manejará basado en countdowns activos
           // CRÍTICO: Si hay un round (aunque esté en pending), la sala NO está finalizada
           setRoomFinished(false);
         }
@@ -366,7 +367,7 @@ export default function GameInProgress() {
         setCurrentNumber("");
         setLastNumbers([]);
         setLastCalledTimestamp(null);
-        setIsGameStarting(true);
+        // NO establecer isGameStarting aquí - el useEffect lo manejará basado en countdowns activos
         setIsCallingNumber(false);
         setRoundEnded(false);
         setRoundFinished(false);
@@ -595,7 +596,7 @@ export default function GameInProgress() {
         // Limpiar números marcados en todos los cartones
         setMarkedNumbers(new Map());
 
-        // Resetear estados de la ronda
+        // CRÍTICO: Resetear estados de la ronda - esto hace que "FINALIZADA" desaparezca
         setRoundFinished(false);
         setRoundEnded(false);
         setIsCallingNumber(false); // IMPORTANTE: NO activar isCallingNumber hasta que llegue el primer número
@@ -609,9 +610,8 @@ export default function GameInProgress() {
         setRoomStartCountdown(null); // Limpiar countdown de inicio de sala
         setRoomStartCountdownFinish(null);
 
-        // IMPORTANTE: Indicar que el juego está iniciando (mostrar "Iniciando juego...")
-        // Esto se limpiará cuando llegue el primer número
-        setIsGameStarting(true);
+        // NO establecer isGameStarting aquí - el useEffect lo manejará basado en countdowns activos
+        // Si hay un countdown activo, isGameStarting será false automáticamente
 
         // CRÍTICO: Cargar números llamados si ya hay números en la nueva ronda
         // Esto asegura que el usuario vea los números inmediatamente sin necesidad de recargar
@@ -892,6 +892,11 @@ export default function GameInProgress() {
             `[GameInProgress] Countdown de transición: ${data.seconds_remaining}s para Round ${data.next_round_number}`
           );
           
+          // CRÍTICO: Limpiar roundFinished cuando comienza la transición
+          // Esto hace que el status "FINALIZADA" desaparezca inmediatamente
+          setRoundFinished(false);
+          setRoundEnded(false);
+          
           // CRÍTICO: Actualizar el round actual cuando comienza la transición
           // Esto asegura que el UI muestre el round correcto durante el countdown
           if (data.next_round_number && data.next_round_number > currentRound) {
@@ -903,7 +908,13 @@ export default function GameInProgress() {
           
           if (data.finish_timestamp) {
             // Usar timestamp para sincronización precisa
-            setRoundTransitionCountdownFinish(data.finish_timestamp);
+            setRoundTransitionCountdownFinish((prevFinish) => {
+              // Si ya hay un countdown activo para este round, mantener el timestamp original
+              if (prevFinish && data.next_round_number === currentRound) {
+                return prevFinish;
+              }
+              return data.finish_timestamp;
+            });
             setNextRoundNumber(data.next_round_number);
             setIsCallingNumber(false);
             // El hook calculará el tiempo restante automáticamente
@@ -990,28 +1001,49 @@ export default function GameInProgress() {
     });
 
     // Escuchar eventos de countdown de inicio de sala (pending → in_progress)
+    // CRÍTICO: Solo actualizar el timestamp una vez al inicio del countdown, no en cada evento
     const unsubscribeRoomStartCountdown = onRoomStartCountdown((data) => {
       if (!isMounted) return;
 
       if (data.room_id === roomId) {
-        console.log(
-          `[GameInProgress] Countdown de inicio de sala: ${data.seconds_remaining}s`
-        );
+        // CRÍTICO: NO iniciar countdown de sala si hay un countdown de transición activo
+        // Esto previene que el countdown de sala interfiera con la transición entre rounds
+        if (roundTransitionCountdown !== null && roundTransitionCountdown > 0) {
+          console.log(
+            `[GameInProgress] Ignorando countdown de inicio de sala: hay countdown de transición activo (${roundTransitionCountdown}s)`
+          );
+          return;
+        }
+        
+        // CRÍTICO: Solo establecer el timestamp UNA VEZ al inicio del countdown
+        // Si ya tenemos un countdown activo, NO actualizarlo
+        // Esto previene que múltiples eventos reinicien el countdown
         if (data.finish_timestamp) {
-          // Usar timestamp para sincronización precisa
-          setRoomStartCountdownFinish(data.finish_timestamp);
-          // El hook calculará el tiempo restante automáticamente
-        } else if (data.seconds_remaining > 0) {
-          // Fallback si no hay timestamp (compatibilidad hacia atrás)
-          setRoomStartCountdown(data.seconds_remaining);
-        } else {
+          setRoomStartCountdownFinish((prevFinish) => {
+            // Si ya hay un countdown activo, mantener el timestamp original
+            // Solo actualizar si no hay countdown activo
+            if (prevFinish) {
+              // Ya hay un countdown activo, mantener el timestamp original
+              return prevFinish;
+            }
+            // Es un nuevo countdown, establecer el timestamp
+        console.log(
+              `[GameInProgress] Iniciando countdown de inicio de sala: ${data.seconds_remaining}s (finish: ${new Date(data.finish_timestamp).toISOString()})`
+            );
+            return data.finish_timestamp;
+          });
+        } else if (data.seconds_remaining === 0) {
+          // Cuando llega a 0, limpiar el countdown
           setRoomStartCountdown(null);
           setRoomStartCountdownFinish(null);
         }
+        // Si seconds_remaining > 0 pero no hay finish_timestamp, el countdown ya está corriendo
+        // No hacer nada, el useEffect lo manejará
       }
     });
 
     // Escuchar eventos de countdown antes de empezar a llamar números en una nueva ronda (20 segundos)
+    // CRÍTICO: Solo actualizar el timestamp una vez al inicio del countdown, no en cada evento
     const unsubscribeRoundStartCountdown = onRoundStartCountdown((data) => {
       if (!isMounted) return;
 
@@ -1029,33 +1061,71 @@ export default function GameInProgress() {
           );
           setCurrentRound(data.round_number);
         }
-        console.log(
-          `[GameInProgress] Countdown antes de empezar Round ${data.round_number}: ${data.seconds_remaining}s`
-        );
+
+        // CRÍTICO: Solo establecer el timestamp UNA VEZ al inicio del countdown
+        // Si ya tenemos un countdown activo para este round, NO actualizarlo
+        // Esto previene que múltiples eventos reinicien el countdown
         if (data.finish_timestamp) {
-          // Usar timestamp para sincronización precisa
-          setRoundStartCountdownFinish(data.finish_timestamp);
+          setRoundStartCountdownFinish((prevFinish) => {
+            // Si ya hay un countdown activo para este round, mantener el timestamp original
+            // Solo actualizar si no hay countdown activo o si es un round diferente
+            if (prevFinish && data.round_number === currentRound) {
+              // Ya hay un countdown activo para este round, mantener el timestamp original
+              return prevFinish;
+            }
+            // Es un nuevo countdown, establecer el timestamp
+        console.log(
+              `[GameInProgress] Iniciando countdown para Round ${data.round_number}: ${data.seconds_remaining}s (finish: ${new Date(data.finish_timestamp).toISOString()})`
+        );
+            return data.finish_timestamp;
+          });
           setNextRoundNumber(data.round_number);
           setIsCallingNumber(false);
-          // NO establecer isGameStarting aquí - el countdown se mostrará desde roundTransitionCountdown
-          // isGameStarting solo se mostrará cuando NO hay countdown activo
-          // El hook calculará el tiempo restante automáticamente y actualizará roundTransitionCountdown
-        } else if (data.seconds_remaining > 0) {
-          // Fallback si no hay timestamp (compatibilidad hacia atrás)
-          setRoundTransitionCountdown(data.seconds_remaining);
-          setNextRoundNumber(data.round_number);
-          setIsCallingNumber(false);
-          // NO establecer isGameStarting aquí - el countdown se mostrará
-        } else {
+        } else if (data.seconds_remaining === 0) {
           // Cuando llega a 0, limpiar el countdown (los números comenzarán a llamarse)
           console.log(
-            `[GameInProgress] Countdown de inicio completado. Los números comenzarán a llamarse...`
+            `[GameInProgress] Countdown de inicio completado para Round ${data.round_number}. Los números comenzarán a llamarse...`
           );
           setRoundTransitionCountdown(null);
           setNextRoundNumber(null);
           setRoundStartCountdownFinish(null);
-          // NO limpiar isGameStarting aquí - se limpiará cuando llegue el primer número
-          // isCallingNumber se activará cuando llegue el primer número
+        }
+        // Si seconds_remaining > 0 pero no hay finish_timestamp, el countdown ya está corriendo
+        // No hacer nada, el useEffect lo manejará
+      }
+    });
+
+    // Escuchar eventos de cambio de status de round
+    // CRÍTICO: Este evento notifica cuando el round cambia de "starting" (countdown) a "in_progress" (llamando números)
+    const unsubscribeRoundStatusChanged = onRoundStatusChanged((data) => {
+      if (!isMounted) return;
+
+      // Aceptar eventos para el round actual o para un round mayor (para manejar sincronización)
+      if (data.room_id === roomId && (data.round_number === currentRound || data.round_number >= currentRound)) {
+        console.log(
+          `[GameInProgress] Round ${data.round_number} cambió a status '${data.status}'`
+        );
+
+        // Si el round del evento es mayor, actualizar el round actual
+        if (data.round_number > currentRound) {
+          console.log(
+            `[GameInProgress] Actualizando round actual desde round-status-changed: Round ${data.round_number} (antes: Round ${currentRound})`
+          );
+          setCurrentRound(data.round_number);
+        }
+
+        // Cuando el round cambia a "in_progress", el countdown terminó
+        // Los números comenzarán a llamarse, así que limpiar el countdown y NO mostrar "Iniciando juego..."
+        if (data.status === "in_progress") {
+          console.log(
+            `[GameInProgress] ✅ Countdown terminado para Round ${data.round_number}. Los números comenzarán a llamarse.`
+          );
+          setRoundTransitionCountdown(null);
+          setRoundStartCountdownFinish(null);
+          setRoundTransitionCountdownFinish(null);
+          setRoundFinished(false); // CRÍTICO: Limpiar roundFinished para que "FINALIZADA" desaparezca
+          setRoundEnded(false);
+          setIsGameStarting(false); // NO mostrar "Iniciando juego..." - los números comenzarán pronto
         }
       }
     });
@@ -1163,7 +1233,27 @@ export default function GameInProgress() {
           );
         });
 
-        // Si no hay round en progreso o con bingo reclamado, buscar el último round finalizado
+        // Si no hay round en progreso, buscar el siguiente round en "pending" (a punto de iniciar)
+        if (!newCurrentRoundData) {
+          const pendingRounds = roundsData.filter((r) => {
+            const status =
+              typeof r.status_id === "object" && r.status_id
+                ? r.status_id.name
+                : "";
+            return status === "pending";
+          });
+
+          if (pendingRounds.length > 0) {
+            // Ordenar por round_number y tomar el menor (el siguiente a iniciar)
+            pendingRounds.sort((a, b) => a.round_number - b.round_number);
+            newCurrentRoundData = pendingRounds[0];
+            console.log(
+              `[GameInProgress] Round en 'pending' encontrado: Round ${newCurrentRoundData.round_number} (próximo a iniciar)`
+            );
+          }
+        }
+
+        // Si aún no hay round, buscar el último round finalizado
         if (!newCurrentRoundData) {
           const finishedRounds = roundsData.filter((r) => {
             const status =
@@ -1190,10 +1280,25 @@ export default function GameInProgress() {
             (r) => r.round_number === currentRound
           );
 
-          if (
+          // CRÍTICO: También actualizar si el round del backend es igual al actual pero el estado es diferente
+          // Esto maneja el caso donde el round está en transición pero el frontend aún muestra "FINALIZADA"
+          const backendRoundStatus = typeof newCurrentRoundData.status_id === "object" && newCurrentRoundData.status_id
+            ? newCurrentRoundData.status_id.name
+            : "";
+          
+          // CRÍTICO: Si el round encontrado está en "pending" y es mayor al actual, actualizar
+          // Esto permite que el frontend se actualice cuando el siguiente round está listo para iniciar
+          const isPendingAndNext = backendRoundStatus === "pending" && newCurrentRoundData.round_number > currentRound;
+          
+          const shouldUpdate = 
             newCurrentRoundData.round_number > currentRound ||
-            !currentRoundExists
-          ) {
+            !currentRoundExists ||
+            isPendingAndNext ||
+            (newCurrentRoundData.round_number === currentRound && 
+             (backendRoundStatus === "in_progress" || backendRoundStatus === "starting") && 
+             roundFinished);
+
+          if (shouldUpdate) {
             console.log(
               `[GameInProgress] Round actualizado desde verificación periódica: Round ${newCurrentRoundData.round_number} (antes: Round ${currentRound})`
             );
@@ -1329,6 +1434,7 @@ export default function GameInProgress() {
       unsubscribeRoundFinished();
       unsubscribeRoundTransitionCountdown();
       unsubscribeRoundStartCountdown();
+      unsubscribeRoundStatusChanged();
       unsubscribeRoomStartCountdown();
       unsubscribeRoomPending();
       unsubscribeRoomStatusUpdated();
@@ -1354,6 +1460,29 @@ export default function GameInProgress() {
   ]);
 
   // Hook para actualizar countdowns basados en timestamps del servidor
+  // CRÍTICO: Usar refs para leer los valores actuales sin causar re-ejecuciones del useEffect
+  const roomStartCountdownFinishRef = React.useRef(roomStartCountdownFinish);
+  const roundStartCountdownFinishRef = React.useRef(roundStartCountdownFinish);
+  const roundTransitionCountdownFinishRef = React.useRef(roundTransitionCountdownFinish);
+  const bingoClaimCountdownFinishRef = React.useRef(bingoClaimCountdownFinish);
+
+  // Actualizar refs cuando cambian los valores
+  React.useEffect(() => {
+    roomStartCountdownFinishRef.current = roomStartCountdownFinish;
+  }, [roomStartCountdownFinish]);
+
+  React.useEffect(() => {
+    roundStartCountdownFinishRef.current = roundStartCountdownFinish;
+  }, [roundStartCountdownFinish]);
+
+  React.useEffect(() => {
+    roundTransitionCountdownFinishRef.current = roundTransitionCountdownFinish;
+  }, [roundTransitionCountdownFinish]);
+
+  React.useEffect(() => {
+    bingoClaimCountdownFinishRef.current = bingoClaimCountdownFinish;
+  }, [bingoClaimCountdownFinish]);
+
   React.useEffect(() => {
     if (!gameStarted || !roomId) return;
 
@@ -1361,11 +1490,9 @@ export default function GameInProgress() {
       const now = Date.now();
 
       // Actualizar countdown de inicio de sala
-      if (roomStartCountdownFinish) {
-        const remaining = Math.max(
-          0,
-          Math.floor((roomStartCountdownFinish - now) / 1000)
-        );
+      const roomFinish = roomStartCountdownFinishRef.current;
+      if (roomFinish) {
+        const remaining = Math.max(0, Math.floor((roomFinish - now) / 1000));
         if (remaining > 0) {
           setRoomStartCountdown(remaining);
         } else {
@@ -1375,41 +1502,40 @@ export default function GameInProgress() {
       }
 
       // Actualizar countdown de inicio de round (tiene prioridad sobre transición si ambos están activos)
-      if (roundStartCountdownFinish) {
-        const remaining = Math.max(
-          0,
-          Math.floor((roundStartCountdownFinish - now) / 1000)
-        );
+      const roundFinish = roundStartCountdownFinishRef.current;
+      if (roundFinish) {
+        const remaining = Math.max(0, Math.floor((roundFinish - now) / 1000));
         if (remaining > 0) {
-          setRoundTransitionCountdown(remaining);
-          // Cuando hay countdown activo, NO mostrar "Iniciando juego..." (el countdown tiene prioridad)
-          setIsGameStarting(false);
+          // Solo actualizar si el valor cambió (evitar re-renders innecesarios)
+          setRoundTransitionCountdown((prev) => {
+            if (prev !== remaining) {
+              return remaining;
+            }
+            return prev;
+          });
         } else {
+          // El countdown terminó
           setRoundTransitionCountdown(null);
           setRoundStartCountdownFinish(null);
-          // Cuando el countdown termina (llega a 0), mostrar "Iniciando juego..." brevemente hasta que llegue el primer número
-          setIsGameStarting(true);
         }
-      } else if (roundTransitionCountdownFinish) {
+      } else {
         // Actualizar countdown de transición entre rounds (solo si no hay countdown de inicio de round)
-        const remaining = Math.max(
-          0,
-          Math.floor((roundTransitionCountdownFinish - now) / 1000)
-        );
-        if (remaining > 0) {
-          setRoundTransitionCountdown(remaining);
-        } else {
-          setRoundTransitionCountdown(null);
-          setRoundTransitionCountdownFinish(null);
+        const transitionFinish = roundTransitionCountdownFinishRef.current;
+        if (transitionFinish) {
+          const remaining = Math.max(0, Math.floor((transitionFinish - now) / 1000));
+          if (remaining > 0) {
+            setRoundTransitionCountdown(remaining);
+          } else {
+            setRoundTransitionCountdown(null);
+            setRoundTransitionCountdownFinish(null);
+          }
         }
       }
 
       // Actualizar countdown de ventana de bingo
-      if (bingoClaimCountdownFinish) {
-        const remaining = Math.max(
-          0,
-          Math.floor((bingoClaimCountdownFinish - now) / 1000)
-        );
+      const bingoFinish = bingoClaimCountdownFinishRef.current;
+      if (bingoFinish) {
+        const remaining = Math.max(0, Math.floor((bingoFinish - now) / 1000));
         if (remaining > 0) {
           setBingoClaimCountdown(remaining);
         } else {
@@ -1424,13 +1550,39 @@ export default function GameInProgress() {
     updateCountdowns(); // Ejecutar inmediatamente
 
     return () => clearInterval(interval);
+  }, [gameStarted, roomId]);
+
+  // CRÍTICO: useEffect separado para manejar isGameStarting basado en countdowns activos
+  // Esto previene el parpadeo asegurando que isGameStarting solo cambie cuando realmente no hay countdown activo
+  React.useEffect(() => {
+    // Si hay un countdown activo (roomStartCountdown o roundTransitionCountdown), isGameStarting debe ser false
+    const hasActiveCountdown = 
+      (roomStartCountdown !== null && roomStartCountdown > 0) ||
+      (roundTransitionCountdown !== null && roundTransitionCountdown > 0);
+
+    if (hasActiveCountdown) {
+      // CRÍTICO: Si hay un countdown activo, SIEMPRE establecer isGameStarting en false
+      // Esto previene el parpadeo entre el countdown y "Iniciando juego..."
+      setIsGameStarting(false);
+    } else if (!isCallingNumber && !currentNumber && !roundFinished && !roomFinished) {
+      // Solo mostrar "Iniciando juego..." si:
+      // - No hay countdown activo
+      // - No se están llamando números
+      // - No hay número actual
+      // - El round no está finalizado
+      // - La sala no está finalizada
+      setIsGameStarting(true);
+    } else {
+      // En cualquier otro caso, no mostrar "Iniciando juego..."
+      setIsGameStarting(false);
+    }
   }, [
-    gameStarted,
-    roomId,
-    roomStartCountdownFinish,
-    roundStartCountdownFinish,
-    roundTransitionCountdownFinish,
-    bingoClaimCountdownFinish,
+    roomStartCountdown,
+    roundTransitionCountdown,
+    isCallingNumber,
+    currentNumber,
+    roundFinished,
+    roomFinished,
   ]);
 
   // Obtener el pattern del round actual directamente desde roundsData

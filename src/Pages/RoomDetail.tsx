@@ -8,12 +8,12 @@ import {
   Alert,
 } from "@mui/material";
 import * as React from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import SelectableCard from "../Componets/SelectableCard";
 import { type BackendRoom, mapStatus } from "../Services/rooms.service";
 import { api } from "../Services/api";
 import BackgroundStars from "../Componets/BackgroundStars";
-import { getCardsByRoomAndUser, enrollCards, getAvailableCards, getAvailableCardsForQueue, type BackendCard } from "../Services/cards.service";
+import { getCardsByRoomAndUser, enrollCards, getAvailableCards, type BackendCard } from "../Services/cards.service";
 import { useAuth } from "../hooks/useAuth";
 import { onRoomStatusUpdated } from "../Services/socket.service";
 import { StatusBadge } from "../Componets/shared/StatusBadge";
@@ -38,9 +38,6 @@ export default function RoomDetail() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const location = useLocation();
-  const searchParams = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const enrollmentQueueId = searchParams.get("queueId"); // Para inscripciones en listas sin partida
   const [room, setRoom] = React.useState<RoomDetailData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -51,47 +48,8 @@ export default function RoomDetail() {
 
   React.useEffect(() => {
     const fetchRoom = async () => {
-      // Si hay enrollmentQueueId pero no roomId, cargar datos de la lista
-      if (enrollmentQueueId && !roomId) {
-        try {
-          setLoading(true);
-          setError(null);
-          
-          // Obtener datos de la lista de inscripciones
-          const queuesResponse = await api.get(`/enrollment-queues/available`);
-          const queues = queuesResponse.data.data || queuesResponse.data;
-          const queue = queues.find((q: any) => q._id === enrollmentQueueId || q.id === enrollmentQueueId);
-          
-          if (!queue) {
-            throw new Error("Lista de inscripciones no encontrada");
-          }
-          
-          // Crear datos de "sala" basados en la lista
-          const roomData: RoomDetailData = {
-            id: queue._id || queue.id || "",
-            title: `Inscripciones #${queue.queue_number}`,
-            prizeAmount: queue.total_prize || 0,
-            currency: "Bs",
-            ticketsToStart: 0,
-            ticketPrice: 50, // Precio por defecto
-            status: queue.status.name === "active" ? "preparing" : "waiting",
-          };
-          
-          console.log("Enrollment queue data loaded:", roomData);
-          setRoom(roomData);
-        } catch (err: unknown) {
-          console.error("Error al cargar la lista de inscripciones:", err);
-          const errorMessage = err instanceof Error ? err.message : "Error al cargar la lista de inscripciones.";
-          setError(errorMessage);
-        } finally {
-          setLoading(false);
-        }
-        return;
-      }
-      
-      // Si hay roomId, cargar datos de la partida
       if (!roomId) {
-        setError("ID de sala o lista no proporcionado");
+        setError("ID de sala no proporcionado");
         setLoading(false);
         return;
       }
@@ -150,6 +108,7 @@ export default function RoomDetail() {
           status: mappedStatus || "waiting", // Siempre tener un status por defecto
         };
         
+        console.log("Room data loaded:", roomData);
         setRoom(roomData);
       } catch (err: unknown) {
         console.error("Error al cargar la sala:", err);
@@ -162,7 +121,7 @@ export default function RoomDetail() {
     };
 
     fetchRoom();
-  }, [roomId, enrollmentQueueId, location.search]);
+  }, [roomId]);
   
   // Escuchar actualizaciones de status de sala en tiempo real
   React.useEffect(() => {
@@ -170,6 +129,7 @@ export default function RoomDetail() {
     
     const unsubscribeStatusUpdated = onRoomStatusUpdated((data) => {
       if (data.room_id === roomId) {
+        console.log(`[RoomDetail] Status actualizado para sala ${data.room_name}: ${data.status}`);
         // Actualizar el status localmente
         setRoom((prevRoom) => {
           if (!prevRoom) return prevRoom;
@@ -207,38 +167,10 @@ export default function RoomDetail() {
     };
   }, [roomId]);
   
-  // Obtener cartones disponibles del backend (para partidas o listas)
+  // Obtener cartones disponibles del backend y generar si no existen
   React.useEffect(() => {
     const fetchAvailableCards = async () => {
-      // Si hay enrollmentQueueId pero no roomId, obtener cartones para la lista
-      if (enrollmentQueueId && !roomId) {
-        try {
-          setLoadingCards(true);
-          // Obtener cartones disponibles para la lista de inscripciones
-          const cards = await getAvailableCardsForQueue(enrollmentQueueId);
-          
-          // Convertir los números del backend ("FREE") al formato del frontend (0)
-          const formattedCards = cards.map(card => ({
-            ...card,
-            numbers_json: card.numbers_json.map(row => 
-              row.map(num => num === "FREE" ? 0 : num)
-            ) as number[][]
-          }));
-          setAvailableCardsFromDB(formattedCards);
-        } catch (err) {
-          console.error("Error al obtener cartones disponibles para lista:", err);
-          setError("Error al cargar cartones disponibles. Por favor, intenta nuevamente.");
-        } finally {
-          setLoadingCards(false);
-        }
-        return;
-      }
-      
-      // Si hay roomId, obtener cartones para la partida
-      if (!roomId) {
-        setLoadingCards(false);
-        return;
-      }
+      if (!roomId) return;
 
       try {
         setLoadingCards(true);
@@ -253,27 +185,21 @@ export default function RoomDetail() {
             row.map(num => num === "FREE" ? 0 : num)
           ) as number[][]
         }));
+
         setAvailableCardsFromDB(formattedCards);
       } catch (err) {
         console.error("Error al obtener cartones disponibles:", err);
-        setError("Error al cargar cartones disponibles. Por favor, intenta nuevamente.");
       } finally {
         setLoadingCards(false);
       }
     };
 
     fetchAvailableCards();
-  }, [roomId, enrollmentQueueId]);
+  }, [roomId]);
 
-  // Obtener cartones ya inscritos del usuario en esta sala o lista
+  // Obtener cartones ya inscritos del usuario en esta sala
   React.useEffect(() => {
     const fetchEnrolledCards = async () => {
-      // Si hay enrollmentQueueId pero no roomId, no hay cartones inscritos aún
-      if (enrollmentQueueId && !roomId) {
-        setEnrolledCards([]);
-        return;
-      }
-      
       if (!roomId || !user?.id) return;
 
       try {
@@ -287,7 +213,7 @@ export default function RoomDetail() {
     if (user?.id) {
       fetchEnrolledCards();
     }
-  }, [roomId, enrollmentQueueId, user?.id]);
+  }, [roomId, user?.id]);
 
 
   // Filtrar cartones disponibles que no estén inscritos por el usuario
@@ -299,16 +225,7 @@ export default function RoomDetail() {
     cardIdMap: Map<number, string>;
     codeMap: Map<number, string>;
   }>(() => {
-    if (loadingCards) {
-      return { 
-        availableCards: [], 
-        indexMap: new Map<number, number>(),
-        cardIdMap: new Map<number, string>(),
-        codeMap: new Map<number, string>()
-      };
-    }
-    
-    if (availableCardsFromDB.length === 0) {
+    if (loadingCards || availableCardsFromDB.length === 0) {
       return { 
         availableCards: [], 
         indexMap: new Map<number, number>(),
@@ -450,11 +367,7 @@ export default function RoomDetail() {
 
 
   const handleEnroll = async () => {
-    // Validar que haya selección y que haya usuario
-    if (selectedCards.size === 0 || !user?.id) return;
-    
-    // Debe haber al menos roomId o enrollmentQueueId
-    if (!roomId && !enrollmentQueueId) return;
+    if (selectedCards.size === 0 || !roomId || !user?.id) return;
 
     try {
       setEnrolling(true);
@@ -469,51 +382,29 @@ export default function RoomDetail() {
       }).filter((id): id is string => id !== null);
       
       // Inscribir los cartones en el backend usando sus IDs
-      // Si hay enrollmentQueueId, usarlo; si no, usar roomId (para compatibilidad)
-      const queueIdToUse = enrollmentQueueId || roomId;
-      if (!queueIdToUse) {
-        throw new Error("No se puede inscribir: falta roomId o enrollmentQueueId");
-      }
-      const result = await enrollCards(user.id, queueIdToUse, selectedCardIds);
+      const result = await enrollCards(user.id, roomId, selectedCardIds);
       
       console.log("Cartones inscritos:", result);
       
-      // Actualizar la lista de cartones inscritos (solo si hay roomId)
-      if (roomId) {
-        const updatedCards = await getCardsByRoomAndUser(roomId, user.id);
-        setEnrolledCards(updatedCards);
-        
-        // Refrescar cartones disponibles (los inscritos ya no estarán disponibles)
-        const refreshedAvailable = await getAvailableCards(roomId);
-        const formattedRefreshed = refreshedAvailable.map(card => ({
-          ...card,
-          numbers_json: card.numbers_json.map(row => 
-            row.map(num => num === "FREE" ? 0 : num)
-          ) as number[][]
-        }));
-        setAvailableCardsFromDB(formattedRefreshed);
-        
-        // Limpiar selección
-        setSelectedCards(new Set());
-        
-        // Navegar al juego
-        navigate(`/game/${roomId}`);
-      } else {
-        // Si es inscripción en lista sin partida, solo actualizar enrolledCards localmente
-        // Los cartones seleccionados ahora están inscritos
-        const newCards = selectedCardIds.map(id => {
-          const card = availableCardsFromDB.find(c => c._id === id);
-          return card;
-        }).filter((card): card is BackendCard => card !== undefined);
-        setEnrolledCards(prev => [...prev, ...newCards]);
-        
-        // Limpiar selección
-        setSelectedCards(new Set());
-        
-        // Mostrar mensaje de éxito y volver a la lista de salas
-        // No navegar al juego porque aún no hay partida
-        navigate("/rooms");
-      }
+      // Actualizar la lista de cartones inscritos
+      const updatedCards = await getCardsByRoomAndUser(roomId, user.id);
+      setEnrolledCards(updatedCards);
+      
+      // Refrescar cartones disponibles (los inscritos ya no estarán disponibles)
+      const refreshedAvailable = await getAvailableCards(roomId);
+      const formattedRefreshed = refreshedAvailable.map(card => ({
+        ...card,
+        numbers_json: card.numbers_json.map(row => 
+          row.map(num => num === "FREE" ? 0 : num)
+        ) as number[][]
+      }));
+      setAvailableCardsFromDB(formattedRefreshed);
+      
+      // Limpiar selección
+      setSelectedCards(new Set());
+      
+      // Navegar al juego
+    navigate(`/game/${roomId}`);
     } catch (err: unknown) {
       console.error("Error al inscribir cartones:", err);
       const errorMessage = err instanceof Error ? err.message : "Error al inscribir cartones. Por favor, intenta nuevamente.";
@@ -777,48 +668,26 @@ export default function RoomDetail() {
 
             return (
               <>
-                {loadingCards ? (
+                {filteredIndices.length === 0 ? (
                   <Box
-                    sx={{
-                      textAlign: "center",
-                      py: 4,
-                      px: 2,
-                    }}
-                  >
-                    <CircularProgress sx={{ color: "#d4af37" }} />
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: "#f5e6d3",
-                        opacity: 0.7,
-                        mt: 2,
-                      }}
-                    >
-                      Cargando cartones disponibles...
-                    </Typography>
-                  </Box>
-                ) : filteredIndices.length === 0 ? (
-                  <Box
-                    sx={{
-                      textAlign: "center",
+          sx={{
+            textAlign: "center",
                       py: 4,
                       px: 2,
                     }}
                   >
                     <Typography
-                      variant="body2"
+                      variant="body1"
                       sx={{
                         color: "#f5e6d3",
-                        opacity: 0.7,
-                      }}
-                    >
-                      {availableCardsFromDB.length === 0
-                        ? "No hay cartones disponibles en este momento"
-                        : "No se encontraron cartones con ese código"}
-                    </Typography>
+            opacity: 0.7,
+          }}
+        >
+                      No se encontraron cartones con el número "{searchTerm}"
+        </Typography>
                   </Box>
                 ) : (
-                  <Box
+        <Box
           sx={{
             overflowX: "auto",
             overflowY: "hidden",
@@ -933,10 +802,10 @@ export default function RoomDetail() {
             )}
           </Stack>
         </Box>
-                )}
-              </>
-            );
-          })()}
+              )}
+            </>
+          );
+        })()}
         </Stack>
 
         {/* Contenedor de información y botón de inscribirse */}
