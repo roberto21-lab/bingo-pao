@@ -267,10 +267,7 @@ export default function GameInProgress() {
       return;
     }
 
-    // Si hay countdown activo, no iniciar el efecto de WebSocket todavía
-    if (countdown !== null) {
-      return;
-    }
+    console.log(`[GameInProgress] 🔌 Configurando listeners WebSocket para room ${roomId}, round ${currentRound}`);
 
     // Si el round está finalizado o no se está llamando números, limpiar progress bar pero seguir escuchando eventos
     if (roundEnded || roundFinished || !isCallingNumber) {
@@ -433,12 +430,23 @@ export default function GameInProgress() {
 
     // Escuchar eventos de números llamados en tiempo real
     const unsubscribeNumberCalled = onNumberCalled((data) => {
+      console.log(`[GameInProgress] 📨 Evento number-called recibido:`, {
+        number: data.number,
+        round_number: data.round_number,
+        room_id: data.room_id,
+        currentRound,
+        roomId,
+        isMounted,
+      });
+
       // Verificar flag antes de procesar
       if (!isMounted) {
+        console.log(`[GameInProgress] ⚠️ Componente desmontado, ignorando evento`);
         return;
       }
 
       if (data.round_number !== currentRound || data.room_id !== roomId) {
+        console.log(`[GameInProgress] ⚠️ Evento no coincide con round/room actual, ignorando`);
         return;
       }
 
@@ -1060,9 +1068,9 @@ export default function GameInProgress() {
         // CRÍTICO: NO iniciar countdown de sala si hay un countdown de transición activo
         // Esto previene que el countdown de sala interfiera con la transición entre rounds
         if (roundTransitionCountdown !== null && roundTransitionCountdown > 0) {
-          console.log(
+        console.log(
             `[GameInProgress] Ignorando countdown de inicio de sala: hay countdown de transición activo (${roundTransitionCountdown}s)`
-          );
+        );
           return;
         }
         
@@ -1078,7 +1086,7 @@ export default function GameInProgress() {
               return prevFinish;
             }
             // Es un nuevo countdown, establecer el timestamp
-            console.log(
+        console.log(
               `[GameInProgress] Iniciando countdown de inicio de sala: ${data.seconds_remaining}s (finish: ${new Date(data.finish_timestamp).toISOString()})`
             );
             return data.finish_timestamp;

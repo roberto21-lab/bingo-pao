@@ -391,42 +391,42 @@ const TabBar: React.FC = () => {
 
       {/* Mi Cuenta Tab o Login Tab */}
       <Box>
-        <Box
+      <Box
           onClick={handleAccountClick}
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "4px",
+          cursor: "pointer",
+          padding: "8px 16px",
+          transition: "all 0.2s",
+          flex: 1,
+          "&:hover": {
+            opacity: 0.8,
+          },
+        }}
+      >
+        <Box
           sx={{
+              color: isActive("/profile") || isActive("/wallet") || isActive("/login") ? "#d4af37" : "#f5e6d3",
             display: "flex",
-            flexDirection: "column",
             alignItems: "center",
-            gap: "4px",
-            cursor: "pointer",
-            padding: "8px 16px",
-            transition: "all 0.2s",
-            flex: 1,
-            "&:hover": {
-              opacity: 0.8,
-            },
+            justifyContent: "center",
+            transition: "color 0.2s",
           }}
         >
-          <Box
-            sx={{
-              color: isActive("/profile") || isActive("/wallet") || isActive("/login") ? "#d4af37" : "#f5e6d3",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "color 0.2s",
-            }}
-          >
             {isAuthenticated ? <AccountCircleIcon /> : <PowerSettingsNewIcon />}
-          </Box>
-          <Typography
-            variant="caption"
-            sx={{
+        </Box>
+        <Typography
+          variant="caption"
+          sx={{
               color: isActive("/profile") || isActive("/wallet") || isActive("/login") ? "#d4af37" : "#f5e6d3",
-              fontSize: "12px",
+            fontSize: "12px",
               fontWeight: isActive("/profile") || isActive("/wallet") || isActive("/login") ? 600 : 400,
-              transition: "color 0.2s",
-            }}
-          >
+            transition: "color 0.2s",
+          }}
+        >
             {isAuthenticated ? "Mi Cuenta" : "Iniciar sesión"}
           </Typography>
         </Box>
@@ -493,7 +493,7 @@ const TabBar: React.FC = () => {
             <AccountBalanceWalletIcon sx={{ fontSize: 20, color: "#d4af37" }} />
             <Typography sx={{ fontSize: "14px", fontWeight: 500 }}>
               Billetera
-            </Typography>
+        </Typography>
           </MenuItem>
         </Menu>
       </Box>

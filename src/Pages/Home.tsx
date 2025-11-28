@@ -27,7 +27,7 @@ import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 import { getWalletByUser } from "../Services/wallets.service";
 import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount, type BankAccount } from "../Services/bankAccounts.service";
 import { getUserById } from "../Services/users.service";
-import { onRoomPrizeUpdated } from "../Services/socket.service";
+import { onRoomPrizeUpdated, joinRoom, leaveRoom } from "../Services/socket.service";
 
 type ActiveRoom = {
   id: string;
@@ -76,7 +76,7 @@ export default function Home() {
     
     if (justLoggedIn && isAuthenticated) {
       // Mostrar el toaster solo si acaba de hacer login
-      setShowToast(true);
+    setShowToast(true);
       // Eliminar la marca para que no se muestre de nuevo
       sessionStorage.removeItem("justLoggedIn");
     } else {
@@ -525,6 +525,29 @@ export default function Home() {
     return () => window.removeEventListener("focus", handleFocus);
   }, [userId, isAuthenticated]);
 
+  // Unirse a todas las salas (activas y disponibles) para recibir actualizaciones en tiempo real
+  React.useEffect(() => {
+    // Unirse a todas las salas activas
+    activeRooms.forEach((room) => {
+      joinRoom(room.id);
+    });
+
+    // Unirse a todas las salas disponibles
+    availableRooms.forEach((room) => {
+      joinRoom(room.id);
+    });
+
+    // Limpiar al desmontar o cuando cambien las salas
+    return () => {
+      activeRooms.forEach((room) => {
+        leaveRoom(room.id);
+      });
+      availableRooms.forEach((room) => {
+        leaveRoom(room.id);
+      });
+    };
+  }, [activeRooms, availableRooms]);
+
   // Escuchar actualizaciones de premio en tiempo real para todas las salas
   React.useEffect(() => {
     const unsubscribePrizeUpdated = onRoomPrizeUpdated((data) => {
@@ -536,6 +559,20 @@ export default function Home() {
             return {
               ...room,
               prizeAmount: data.total_pot, // Actualizar con el nuevo total_pot
+            };
+          }
+          return room;
+        });
+      });
+      
+      // También actualizar el premio en las salas disponibles
+      setAvailableRooms((prevRooms) => {
+        return prevRooms.map((room) => {
+          if (room.id === data.room_id) {
+            return {
+              ...room,
+              estimatedPrize: data.total_pot, // Actualizar con el nuevo total_pot
+              jackpot: data.total_pot, // También actualizar jackpot para consistencia
             };
           }
           return room;

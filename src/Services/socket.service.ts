@@ -206,17 +206,18 @@ export const joinRoom = (roomId: string) => {
   
   if (socket?.connected) {
     socket.emit("join-room", roomId);
-    console.log(`✅ Unido a room: ${roomId}`);
+    console.log(`[socket.service] ✅ Unido a room: ${roomId} (socket conectado)`);
   } else {
     // Si no está conectado, encolar y conectar
     queuedEvents.push({ event: "join-room", data: roomId });
+    console.log(`[socket.service] ⏳ Socket no conectado, encolando join-room para ${roomId}`);
     if (!socket || connectionState === "disconnected") {
       connectSocket();
     }
     // Si ya está conectando, el evento se procesará cuando se conecte
     socket?.once("connect", () => {
       socket?.emit("join-room", roomId);
-      console.log(`✅ Unido a room después de reconectar: ${roomId}`);
+      console.log(`[socket.service] ✅ Unido a room después de reconectar: ${roomId}`);
     });
   }
 };
@@ -243,11 +244,13 @@ export const onNumberCalled = (
   }) => void
 ): (() => void) => {
   if (!socket) {
+    console.log(`[socket.service] 🔌 Socket no existe, conectando...`);
     connectSocket();
   }
   
   if (socket) {
     const handler = (data: unknown) => {
+      console.log(`[socket.service] 📨 Evento 'number-called' recibido:`, data);
       // Validar datos antes de llamar callback
       if (
         data &&
@@ -257,19 +260,32 @@ export const onNumberCalled = (
         "round_number" in data &&
         "called_at" in data
       ) {
+        console.log(`[socket.service] ✅ Datos válidos, llamando callback`);
         callback(data as {
           number: string;
           called_at: string;
           round_number: number;
           room_id: string;
         });
+      } else {
+        console.warn(`[socket.service] ⚠️ Datos inválidos en evento 'number-called':`, data);
       }
     };
     
+    console.log(`[socket.service] 👂 Registrando listener para 'number-called'`);
     socket.on("number-called", handler);
     
+    // También registrar el listener cuando se reconecte
+    const reconnectHandler = () => {
+      console.log(`[socket.service] 🔄 Reconectado, re-registrando listener 'number-called'`);
+      socket?.on("number-called", handler);
+    };
+    socket.on("reconnect", reconnectHandler);
+    
     return () => {
+      console.log(`[socket.service] 🧹 Removiendo listener 'number-called'`);
       socket?.off("number-called", handler);
+      socket?.off("reconnect", reconnectHandler);
     };
   }
   
