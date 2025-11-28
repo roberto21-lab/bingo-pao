@@ -719,7 +719,9 @@ export default function GameInProgress() {
           // Verificar si el usuario tiene bingo en alguno de sus cartones
           let userHasBingo = false;
           for (let i = 0; i < playerCards.length; i++) {
-            if (hasBingo(i)) {
+            const card = playerCards[i];
+            const cardMarked = getMarkedForCard(i);
+            if (hasBingo(card, cardMarked, currentBingoType)) {
               userHasBingo = true;
               break;
             }
