@@ -1,11 +1,11 @@
 import {
+  Paper,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Typography,
 } from "@mui/material";
 
@@ -118,7 +118,6 @@ export default function CalledNumbersTable({
                 {tableData.map((col, colIndex) => {
                   const num = col.allNumbers[rowIndex];
                   const isCalled = col.calledNumbers.includes(num);
-                  const isMarked = col.markedNumbers.includes(num);
                   const isBingoNumber = bingoNumbers.includes(num);
 
                   let backgroundColor = "rgba(50, 50, 50, 0.5)"; // Gris oscuro para números no llamados

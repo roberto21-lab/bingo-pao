@@ -82,7 +82,7 @@ export async function enrollCards(
   userId: string,
   roomId: string,
   cardIds: string[] // Array de IDs de cartones
-): Promise<{ success: boolean; message: string; data: any }> {
+): Promise<{ success: boolean; message: string; data?: any; duplicateCards?: string[]; errors?: string[] }> {
   try {
     const response = await api.post<{ 
       success: boolean; 
@@ -100,7 +100,13 @@ export async function enrollCards(
     );
 
     if (response.data.success) {
-      return response.data;
+      return {
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.data,
+        duplicateCards: response.data.duplicateCards,
+        errors: response.data.errors,
+      };
     }
 
     // Si no es exitoso, lanzar error con toda la información

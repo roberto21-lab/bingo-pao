@@ -21,6 +21,12 @@ export default function RoomCountdown({ room }: RoomCountdownProps) {
     }
 
     const calculateTimeRemaining = () => {
+      // Protegemos contra scheduledAt nulo/indefinido antes de usarlo
+      if (!room.scheduledAt) {
+        setTimeRemaining(null);
+        return;
+      }
+
       const now = new Date();
       const scheduledAt = room.scheduledAt instanceof Date 
         ? room.scheduledAt 

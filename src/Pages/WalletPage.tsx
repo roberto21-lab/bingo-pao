@@ -175,35 +175,34 @@ const WalletPage: React.FC = () => {
         });
         setTransactionTypeMap(typeMap);
 
-        const mappedTransactions: TransactionDisplay[] = walletTransactions
-          .map((tx: Transaction) => {
-            // Validar que transaction_type_id y status_id existan
-            if (!tx.transaction_type_id || !tx.status_id) {
-              console.warn('Transacción con datos incompletos:', tx);
-              return null;
-            }
+        const mappedTransactions: TransactionDisplay[] = walletTransactions.reduce<TransactionDisplay[]>((acc, tx: Transaction) => {
+          // Validar que transaction_type_id y status_id existan
+          if (!tx.transaction_type_id || !tx.status_id) {
+            console.warn('Transacción con datos incompletos:', tx);
+            return acc;
+          }
 
-            const typeId = typeof tx.transaction_type_id === 'string' 
-              ? tx.transaction_type_id 
-              : (tx.transaction_type_id as any)?._id;
-            const statusId = typeof tx.status_id === 'string' 
-              ? tx.status_id 
-              : (tx.status_id as any)?._id;
+          const typeId = typeof tx.transaction_type_id === 'string'
+            ? tx.transaction_type_id
+            : (tx.transaction_type_id as any)?._id;
+          const statusId = typeof tx.status_id === 'string'
+            ? tx.status_id
+            : (tx.status_id as any)?._id;
 
-            // Si no se pudo obtener el ID, saltar esta transacción
-            if (!typeId || !statusId) {
-              console.warn('Transacción sin IDs válidos:', tx);
-              return null;
-            }
+          // Si no se pudo obtener el ID, saltar esta transacción
+          if (!typeId || !statusId) {
+            console.warn('Transacción sin IDs válidos:', tx);
+            return acc;
+          }
 
-            // Obtener el nombre del tipo desde el map o desde el objeto si está poblado
-            let typeName = typeMap[typeId] || 'unknown';
-            if (typeName === 'unknown' && typeof tx.transaction_type_id === 'object' && (tx.transaction_type_id as any)?.name) {
-              typeName = (tx.transaction_type_id as any).name;
-            }
-            const statusName = statusMap[statusId] || 'unknown';
+          // Obtener el nombre del tipo desde el map o desde el objeto si está poblado
+          let typeName = typeMap[typeId] || 'unknown';
+          if (typeName === 'unknown' && typeof tx.transaction_type_id === 'object' && (tx.transaction_type_id as any)?.name) {
+            typeName = (tx.transaction_type_id as any).name;
+          }
+          const statusName = statusMap[statusId] || 'unknown';
 
-            // Generar descripción basada en el tipo y metadata
+          // Generar descripción basada en el tipo y metadata
           let description = getTransactionLabel(typeName);
           if (tx.metadata) {
             if (tx.metadata.bank_name) {
@@ -223,7 +222,7 @@ const WalletPage: React.FC = () => {
           const isPositive = typeName === 'recharge' || typeName === 'prize' || typeName === 'refund';
           const amount = isPositive ? Math.abs(rawAmount) : -Math.abs(rawAmount);
 
-          return {
+          acc.push({
             id: tx._id,
             type: typeName,
             typeLabel: getTransactionLabel(typeName),
@@ -232,9 +231,10 @@ const WalletPage: React.FC = () => {
             status: statusName !== 'unknown' ? statusName : undefined,
             statusLabel: statusName === 'pending' ? 'Pendiente' : statusName === 'completed' ? 'Completado' : statusName === 'unknown' ? 'Desconocido' : undefined,
             createdAt: tx.created_at,
-          };
-          })
-          .filter((tx): tx is TransactionDisplay => tx !== null);
+          });
+
+          return acc;
+        }, []);
 
         // Ordenar por fecha más reciente primero
         mappedTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

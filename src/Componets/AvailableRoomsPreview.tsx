@@ -1,5 +1,4 @@
-import { Box, Card, CardContent, Typography, Stack, Chip } from "@mui/material";
-import * as React from "react";
+import { Box, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import type { Room } from "../Services/rooms.service";
