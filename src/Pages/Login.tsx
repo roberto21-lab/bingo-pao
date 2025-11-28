@@ -164,6 +164,9 @@ export default function Login() {
 
     console.log('Usuario logueado:', user, token);
 
+    // Marcar que el usuario acaba de hacer login para mostrar el toaster de bienvenida
+    sessionStorage.setItem("justLoggedIn", "true");
+
     // Si hay un parámetro de redirección, ir allí, sino al home
     const redirect = searchParams.get('redirect');
     if (redirect) {

@@ -64,6 +64,7 @@ export interface UseGameDataReturn {
   setPlayerCardsData: React.Dispatch<React.SetStateAction<Array<{ _id: string; code: string }>>>;
   setWinningNumbersMap: React.Dispatch<React.SetStateAction<Map<number, Set<string>>>>;
   setTimeUntilStart: (time: number | null) => void;
+  setTotalPot: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export function useGameData(roomId: string | undefined): UseGameDataReturn {
@@ -405,6 +406,7 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
     setPlayerCardsData,
     setWinningNumbersMap,
     setTimeUntilStart,
+    setTotalPot,
   };
 }
 

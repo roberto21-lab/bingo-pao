@@ -187,7 +187,7 @@ export default function CurrentNumberDisplay({
               Iniciando juego...
             </Typography>
           </Box>
-        ) : roundTransitionCountdown !== null && roundTransitionCountdown > 0 ? (
+        ) : roundTransitionCountdown !== null && roundTransitionCountdown > 0 && !isCallingNumber && !currentNumber ? (
           <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
             <Typography
               sx={{

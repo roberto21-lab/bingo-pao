@@ -27,6 +27,7 @@ import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 import { getWalletByUser } from "../Services/wallets.service";
 import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount, type BankAccount } from "../Services/bankAccounts.service";
 import { getUserById } from "../Services/users.service";
+import { onRoomPrizeUpdated } from "../Services/socket.service";
 
 type ActiveRoom = {
   id: string;
@@ -68,9 +69,20 @@ export default function Home() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const userId = user?.id || getUserId() || null;
 
-  // Mostrar toast cuando cambia el estado de autenticación
+  // Mostrar toast solo cuando el usuario acaba de hacer login
   React.useEffect(() => {
-    setShowToast(true);
+    // Verificar si hay una marca de login reciente en sessionStorage
+    const justLoggedIn = sessionStorage.getItem("justLoggedIn") === "true";
+    
+    if (justLoggedIn && isAuthenticated) {
+      // Mostrar el toaster solo si acaba de hacer login
+      setShowToast(true);
+      // Eliminar la marca para que no se muestre de nuevo
+      sessionStorage.removeItem("justLoggedIn");
+    } else {
+      // Si no acaba de hacer login, no mostrar el toaster
+      setShowToast(false);
+    }
   }, [isAuthenticated, user]);
 
   // Cargar wallet del usuario cuando esté autenticado
@@ -512,6 +524,29 @@ export default function Home() {
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
   }, [userId, isAuthenticated]);
+
+  // Escuchar actualizaciones de premio en tiempo real para todas las salas
+  React.useEffect(() => {
+    const unsubscribePrizeUpdated = onRoomPrizeUpdated((data) => {
+      console.log(`[Home] Premio actualizado para sala ${data.room_name}: Total pot: ${data.total_pot}`);
+      // Actualizar el premio de la sala en la lista de salas activas
+      setActiveRooms((prevRooms) => {
+        return prevRooms.map((room) => {
+          if (room.id === data.room_id) {
+            return {
+              ...room,
+              prizeAmount: data.total_pot, // Actualizar con el nuevo total_pot
+            };
+          }
+          return room;
+        });
+      });
+    });
+
+    return () => {
+      unsubscribePrizeUpdated();
+    };
+  }, []);
 
   const handleRoomClick = (roomId: string) => {
     navigate(`/game/${roomId}`);

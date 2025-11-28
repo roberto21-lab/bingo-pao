@@ -6,6 +6,7 @@ import CardBadge from "./CardBadge";
 import type { BingoGrid } from "../utils/bingo";
 import type { RoomWinner } from "../Services/bingo.service";
 import { getBingoTypeName } from "../utils/bingoUtils";
+import { getUserId } from "../Services/auth.service";
 
 type CardListProps = {
   cards: BingoGrid[];
@@ -20,6 +21,8 @@ type CardListProps = {
   winningNumbersMap?: Map<number, Set<string>>; // Números ganadores por índice de cartón
   showWinners?: boolean; // Si se están mostrando cartones ganadores
   winners?: RoomWinner[]; // Datos de los ganadores (ronda, patrón, etc.)
+  showLoserAnimation?: boolean; // Si se debe mostrar animación de "mala suerte"
+  currentUserId?: string; // ID del usuario en sesión para identificar sus cartones ganadores
 };
 
 function mapPatternToBingoType(patternName: string): "horizontal" | "vertical" | "smallCross" | "fullCard" {
@@ -50,9 +53,14 @@ export default function CardList({
   winningNumbersMap = new Map(),
   showWinners = false,
   winners = [],
+  showLoserAnimation = false,
+  currentUserId,
 }: CardListProps) {
   const navigate = useNavigate();
   const [confirmModalOpen, setConfirmModalOpen] = React.useState(false);
+  
+  // Obtener el ID del usuario en sesión si no se proporciona
+  const userId = currentUserId || getUserId() || "";
   
   const getMarkedForCard = (cardIndex: number): Set<string> => {
     return markedNumbers.get(cardIndex) || new Set();
@@ -141,6 +149,9 @@ export default function CardList({
             const cardCode = showWinners && winner 
               ? winner.card_code 
               : (cardsData[index]?.code || String(index + 1));
+            
+            // Verificar si este cartón pertenece al usuario en sesión
+            const isUserCard = showWinners && winner && userId && winner.user_id === userId;
 
             return (
               <Box key={index} sx={{ position: "relative", display: "flex", flexDirection: "column", gap: 1 }}>
@@ -155,11 +166,48 @@ export default function CardList({
                       px: 1.5,
                       py: 1,
                       borderRadius: "12px",
-                      background: "linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(244, 208, 63, 0.15) 100%)",
-                      border: "1.5px solid rgba(212, 175, 55, 0.4)",
-                      boxShadow: "0 2px 8px rgba(212, 175, 55, 0.2)",
+                      background: isUserCard
+                        ? "linear-gradient(135deg, rgba(76, 175, 80, 0.3) 0%, rgba(56, 142, 60, 0.25) 100%)"
+                        : "linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(244, 208, 63, 0.15) 100%)",
+                      border: isUserCard
+                        ? "1.5px solid rgba(76, 175, 80, 0.6)"
+                        : "1.5px solid rgba(212, 175, 55, 0.4)",
+                      boxShadow: isUserCard
+                        ? "0 2px 8px rgba(76, 175, 80, 0.3), 0 0 12px rgba(76, 175, 80, 0.2)"
+                        : "0 2px 8px rgba(212, 175, 55, 0.2)",
+                      position: "relative",
                     }}
                   >
+                    {/* Badge indicando que es tu cartón */}
+                    {isUserCard && (
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          top: -8,
+                          right: -8,
+                          px: 1,
+                          py: 0.5,
+                          borderRadius: "8px",
+                          background: "linear-gradient(135deg, #4caf50 0%, #66bb6a 100%)",
+                          border: "2px solid rgba(255, 255, 255, 0.9)",
+                          boxShadow: "0 2px 8px rgba(76, 175, 80, 0.5)",
+                          zIndex: 2,
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: "9px",
+                            fontWeight: 900,
+                            color: "#ffffff",
+                            textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
+                            fontFamily: "'Montserrat', sans-serif",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          TU CARTÓN
+                        </Typography>
+                      </Box>
+                    )}
                     <Typography
                       variant="h6"
                       sx={{
@@ -212,6 +260,7 @@ export default function CardList({
                     hasBingo={cardHasBingo}
                     bingoPatternNumbers={cardBingoPatternNumbers}
                     winningNumbers={winningNumbersMap.get(index)}
+                    showLoserAnimation={showLoserAnimation && !cardHasBingo}
                   />
                   {!showWinners && <CardBadge hasBingo={cardHasBingo} markedCount={cardMarked.size} />}
                 </Box>
