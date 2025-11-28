@@ -15,7 +15,7 @@ import { api } from "../Services/api";
 import BackgroundStars from "../Componets/BackgroundStars";
 import { getCardsByRoomAndUser, enrollCards, getAvailableCards, type BackendCard } from "../Services/cards.service";
 import { useAuth } from "../hooks/useAuth";
-import { onRoomStatusUpdated, onRoomPrizeUpdated } from "../Services/socket.service";
+import { onRoomStatusUpdated, onRoomPrizeUpdated, onCardsEnrolled, joinRoom, leaveRoom } from "../Services/socket.service";
 import { StatusBadge } from "../Componets/shared/StatusBadge";
 import { SearchBar } from "../Componets/shared/SearchBar";
 import { GlassDialog } from "../Componets/shared/GlassDialog";
@@ -176,6 +176,17 @@ export default function RoomDetail() {
     };
   }, [roomId]);
 
+  // Unirse a la sala para recibir actualizaciones en tiempo real
+  React.useEffect(() => {
+    if (!roomId) return;
+    
+    joinRoom(roomId);
+    
+    return () => {
+      leaveRoom(roomId);
+    };
+  }, [roomId]);
+
   // Escuchar actualizaciones de premio en tiempo real
   React.useEffect(() => {
     if (!roomId) return;
@@ -197,6 +208,27 @@ export default function RoomDetail() {
 
     return () => {
       unsubscribePrizeUpdated();
+    };
+  }, [roomId]);
+
+  // Escuchar cartones inscritos en tiempo real para actualizar la lista de disponibles
+  React.useEffect(() => {
+    if (!roomId) return;
+    
+    const unsubscribeCardsEnrolled = onCardsEnrolled(async (data) => {
+      if (data.room_id === roomId) {
+        console.log(`[RoomDetail] Cartones inscritos en tiempo real: ${data.enrolled_count} cartones por usuario ${data.user_id}`);
+        
+        // Remover los cartones inscritos de la lista de disponibles
+        setAvailableCardsFromDB((prevCards) => {
+          const enrolledIdsSet = new Set(data.enrolled_card_ids);
+          return prevCards.filter(card => !enrolledIdsSet.has(card._id));
+        });
+      }
+    });
+
+    return () => {
+      unsubscribeCardsEnrolled();
     };
   }, [roomId]);
 

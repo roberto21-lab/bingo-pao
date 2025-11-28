@@ -875,6 +875,47 @@ export const onRoomFinished = (
   return () => {};
 };
 
+// Escuchar evento de cartones inscritos en tiempo real
+export const onCardsEnrolled = (
+  callback: (data: {
+    room_id: string;
+    enrolled_card_ids: string[];
+    user_id: string;
+    enrolled_count: number;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "enrolled_card_ids" in data &&
+        Array.isArray((data as any).enrolled_card_ids)
+      ) {
+        callback(data as {
+          room_id: string;
+          enrolled_card_ids: string[];
+          user_id: string;
+          enrolled_count: number;
+        });
+      }
+    };
+    
+    socket.on("cards-enrolled", handler);
+    
+    return () => {
+      socket?.off("cards-enrolled", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 // Obtener instancia del socket
 export const getSocket = (): Socket | null => {
   if (!socket) {
