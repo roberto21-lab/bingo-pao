@@ -13,6 +13,7 @@ type SelectableCardProps = {
   hasBingo?: boolean;
   bingoPatternNumbers?: Set<string>;
   winningNumbers?: Set<string>; // Números que hicieron bingo (para salas finalizadas)
+  showLoserAnimation?: boolean; // Si se debe mostrar animación de "mala suerte"
 };
 
 const HEADERS = ["B", "I", "N", "G", "O"] as const;
@@ -38,6 +39,7 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
   hasBingo = false,
   bingoPatternNumbers = new Set(),
   winningNumbers = new Set(),
+  showLoserAnimation = false,
 }) => {
   const isNumberCalled = (num: number): boolean => {
     if (num === 0) return false;
@@ -71,6 +73,65 @@ const SelectableCard: React.FC<SelectableCardProps> = ({
         position: "relative",
       }}
     >
+      {/* Animación de "Mala Suerte" cuando alguien más canta bingo */}
+      {showLoserAnimation && !hasBingo && (
+        <Box
+          sx={{
+            position: "absolute",
+            top: "-15px",
+            left: "-15px",
+            right: "-15px",
+            bottom: "-15px",
+            zIndex: 10,
+            pointerEvents: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: "loserShake 0.5s ease-in-out",
+            "@keyframes loserShake": {
+              "0%, 100%": { transform: "translateX(0)" },
+              "10%, 30%, 50%, 70%, 90%": { transform: "translateX(-5px)" },
+              "20%, 40%, 60%, 80%": { transform: "translateX(5px)" },
+            },
+          }}
+        >
+          <Box
+            sx={{
+              background: "linear-gradient(135deg, rgba(244, 67, 54, 0.95) 0%, rgba(211, 47, 47, 0.95) 100%)",
+              color: "#ffffff",
+              px: 2,
+              py: 1,
+              borderRadius: "12px",
+              border: "2px solid rgba(255, 255, 255, 0.8)",
+              boxShadow: "0 4px 20px rgba(244, 67, 54, 0.6), 0 0 30px rgba(244, 67, 54, 0.4)",
+              animation: "loserPulse 1s ease-in-out infinite",
+              "@keyframes loserPulse": {
+                "0%, 100%": { 
+                  transform: "scale(1)",
+                  boxShadow: "0 4px 20px rgba(244, 67, 54, 0.6), 0 0 30px rgba(244, 67, 54, 0.4)",
+                },
+                "50%": { 
+                  transform: "scale(1.1)",
+                  boxShadow: "0 6px 30px rgba(244, 67, 54, 0.8), 0 0 40px rgba(244, 67, 54, 0.6)",
+                },
+              },
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: "14px",
+                fontWeight: 900,
+                textShadow: "0 2px 4px rgba(0, 0, 0, 0.5)",
+                fontFamily: "'Montserrat', sans-serif",
+                letterSpacing: "1px",
+              }}
+            >
+              ¡MALA SUERTE!
+            </Typography>
+          </Box>
+        </Box>
+      )}
+
       {hasBingo && (
         <Box
           sx={{

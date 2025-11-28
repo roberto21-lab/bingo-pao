@@ -51,6 +51,7 @@ export type RoomWinner = {
   prize_amount: string;
   bingo_numbers: string[]; // Números que hicieron bingo
   called_numbers: string[];
+  user_id?: string; // ID del usuario ganador
 };
 
 export type GetRoomWinnersResponse = {

@@ -84,7 +84,13 @@ export async function enrollCards(
   cardIds: string[] // Array de IDs de cartones
 ): Promise<{ success: boolean; message: string; data: any }> {
   try {
-    const response = await api.post<{ success: boolean; message: string; data: any }>(
+    const response = await api.post<{ 
+      success: boolean; 
+      message: string; 
+      data?: any;
+      duplicateCards?: string[];
+      errors?: string[];
+    }>(
       "/cards/enroll",
       {
         userId,
@@ -97,8 +103,23 @@ export async function enrollCards(
       return response.data;
     }
 
-    throw new Error(response.data.message || "Error al inscribir cartones");
-  } catch (error) {
+    // Si no es exitoso, lanzar error con toda la información
+    const error = new Error(response.data.message || "Error al inscribir cartones") as any;
+    error.response = {
+      data: {
+        success: false,
+        message: response.data.message,
+        duplicateCards: response.data.duplicateCards,
+        errors: response.data.errors
+      }
+    };
+    throw error;
+  } catch (error: any) {
+    // Si es un error de axios, preservar la estructura
+    if (error.response) {
+      throw error;
+    }
+    // Si es otro tipo de error, envolverlo
     throw error;
   }
 }

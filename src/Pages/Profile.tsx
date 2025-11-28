@@ -734,7 +734,7 @@ function ProfileContent() {
                   }}
                 >
                   <CardHeader
-                    title="Perfil"
+                    title="Mis Datos"
                     sx={{
                       pb: 0,
                       "& .MuiCardHeader-title": {

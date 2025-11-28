@@ -15,7 +15,7 @@ import { api } from "../Services/api";
 import BackgroundStars from "../Componets/BackgroundStars";
 import { getCardsByRoomAndUser, enrollCards, getAvailableCards, type BackendCard } from "../Services/cards.service";
 import { useAuth } from "../hooks/useAuth";
-import { onRoomStatusUpdated } from "../Services/socket.service";
+import { onRoomStatusUpdated, onRoomPrizeUpdated } from "../Services/socket.service";
 import { StatusBadge } from "../Componets/shared/StatusBadge";
 import { SearchBar } from "../Componets/shared/SearchBar";
 import { GlassDialog } from "../Componets/shared/GlassDialog";
@@ -173,6 +173,30 @@ export default function RoomDetail() {
 
     return () => {
       unsubscribeStatusUpdated();
+    };
+  }, [roomId]);
+
+  // Escuchar actualizaciones de premio en tiempo real
+  React.useEffect(() => {
+    if (!roomId) return;
+    
+    const unsubscribePrizeUpdated = onRoomPrizeUpdated((data) => {
+      if (data.room_id === roomId) {
+        console.log(`[RoomDetail] Premio actualizado: Total pot: ${data.total_pot}, Prize pool: ${data.total_prize}`);
+        // Actualizar el premio localmente
+        setRoom((prevRoom) => {
+          if (!prevRoom) return prevRoom;
+          
+          return {
+            ...prevRoom,
+            prizeAmount: data.total_pot, // Usar total_pot que es lo que se muestra
+          };
+        });
+      }
+    });
+
+    return () => {
+      unsubscribePrizeUpdated();
     };
   }, [roomId]);
 
@@ -423,6 +447,14 @@ export default function RoomDetail() {
       
       console.log("Cartones inscritos:", result);
       
+      // Verificar si hay advertencias sobre cartones duplicados
+      if (result.data?.warnings && Array.isArray(result.data.warnings) && result.data.warnings.length > 0) {
+        // Mostrar advertencia pero continuar
+        const warningMessage = result.data.warnings.join(". ");
+        console.warn("Advertencias:", warningMessage);
+        // Opcional: mostrar un toast de advertencia
+      }
+      
       // Actualizar el balance disponible después de la compra
       try {
         const wallet = await getWalletByUser(user.id);
@@ -448,20 +480,76 @@ export default function RoomDetail() {
       // Limpiar selección
       setSelectedCards(new Set());
       
-      // Mostrar toaster de éxito
+      // Mostrar toaster de éxito (con advertencia si hay cartones duplicados)
+      let successMessage = result.message || "Cartones inscritos correctamente";
+      if (result.data?.duplicateCards && result.data.duplicateCards.length > 0) {
+        successMessage += `. Nota: ${result.data.duplicateCards.length} cartón(es) ya estaban inscritos y fueron omitidos.`;
+      }
       setShowSuccessToast(true);
       
       // Navegar al juego después de un breve delay para que se vea el toaster
       setTimeout(() => {
-    navigate(`/game/${roomId}`);
+        navigate(`/game/${roomId}`);
       }, 2000);
     } catch (err: unknown) {
       console.error("Error al inscribir cartones:", err);
-      const errorMessage = err instanceof Error ? err.message : "Error al inscribir cartones. Por favor, intenta nuevamente.";
-      const responseMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      const finalErrorMessage = responseMessage || errorMessage;
       
-      // Mostrar toaster de error en lugar de redirigir
+      // Extraer información del error de la respuesta
+      const errorResponse = (err as { response?: { data?: any } })?.response?.data;
+      const errorMessage = errorResponse?.message || (err instanceof Error ? err.message : "Error al inscribir cartones. Por favor, intenta nuevamente.");
+      
+      // Si hay cartones duplicados, construir mensaje específico
+      let finalErrorMessage = errorMessage;
+      if (errorResponse?.duplicateCards && Array.isArray(errorResponse.duplicateCards) && errorResponse.duplicateCards.length > 0) {
+        const duplicateCodes = errorResponse.duplicateCards.join(", ");
+        finalErrorMessage = `Los siguientes cartones ya están inscritos: ${duplicateCodes}. Por favor, selecciona otros cartones o continúa con los cartones restantes.`;
+      }
+      
+      // Si el error tiene información sobre cartones duplicados pero también hay éxito parcial
+      if (errorResponse?.success === false && errorResponse?.duplicateCards) {
+        // Refrescar cartones disponibles para actualizar la lista
+        try {
+          const refreshedAvailable = await getAvailableCards(roomId!);
+          const formattedRefreshed = refreshedAvailable.map(card => ({
+            ...card,
+            numbers_json: card.numbers_json.map(row => 
+              row.map(num => num === "FREE" ? 0 : num)
+            ) as number[][]
+          }));
+          setAvailableCardsFromDB(formattedRefreshed);
+          
+          // Remover cartones duplicados de la selección
+          if (errorResponse.duplicateCards && Array.isArray(errorResponse.duplicateCards)) {
+            const duplicateCodes = errorResponse.duplicateCards;
+            const newSelectedCards = new Set(selectedCards);
+            let removedCount = 0;
+            
+            // Buscar y remover cartones duplicados de la selección
+            availableCardsFromDB.forEach((card, index) => {
+              if (duplicateCodes.includes(card.code)) {
+                // Encontrar el índice en selectedCards
+                const cardIndex = Array.from(selectedCards).find(selIndex => {
+                  const dbIdx = indexMap.get(selIndex);
+                  return dbIdx === index;
+                });
+                if (cardIndex !== undefined) {
+                  newSelectedCards.delete(cardIndex);
+                  removedCount++;
+                }
+              }
+            });
+            
+            setSelectedCards(newSelectedCards);
+            if (removedCount > 0) {
+              console.log(`Removidos ${removedCount} cartones duplicados de la selección`);
+            }
+          }
+        } catch (refreshError) {
+          console.error("Error al refrescar cartones disponibles:", refreshError);
+        }
+      }
+      
+      // Mostrar toaster de error
       setErrorToastMessage(finalErrorMessage);
       setShowErrorToast(true);
     } finally {

@@ -1,9 +1,11 @@
 // src/Componets/TabBar.tsx
 import * as React from "react";
-import { Box, Typography, Button } from "@mui/material";
+import { Box, Typography, Button, Menu, MenuItem } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
-import PersonIcon from "@mui/icons-material/Person";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
+import PersonIcon from "@mui/icons-material/Person";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { getUserRooms } from "../Services/cards.service";
@@ -21,6 +23,7 @@ const TabBar: React.FC = () => {
   const { isAuthenticated, userId } = useAuth();
   const [activeGame, setActiveGame] = React.useState<ActiveGameInfo>({ roomId: null, isActive: false });
   const [loadingGame, setLoadingGame] = React.useState(false);
+  const [accountMenuAnchor, setAccountMenuAnchor] = React.useState<null | HTMLElement>(null);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -129,12 +132,21 @@ const TabBar: React.FC = () => {
     return "Unirse";
   };
 
-  const handleProfileOrLogin = () => {
+  const handleAccountClick = (event: React.MouseEvent<HTMLElement>) => {
     if (isAuthenticated) {
-      navigate("/profile");
+      setAccountMenuAnchor(event.currentTarget);
     } else {
       navigate("/login");
     }
+  };
+
+  const handleMenuClose = () => {
+    setAccountMenuAnchor(null);
+  };
+
+  const handleMenuOption = (path: string) => {
+    navigate(path);
+    handleMenuClose();
   };
 
   return (
@@ -377,45 +389,113 @@ const TabBar: React.FC = () => {
         {getButtonText()}
       </Button>
 
-      {/* Profile Tab o Login Tab */}
-      <Box
-        onClick={handleProfileOrLogin}
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "4px",
-          cursor: "pointer",
-          padding: "8px 16px",
-          transition: "all 0.2s",
-          flex: 1,
-          "&:hover": {
-            opacity: 0.8,
-          },
-        }}
-      >
+      {/* Mi Cuenta Tab o Login Tab */}
+      <Box>
         <Box
+          onClick={handleAccountClick}
           sx={{
-            color: isActive("/profile") || isActive("/login") ? "#d4af37" : "#f5e6d3",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
-            justifyContent: "center",
-            transition: "color 0.2s",
+            gap: "4px",
+            cursor: "pointer",
+            padding: "8px 16px",
+            transition: "all 0.2s",
+            flex: 1,
+            "&:hover": {
+              opacity: 0.8,
+            },
           }}
         >
-          {isAuthenticated ? <PersonIcon /> : <PowerSettingsNewIcon />}
+          <Box
+            sx={{
+              color: isActive("/profile") || isActive("/wallet") || isActive("/login") ? "#d4af37" : "#f5e6d3",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "color 0.2s",
+            }}
+          >
+            {isAuthenticated ? <AccountCircleIcon /> : <PowerSettingsNewIcon />}
+          </Box>
+          <Typography
+            variant="caption"
+            sx={{
+              color: isActive("/profile") || isActive("/wallet") || isActive("/login") ? "#d4af37" : "#f5e6d3",
+              fontSize: "12px",
+              fontWeight: isActive("/profile") || isActive("/wallet") || isActive("/login") ? 600 : 400,
+              transition: "color 0.2s",
+            }}
+          >
+            {isAuthenticated ? "Mi Cuenta" : "Iniciar sesión"}
+          </Typography>
         </Box>
-        <Typography
-          variant="caption"
-          sx={{
-            color: isActive("/profile") || isActive("/login") ? "#d4af37" : "#f5e6d3",
-            fontSize: "12px",
-            fontWeight: isActive("/profile") || isActive("/login") ? 600 : 400,
-            transition: "color 0.2s",
+
+        {/* Menú de opciones de cuenta */}
+        <Menu
+          anchorEl={accountMenuAnchor}
+          open={Boolean(accountMenuAnchor)}
+          onClose={handleMenuClose}
+          anchorOrigin={{
+            vertical: "top",
+            horizontal: "center",
+          }}
+          transformOrigin={{
+            vertical: "bottom",
+            horizontal: "center",
+          }}
+          PaperProps={{
+            sx: {
+              mt: -1,
+              minWidth: 180,
+              background: "rgba(26, 16, 8, 0.95)",
+              backdropFilter: "blur(20px)",
+              border: "1px solid rgba(212, 175, 55, 0.3)",
+              borderRadius: "12px",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
+              overflow: "hidden",
+            },
           }}
         >
-          {isAuthenticated ? "Perfil" : "Iniciar sesión"}
-        </Typography>
+          <MenuItem
+            onClick={() => handleMenuOption("/profile")}
+            sx={{
+              color: "#f5e6d3",
+              py: 1.5,
+              px: 2,
+              "&:hover": {
+                background: "rgba(212, 175, 55, 0.2)",
+              },
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+            }}
+          >
+            <PersonIcon sx={{ fontSize: 20, color: "#d4af37" }} />
+            <Typography sx={{ fontSize: "14px", fontWeight: 500 }}>
+              Mis Datos
+            </Typography>
+          </MenuItem>
+          <MenuItem
+            onClick={() => handleMenuOption("/wallet")}
+            sx={{
+              color: "#f5e6d3",
+              py: 1.5,
+              px: 2,
+              "&:hover": {
+                background: "rgba(212, 175, 55, 0.2)",
+              },
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+            }}
+          >
+            <AccountBalanceWalletIcon sx={{ fontSize: 20, color: "#d4af37" }} />
+            <Typography sx={{ fontSize: "14px", fontWeight: 500 }}>
+              Billetera
+            </Typography>
+          </MenuItem>
+        </Menu>
       </Box>
     </Box>
   );

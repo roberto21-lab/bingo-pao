@@ -471,6 +471,62 @@ export const onRoundStartCountdown = (
   return () => {};
 };
 
+// Escuchar evento de actualización de premio en tiempo real
+export const onRoomPrizeUpdated = (
+  callback: (data: {
+    room_id: string;
+    room_name: string;
+    total_prize: number;
+    admin_fee: number;
+    total_pot: number;
+    enrolled_cards_count: number;
+    price_per_card: number;
+    rewards: Array<{
+      round_number: number | null;
+      prize_percent: number;
+      prize_amount: number;
+    }>;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "total_prize" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          room_name: string;
+          total_prize: number;
+          admin_fee: number;
+          total_pot: number;
+          enrolled_cards_count: number;
+          price_per_card: number;
+          rewards: Array<{
+            round_number: number | null;
+            prize_percent: number;
+            prize_amount: number;
+          }>;
+        });
+      }
+    };
+    
+    socket.on("room-prize-updated", handler);
+    
+    return () => {
+      socket?.off("room-prize-updated", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 // Escuchar evento de sincronización de estado de sala (cuando te unes a una sala con juego activo)
 export const onRoomStateSync = (
   callback: (data: {
