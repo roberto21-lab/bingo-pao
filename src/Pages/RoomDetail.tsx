@@ -54,6 +54,7 @@ export default function RoomDetail() {
   const [errorToastMessage, setErrorToastMessage] = React.useState<string>("");
   const [availableBalance, setAvailableBalance] = React.useState<number>(0);
   const [walletLoading, setWalletLoading] = React.useState(false);
+  console.log("🚀 ~ RoomDetail ~ walletLoading:", walletLoading)
 
   React.useEffect(() => {
     const fetchRoom = async () => {

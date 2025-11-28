@@ -20,7 +20,7 @@ import { loginService } from '../Services/auth.service';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
-const gold = '#d6bf7b';
+// const gold = '#d6bf7b';
 
 // Inputs estilo glassmorphism mejorado
 const textFieldSx = {

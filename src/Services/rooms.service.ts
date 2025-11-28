@@ -128,7 +128,8 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
   const totalPot = parseDecimal(backendRoom.total_pot);
   // Normalizar VES a Bs
   const currencyCode = normalizeCurrency(currency?.code);
-  const currencySymbol = currency?.symbol || "Bs";
+  // const currencySymbol = currency?.symbol || "Bs";
+  // console.log("🚀 ~ mapBackendRoomToRoom ~ currencySymbol:", currencySymbol)
 
   // Calcular premio estimado
   // Si total_pot ya está calculado, usarlo directamente

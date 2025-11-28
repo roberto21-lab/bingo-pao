@@ -1,19 +1,18 @@
 // src/Componets/TransactionDetailDialog.tsx
-import React, { useState, useEffect } from "react";
 import {
+  Box,
+  Chip,
   Dialog,
   DialogContent,
-  Box,
-  Typography,
-  Stack,
   Divider,
-  Chip,
+  Stack,
+  Typography,
 } from "@mui/material";
-import { DialogHeader } from "./shared/DialogHeader";
-import { SummaryCard } from "./shared/SummaryCard";
+import React, { useEffect, useState } from "react";
 import { COLORS } from "../constants/colors";
-import type { Transaction } from "../Services/transactionService";
 import { getDocumentTypeById } from "../Services/documentTypes.service";
+import type { Transaction } from "../Services/transactionService";
+import { DialogHeader } from "./shared/DialogHeader";
 
 type TransactionDetailDialogProps = {
   open: boolean;
@@ -133,7 +132,74 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
       }
     : null;
 
-  const summaryItems = [
+  // Procesar metadata de forma inteligente en una colección tipada para evitar problemas de predicado
+  const metadataItems = transaction.metadata
+    ? Object.entries(transaction.metadata)
+        .filter(([key]) => !['bank_name', 'room_name', 'round_number', 'bank_account_id'].includes(key))
+        .map(([key, value]) => {
+          let displayValue: string | React.ReactNode = value != null ? String(value) : '';
+          let label = key
+            .split('_')
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+
+          // Formatear según el tipo de campo
+          if (key === 'document_type_id') {
+            // Mostrar nombre del tipo de documento en vez del ID
+            displayValue = documentTypeName || String(value) || 'N/A';
+            label = 'Tipo de Documento';
+          } else if (key === 'commission_percent') {
+            // Agregar % al porcentaje
+            displayValue = `${value}%`;
+            label = 'Comisión';
+          } else if (key === 'commission_amount') {
+            // Formatear como moneda
+            const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+            displayValue = formatCurrency(numValue, currency);
+            label = 'Monto de Comisión';
+          } else if (key === 'transfer_amount') {
+            // Formatear como moneda
+            const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+            displayValue = formatCurrency(numValue, currency);
+            label = 'Monto a Transferir';
+          } else if (key === 'requested_amount') {
+            // Formatear como moneda
+            const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+            displayValue = formatCurrency(numValue, currency);
+            label = 'Monto Solicitado';
+          } else if (key === 'phone_number') {
+            label = 'Teléfono';
+          } else if (key === 'document_number') {
+            label = 'Número de Documento';
+          } else if (key === 'reference_code') {
+            label = 'Código de Referencia';
+          } else if (key === 'payment_date') {
+            label = 'Fecha de Pago';
+            // Intentar formatear como fecha si es posible
+            try {
+              const date = new Date(String(value));
+              if (!isNaN(date.getTime())) {
+                displayValue = date.toLocaleDateString('es-VE', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                });
+              }
+            } catch {
+              // Mantener el valor original si no se puede parsear
+            }
+          }
+
+          return {
+            label,
+            value: displayValue,
+          };
+        })
+    : [];
+
+  const typedMetadataItems = metadataItems as Array<{ label: string; value: string | React.ReactNode }>;
+
+  const summaryItems: Array<{ label: string; value: React.ReactNode; highlight?: boolean; monospace?: boolean }> = [
     {
       label: 'Tipo de Transacción',
       value: (
@@ -224,74 +290,8 @@ export const TransactionDetailDialog: React.FC<TransactionDetailDialogProps> = (
           },
         ]
       : []),
-    // Procesar metadata de forma inteligente
-    ...(transaction.metadata
-      ? Object.entries(transaction.metadata)
-          .filter(([key]) => !['bank_name', 'room_name', 'round_number'].includes(key))
-          .map(([key, value]) => {
-            let displayValue: string | React.ReactNode = String(value);
-            let label = key
-              .split('_')
-              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-              .join(' ');
-
-            // Formatear según el tipo de campo
-            if (key === 'document_type_id') {
-              // Mostrar nombre del tipo de documento en vez del ID
-              displayValue = documentTypeName || String(value) || 'N/A';
-              label = 'Tipo de Documento';
-            } else if (key === 'bank_account_id') {
-              // Omitir bank_account_id, ya mostramos bank_name en la descripción
-              return null;
-            } else if (key === 'commission_percent') {
-              // Agregar % al porcentaje
-              displayValue = `${value}%`;
-              label = 'Comisión';
-            } else if (key === 'commission_amount') {
-              // Formatear como moneda
-              const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
-              displayValue = formatCurrency(numValue, currency);
-              label = 'Monto de Comisión';
-            } else if (key === 'transfer_amount') {
-              // Formatear como moneda
-              const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
-              displayValue = formatCurrency(numValue, currency);
-              label = 'Monto a Transferir';
-            } else if (key === 'requested_amount') {
-              // Formatear como moneda
-              const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
-              displayValue = formatCurrency(numValue, currency);
-              label = 'Monto Solicitado';
-            } else if (key === 'phone_number') {
-              label = 'Teléfono';
-            } else if (key === 'document_number') {
-              label = 'Número de Documento';
-            } else if (key === 'reference_code') {
-              label = 'Código de Referencia';
-            } else if (key === 'payment_date') {
-              label = 'Fecha de Pago';
-              // Intentar formatear como fecha si es posible
-              try {
-                const date = new Date(String(value));
-                if (!isNaN(date.getTime())) {
-                  displayValue = date.toLocaleDateString('es-VE', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  });
-                }
-              } catch {
-                // Mantener el valor original si no se puede parsear
-              }
-            }
-
-            return {
-              label,
-              value: displayValue,
-            };
-          })
-          .filter((item): item is { label: string; value: string | React.ReactNode } => item !== null)
-      : []),
+    // Agregar items procesados de metadata tipados
+    ...typedMetadataItems,
   ];
 
   return (

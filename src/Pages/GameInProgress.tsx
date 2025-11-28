@@ -908,7 +908,7 @@ export default function GameInProgress() {
           
           if (data.finish_timestamp) {
             // Usar timestamp para sincronización precisa
-            setRoundTransitionCountdownFinish((prevFinish) => {
+            setRoundTransitionCountdownFinish((prevFinish: any) => {
               // Si ya hay un countdown activo para este round, mantener el timestamp original
               if (prevFinish && data.next_round_number === currentRound) {
                 return prevFinish;
@@ -1002,7 +1002,7 @@ export default function GameInProgress() {
 
     // Escuchar eventos de countdown de inicio de sala (pending → in_progress)
     // CRÍTICO: Solo actualizar el timestamp una vez al inicio del countdown, no en cada evento
-    const unsubscribeRoomStartCountdown = onRoomStartCountdown((data) => {
+    const unsubscribeRoomStartCountdown = onRoomStartCountdown((data: any) => {
       if (!isMounted) return;
 
       if (data.room_id === roomId) {
@@ -1019,7 +1019,7 @@ export default function GameInProgress() {
         // Si ya tenemos un countdown activo, NO actualizarlo
         // Esto previene que múltiples eventos reinicien el countdown
         if (data.finish_timestamp) {
-          setRoomStartCountdownFinish((prevFinish) => {
+          setRoomStartCountdownFinish((prevFinish: any) => {
             // Si ya hay un countdown activo, mantener el timestamp original
             // Solo actualizar si no hay countdown activo
             if (prevFinish) {
@@ -1044,7 +1044,7 @@ export default function GameInProgress() {
 
     // Escuchar eventos de countdown antes de empezar a llamar números en una nueva ronda (20 segundos)
     // CRÍTICO: Solo actualizar el timestamp una vez al inicio del countdown, no en cada evento
-    const unsubscribeRoundStartCountdown = onRoundStartCountdown((data) => {
+    const unsubscribeRoundStartCountdown = onRoundStartCountdown((data: any) => {
       if (!isMounted) return;
 
       // IMPORTANTE: Aceptar countdown para el round actual O para un round mayor
@@ -1066,7 +1066,7 @@ export default function GameInProgress() {
         // Si ya tenemos un countdown activo para este round, NO actualizarlo
         // Esto previene que múltiples eventos reinicien el countdown
         if (data.finish_timestamp) {
-          setRoundStartCountdownFinish((prevFinish) => {
+          setRoundStartCountdownFinish((prevFinish: any) => {
             // Si ya hay un countdown activo para este round, mantener el timestamp original
             // Solo actualizar si no hay countdown activo o si es un round diferente
             if (prevFinish && data.round_number === currentRound) {
@@ -1097,7 +1097,7 @@ export default function GameInProgress() {
 
     // Escuchar eventos de cambio de status de round
     // CRÍTICO: Este evento notifica cuando el round cambia de "starting" (countdown) a "in_progress" (llamando números)
-    const unsubscribeRoundStatusChanged = onRoundStatusChanged((data) => {
+    const unsubscribeRoundStatusChanged = onRoundStatusChanged((data: any) => {
       if (!isMounted) return;
 
       // Aceptar eventos para el round actual o para un round mayor (para manejar sincronización)
