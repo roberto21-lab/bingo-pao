@@ -970,6 +970,48 @@ export const onCardsEnrolled = (
   return () => {};
 };
 
+// Escuchar evento de reordenamiento de salas (cuando una sala termina y se crea una nueva)
+export const onRoomsReordered = (
+  callback: (data: {
+    rooms: Array<{
+      room_id: string;
+      name: string;
+      orderIndex: number | null;
+    }>;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "rooms" in data &&
+        Array.isArray((data as any).rooms)
+      ) {
+        callback(data as {
+          rooms: Array<{
+            room_id: string;
+            name: string;
+            orderIndex: number | null;
+          }>;
+        });
+      }
+    };
+    
+    socket.on("rooms-reordered", handler);
+    
+    return () => {
+      socket?.off("rooms-reordered", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 // Obtener instancia del socket
 export const getSocket = (): Socket | null => {
   if (!socket) {

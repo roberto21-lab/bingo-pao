@@ -8,7 +8,7 @@ import SectionHeader from "../Componets/SectionHeader";
 import { getRooms, type Room } from "../Services/rooms.service";
 import BackgroundStars from "../Componets/BackgroundStars";
 import { useAuth } from "../hooks/useAuth";
-import { onRoomStatusUpdated } from "../Services/socket.service";
+import { onRoomStatusUpdated, onRoomsReordered } from "../Services/socket.service";
 
 export default function Rooms() {
   const navigate = useNavigate();
@@ -58,8 +58,23 @@ export default function Rooms() {
       fetchRooms();
     });
 
+    const unsubscribeRoomsReordered = onRoomsReordered((data) => {
+      console.log(`[Rooms] Salas reordenadas:`, data.rooms);
+      // Refrescar salas cuando se reordenen
+      const fetchRooms = async () => {
+        try {
+          const data = await getRooms();
+          setRooms(data);
+        } catch (err: unknown) {
+          console.error("Error al refrescar salas:", err);
+        }
+      };
+      fetchRooms();
+    });
+
     return () => {
       unsubscribeStatusUpdated();
+      unsubscribeRoomsReordered();
     };
   }, []);
 
@@ -171,6 +186,9 @@ export default function Rooms() {
                     jackpot={currentRoom.jackpot}
                     players={currentRoom.players}
                     scheduledAt={currentRoom.scheduledAt}
+                    orderIndex={currentRoom.orderIndex}
+                    minPlayers={currentRoom.minPlayers}
+                    enrolledUsersCount={currentRoom.enrolledUsersCount}
                     onJoin={() => handleJoin(currentRoom.id)}
                 />
                 )}

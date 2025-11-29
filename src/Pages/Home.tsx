@@ -27,7 +27,7 @@ import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 import { getWalletByUser } from "../Services/wallets.service";
 import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount, type BankAccount } from "../Services/bankAccounts.service";
 import { getUserById } from "../Services/users.service";
-import { onRoomPrizeUpdated, joinRoom, leaveRoom } from "../Services/socket.service";
+import { onRoomPrizeUpdated, onRoomsReordered, joinRoom, leaveRoom } from "../Services/socket.service";
 
 type ActiveRoom = {
   id: string;
@@ -674,10 +674,77 @@ export default function Home() {
       });
     });
 
+    const unsubscribeRoomsReordered = onRoomsReordered((data) => {
+      console.log(`[Home] Salas reordenadas:`, data.rooms);
+      // Refrescar salas cuando se reordenen
+      const refreshRooms = async () => {
+        try {
+          if (userId && isAuthenticated) {
+            // Refrescar salas activas del usuario
+            const roomIds = await getUserRooms(userId);
+            if (roomIds.length > 0) {
+              const roomsData: (ActiveRoom | null)[] = await Promise.all(
+                roomIds.map(async (roomId) => {
+                  try {
+                    const room: Room = await getRoomById(roomId);
+                    const rounds = await getRoomRounds(roomId);
+                    let status: "active" | "waiting" | "finished" = "waiting";
+                    const roomStatus = room.status;
+                    if (roomStatus === "in_progress" || roomStatus === "preparing") {
+                      status = "active";
+                    } else if (roomStatus === "locked") {
+                      status = "finished";
+                    }
+                    let currentRound: number | undefined = undefined;
+                    let currentPattern: string | undefined = undefined;
+                    if (rounds.length > 0 && status === "active") {
+                      const activeRound = rounds.find((round) => {
+                        const statusObj = typeof round.status_id === "object" && round.status_id ? round.status_id : null;
+                        return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
+                      });
+                      if (activeRound) {
+                        currentRound = activeRound.round_number;
+                        if (activeRound.pattern_id && typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
+                          currentPattern = activeRound.pattern_id.name;
+                        }
+                      }
+                    }
+                    return {
+                      id: room.id,
+                      title: room.title,
+                      status,
+                      prizeAmount: room.estimatedPrize,
+                      currency: room.currency,
+                      currentRound,
+                      currentPattern,
+                    };
+                  } catch {
+                    return null;
+                  }
+                })
+              );
+              const validRooms = roomsData.filter((room): room is ActiveRoom => room !== null);
+              setActiveRooms(validRooms);
+            }
+          }
+          // Refrescar salas disponibles
+          if (!isAuthenticated) {
+            const rooms = await getRooms();
+            const filteredRooms = rooms.filter((room) => room.status === "waiting" || room.status === "in_progress");
+            setAvailableRooms(filteredRooms);
+          }
+        } catch (err) {
+          console.error("Error al refrescar salas después de reordenamiento:", err);
+        }
+      };
+      refreshRooms();
+    });
+
     return () => {
       unsubscribePrizeUpdated();
+      unsubscribeRoomsReordered();
     };
-  }, []);
+  }, [userId, isAuthenticated]);
 
   const handleRoomClick = (roomId: string) => {
     navigate(`/game/${roomId}`);

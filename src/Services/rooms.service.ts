@@ -41,6 +41,8 @@ export type BackendRoom = {
   players?: string[] | any[];
   rewards?: string[] | any[];
   scheduled_at?: string | Date | null; // Hora programada de inicio
+  orderIndex?: number | null; // Posición en la cola de juego (1, 2, 3)
+  enrolled_users_count?: number; // Número de usuarios únicos inscritos
   created_at?: string;
   updated_at?: string;
 };
@@ -57,6 +59,9 @@ export type Room = {
   jackpot?: number;
   players?: string;
   scheduledAt?: Date | null; // Hora programada de inicio
+  orderIndex?: number | null; // Posición en la cola de juego (1, 2, 3)
+  minPlayers?: number; // Mínimo de jugadores requeridos
+  enrolledUsersCount?: number; // Número de usuarios únicos inscritos
 };
 
 // Función para convertir Decimal128 a número
@@ -113,8 +118,10 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
 
   // Debug: Log detallado del status recibido
   console.log(`[rooms.service] 🔍 Procesando sala: ${backendRoom.name || backendRoom._id}`);
+  console.log(`[rooms.service]    - orderIndex:`, backendRoom.orderIndex);
+  console.log(`[rooms.service]    - min_players:`, backendRoom.min_players);
+  console.log(`[rooms.service]    - enrolled_users_count:`, backendRoom.enrolled_users_count);
   console.log(`[rooms.service]    - status_id tipo:`, typeof backendRoom.status_id);
-  console.log(`[rooms.service]    - status_id valor:`, JSON.stringify(backendRoom.status_id, null, 2));
   
   if (!status) {
     console.warn(`[rooms.service] ⚠️ Status es null/undefined para sala ${backendRoom.name || backendRoom._id}`);
@@ -176,6 +183,9 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
     jackpot: estimatedPrize,
     players: playersCount > 0 ? playersString : undefined,
     scheduledAt,
+    orderIndex: backendRoom.orderIndex ?? null,
+    minPlayers: backendRoom.min_players ?? 2,
+    enrolledUsersCount: backendRoom.enrolled_users_count ?? 0,
   };
 }
 
