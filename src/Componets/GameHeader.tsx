@@ -10,6 +10,8 @@ type GameHeaderProps = {
   roomName?: string;
   roomFinished?: boolean; // Si la sala está finalizada
   totalPrize?: number; // Premio total de todas las rondas (cuando roomFinished es true)
+  enrolledUsersCount?: number; // Cantidad de usuarios inscritos en la sala
+  onPatternClick?: () => void; // Callback cuando se hace click en el patrón
 };
 
 export default function GameHeader({
@@ -20,6 +22,8 @@ export default function GameHeader({
   roomName = "Juego en Progreso",
   roomFinished = false,
   totalPrize = 0,
+  enrolledUsersCount = 0,
+  onPatternClick,
 }: GameHeaderProps) {
   return (
     <>
@@ -27,12 +31,39 @@ export default function GameHeader({
         <Box
           sx={{
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             alignItems: "center",
             mb: 1,
             mt: "0",
           }}
         >
+          {enrolledUsersCount > 0 && (
+            <Chip
+              icon={
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: "#d4af37",
+                    boxShadow: "0 0 8px rgba(212, 175, 55, 0.8)",
+                  }}
+                />
+              }
+              label={`${enrolledUsersCount} ${enrolledUsersCount === 1 ? "jugador" : "jugadores"}`}
+              size="small"
+              sx={{
+                backgroundColor: "rgba(212, 175, 55, 0.15)",
+                color: "#d4af37",
+                border: "1px solid rgba(212, 175, 55, 0.3)",
+                fontWeight: 600,
+                fontSize: "0.75rem",
+                "& .MuiChip-icon": {
+                  marginLeft: 1,
+                },
+              }}
+            />
+          )}
           <Chip
             icon={
               <Box
@@ -96,7 +127,7 @@ export default function GameHeader({
         sx={{
           position: "absolute",
           left: 0,
-          top: 32,
+          top: roomFinished ? "46px" : "65px",
           display: "inline-flex",
           alignItems: "center",
           px: 2,
@@ -137,6 +168,7 @@ export default function GameHeader({
         <>
           {currentRound <= 2 ? (
             <Box
+              onClick={onPatternClick}
               sx={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -150,6 +182,14 @@ export default function GameHeader({
                 border: "1px solid rgba(212, 175, 55, 0.4)",
                 backdropFilter: "blur(10px)",
                 boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+                cursor: onPatternClick ? "pointer" : "default",
+                transition: "all 0.2s ease",
+                "&:hover": onPatternClick ? {
+                  background: "rgba(26, 16, 8, 0.7)",
+                  border: "1px solid rgba(212, 175, 55, 0.6)",
+                  transform: "translateY(-2px)",
+                  boxShadow: "0 4px 12px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15)",
+                } : {},
               }}
             >
               <Typography

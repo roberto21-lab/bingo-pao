@@ -240,7 +240,7 @@ function ProfileContent() {
     setError("");
     
     // La validación y creación de la transacción se hace en el modal
-    // Aquí solo recargamos el wallet para actualizar los balances
+    // Aquí solo recargamos el wallet y la cuenta bancaria para actualizar los balances
     try {
       if (userId) {
         const { getWalletByUser } = await import("../Services/wallets.service");
@@ -252,6 +252,21 @@ function ProfileContent() {
           balance: updatedWallet.balance || 0,
           currency_id: currencyId
         });
+        
+        // Recargar también la cuenta bancaria (puede haberse creado automáticamente)
+        try {
+          const { getBankAccountByUser } = await import("../Services/bankAccounts.service");
+          const account = await getBankAccountByUser(userId);
+          setBankAccount(account);
+        } catch (error: unknown) {
+          // Si no hay cuenta bancaria, está bien (puede que no se haya creado)
+          if (error && typeof error === "object" && "response" in error) {
+            const httpError = error as { response?: { status?: number } };
+            if (httpError.response?.status !== 404) {
+              console.error("Error al obtener cuenta bancaria:", error);
+            }
+          }
+        }
       }
       
       // Mostrar toaster de éxito
@@ -261,10 +276,11 @@ function ProfileContent() {
       const errorMessage = error instanceof Error ? error.message : "Error al procesar la recarga";
       setRechargeErrorMessage(errorMessage);
       setShowRechargeErrorToast(true);
+      // Re-lanzar el error para que el modal no se cierre
+      throw error;
     }
 
-    // Cerrar el modal
-    setOpenReport(false);
+    // El modal se cierra automáticamente después de que esta función termine exitosamente
   };
 
   const handleLogout = () => {

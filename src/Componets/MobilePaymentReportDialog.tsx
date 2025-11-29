@@ -195,6 +195,35 @@ export const MobilePaymentReportDialog: React.FC<MobilePaymentReportDialogProps>
         return;
       }
 
+      // Verificar si existe una cuenta bancaria, si no existe, crearla automáticamente
+      const { getBankAccountByUser, createBankAccount } = await import("../Services/bankAccounts.service");
+      let bankAccount = await getBankAccountByUser(userId);
+      
+      if (!bankAccount) {
+        // Crear cuenta bancaria automáticamente con los datos del formulario
+        try {
+          const newBankAccount = await createBankAccount({
+            userId,
+            bank_name: form.bankName,
+            account_number: "", // Opcional, no se requiere
+            phone_number: form.payerPhone,
+            document_number: form.payerDocId,
+            document_type_id: form.document_type_id,
+          });
+          bankAccount = newBankAccount.bank_account;
+          console.log("✅ Cuenta bancaria creada automáticamente:", bankAccount._id);
+        } catch (error: any) {
+          // Si falla la creación de la cuenta bancaria, verificar si es porque ya existe
+          // Si es otro error, mostrar el mensaje pero continuar con la transacción
+          const errorMessage = error?.response?.data?.message || error?.message || "Error al crear cuenta bancaria";
+          console.warn("⚠️ No se pudo crear la cuenta bancaria automáticamente:", errorMessage);
+          
+          // Si el error es que ya existe, está bien, continuar
+          // Si es otro error, también continuar (la transacción se puede crear sin cuenta bancaria)
+          // No bloquear el flujo por esto
+        }
+      }
+
       const rechargeType = await getTransactionTypeByName("recharge");
       if (!rechargeType || !rechargeType._id) {
         setSubmitError("No se encontró el tipo de transacción 'recharge'");
@@ -216,9 +245,25 @@ export const MobilePaymentReportDialog: React.FC<MobilePaymentReportDialogProps>
         const currencyObj = wallet.currency_id as { _id: string | { toString(): string } };
         currencyId = typeof currencyObj._id === "string" ? currencyObj._id : currencyObj._id.toString();
       } else {
-        setSubmitError("No se encontró la moneda de la wallet");
+        // Si no hay currency_id, intentar obtenerlo de nuevo (el backend debería haberlo corregido)
+        console.warn("⚠️ Wallet no tiene currency_id, recargando wallet...");
+        const reloadedWallet = await getWalletByUser(userId);
+        if (reloadedWallet && reloadedWallet.currency_id) {
+          if (typeof reloadedWallet.currency_id === "string") {
+            currencyId = reloadedWallet.currency_id;
+          } else if (typeof reloadedWallet.currency_id === "object" && "_id" in reloadedWallet.currency_id) {
+            const currencyObj = reloadedWallet.currency_id as { _id: string | { toString(): string } };
+            currencyId = typeof currencyObj._id === "string" ? currencyObj._id : currencyObj._id.toString();
+          } else {
+            setSubmitError("No se encontró la moneda de la wallet. Por favor, contacta al soporte.");
+            setIsSubmitting(false);
+            return;
+          }
+        } else {
+          setSubmitError("No se encontró la moneda de la wallet. Por favor, contacta al soporte.");
         setIsSubmitting(false);
         return;
+        }
       }
 
       const metadata = {
@@ -240,10 +285,42 @@ export const MobilePaymentReportDialog: React.FC<MobilePaymentReportDialogProps>
         metadata,
       };
 
+      // Crear la transacción de recarga
+      console.log("🔄 Creando transacción de recarga...");
       await createTransactionService(payload);
-      onSubmit(form);
+      console.log("✅ Transacción de recarga creada exitosamente");
+      
+      // Ejecutar onSubmit (que actualiza el wallet y muestra el toaster)
+      // onSubmit puede ser async o sync, manejarlo apropiadamente
+      try {
+        console.log("🔄 Ejecutando onSubmit...");
+        const result = onSubmit(form);
+        if (result instanceof Promise) {
+          await result;
+        }
+        console.log("✅ onSubmit completado exitosamente");
+        
+        // Cerrar el modal después de que onSubmit termine exitosamente
+        // Usar un pequeño delay para asegurar que el toaster se muestre antes de cerrar el modal
+        setTimeout(() => {
+          console.log("🔄 Cerrando modal...");
+          onClose();
+        }, 100);
+      } catch (error) {
+        console.error("❌ Error en onSubmit después de crear transacción:", error);
+        // Si hay un error en onSubmit, mostrar el error pero cerrar el modal de todas formas
+        // porque la transacción ya se creó exitosamente
+        if (onError) {
+          const errorMessage = error instanceof Error ? error.message : "Error al procesar la recarga";
+          onError(errorMessage);
+        }
+        // Cerrar el modal de todas formas porque la transacción se creó
+        setTimeout(() => {
       onClose();
+        }, 500);
+      }
     } catch (err: unknown) {
+      console.error("❌ Error en handleSubmit:", err);
       const errorMessage = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message || 
                           (err as { message?: string })?.message || 
                           "Error al crear la transacción de recarga";
@@ -254,6 +331,7 @@ export const MobilePaymentReportDialog: React.FC<MobilePaymentReportDialogProps>
       }
     } finally {
       setIsSubmitting(false);
+      console.log("🔄 handleSubmit finalizado, isSubmitting = false");
     }
   };
 

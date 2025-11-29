@@ -53,6 +53,7 @@ export default function RoomDetail() {
   const [showErrorToast, setShowErrorToast] = React.useState(false);
   const [errorToastMessage, setErrorToastMessage] = React.useState<string>("");
   const [availableBalance, setAvailableBalance] = React.useState<number>(0);
+  const [searchTerm, setSearchTerm] = React.useState<string>("");
   const [walletLoading, setWalletLoading] = React.useState(false);
   console.log("🚀 ~ RoomDetail ~ walletLoading:", walletLoading)
 
@@ -106,7 +107,9 @@ export default function RoomDetail() {
         const roomData: RoomDetailData = {
           id: backendRoom._id || backendRoom.id || "",
           title: backendRoom.name,
-          prizeAmount: parseDecimal(backendRoom.total_pot),
+          // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
+          // Esto asegura que todos los usuarios vean el mismo premio
+          prizeAmount: parseDecimal(backendRoom.total_prize || backendRoom.total_pot),
           // Normalizar VES a Bs usando función helper
           currency: (() => {
             const code = currency?.code || "Bs";
@@ -195,13 +198,14 @@ export default function RoomDetail() {
     const unsubscribePrizeUpdated = onRoomPrizeUpdated((data) => {
       if (data.room_id === roomId) {
         console.log(`[RoomDetail] Premio actualizado: Total pot: ${data.total_pot}, Prize pool: ${data.total_prize}`);
-        // Actualizar el premio localmente
+        // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
+        // Esto asegura que todos los usuarios vean el mismo premio
         setRoom((prevRoom) => {
           if (!prevRoom) return prevRoom;
           
           return {
             ...prevRoom,
-            prizeAmount: data.total_pot, // Usar total_pot que es lo que se muestra
+            prizeAmount: data.total_prize, // Usar total_prize (premio real que se distribuye)
           };
         });
       }
@@ -262,7 +266,8 @@ export default function RoomDetail() {
     }
   }, [user]);
   
-  // Obtener cartones disponibles del backend y generar si no existen
+  // Obtener cartones disponibles del backend
+  // Se ejecuta cuando cambia roomId o searchTerm (con debounce)
   React.useEffect(() => {
     const fetchAvailableCards = async () => {
       if (!roomId) return;
@@ -270,8 +275,8 @@ export default function RoomDetail() {
       try {
         setLoadingCards(true);
         
-        // Obtener cartones disponibles (el backend devuelve máximo 40)
-        const cards = await getAvailableCards(roomId);
+        // Obtener cartones disponibles con búsqueda si hay término de búsqueda
+        const cards = await getAvailableCards(roomId, searchTerm);
         
         // Convertir los números del backend ("FREE") al formato del frontend (0)
         const formattedCards = cards.map(card => ({
@@ -289,8 +294,13 @@ export default function RoomDetail() {
       }
     };
 
-    fetchAvailableCards();
-  }, [roomId]);
+    // Debounce: esperar 500ms después de que el usuario deje de escribir
+    const timeoutId = setTimeout(() => {
+      fetchAvailableCards();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [roomId, searchTerm]);
 
   // Obtener cartones ya inscritos del usuario en esta sala
   React.useEffect(() => {
@@ -377,7 +387,6 @@ export default function RoomDetail() {
   const [modalOpen, setModalOpen] = React.useState(false);
   const [previewCardIndex, setPreviewCardIndex] = React.useState<number | null>(null);
   const [confirmDeselectModalOpen, setConfirmDeselectModalOpen] = React.useState(false);
-  const [searchTerm, setSearchTerm] = React.useState<string>("");
 
   const handleCardClick = (availableIndex: number) => {
     // previewCardIndex ahora es el índice dentro de availableCards
@@ -430,16 +439,13 @@ export default function RoomDetail() {
   };
 
   // Calcular índices filtrados para navegación (usando availableCards)
+  // CRÍTICO: La búsqueda ahora se hace en la BD, así que todos los cartones en availableCards
+  // ya coinciden con el término de búsqueda (si hay uno)
+  // Solo necesitamos mapear todos los índices disponibles
   const filteredIndices = React.useMemo(() => {
-    return searchTerm
-      ? availableCards
-          .map((_, index) => index)
-          .filter((index) => {
-            const cardCode = codeMap.get(index) ?? "";
-            return cardCode.toLowerCase().includes(searchTerm.trim().toLowerCase());
-          })
-      : availableCards.map((_, index) => index);
-  }, [searchTerm, availableCards, codeMap]);
+    // Como la búsqueda se hace en la BD, todos los cartones en availableCards ya están filtrados
+    return availableCards.map((_, index) => index);
+  }, [availableCards]);
 
   const handlePreviousCard = () => {
     if (previewCardIndex !== null) {
@@ -522,7 +528,7 @@ export default function RoomDetail() {
       
       // Navegar al juego después de un breve delay para que se vea el toaster
       setTimeout(() => {
-        navigate(`/game/${roomId}`);
+    navigate(`/game/${roomId}`);
       }, 2000);
     } catch (err: unknown) {
       console.error("Error al inscribir cartones:", err);
@@ -556,7 +562,7 @@ export default function RoomDetail() {
             const duplicateCodes = errorResponse.duplicateCards;
             const newSelectedCards = new Set(selectedCards);
             let removedCount = 0;
-            
+      
             // Buscar y remover cartones duplicados de la selección
             availableCardsFromDB.forEach((card, index) => {
               if (duplicateCodes.includes(card.code)) {
@@ -813,7 +819,12 @@ export default function RoomDetail() {
 
           {/* Barra de búsqueda por número serial */}
           <Box>
-            <SearchBar value={searchTerm} onChange={setSearchTerm} />
+            <SearchBar 
+              value={searchTerm} 
+              onChange={setSearchTerm}
+              numbersOnly={true}
+              placeholder="Buscar por código de cartón (ej: 19, 0019, 0419...)"
+            />
           </Box>
 
           {/* Indicador Libre / Ocupado */}

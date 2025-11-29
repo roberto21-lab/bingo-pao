@@ -125,6 +125,9 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
   }
 
   const price = parseDecimal(backendRoom.price_per_card);
+  // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
+  // Esto asegura que todos los usuarios vean el mismo premio
+  const totalPrize = parseDecimal(backendRoom.total_prize || backendRoom.total_pot);
   const totalPot = parseDecimal(backendRoom.total_pot);
   // Normalizar VES a Bs
   const currencyCode = normalizeCurrency(currency?.code);
@@ -132,9 +135,9 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
   // console.log("🚀 ~ mapBackendRoomToRoom ~ currencySymbol:", currencySymbol)
 
   // Calcular premio estimado
-  // Si total_pot ya está calculado, usarlo directamente
+  // Si total_prize ya está calculado, usarlo directamente (es el premio real que se distribuye)
   // Si no, estimar basado en min_players * price_per_card * 0.9 (90% para premios)
-  let estimatedPrize = totalPot;
+  let estimatedPrize = totalPrize;
   if (estimatedPrize === 0 && backendRoom.min_players) {
     // Estimar basado en el mínimo de jugadores
     estimatedPrize = backendRoom.min_players * price * 0.9;

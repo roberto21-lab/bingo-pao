@@ -7,19 +7,38 @@ type SearchBarProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  numbersOnly?: boolean; // Si es true, solo permite números
 };
 
 export const SearchBar: React.FC<SearchBarProps> = ({
   value,
   onChange,
   placeholder = "Buscar por número de cartón...",
+  numbersOnly = false,
 }) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    
+    // Si numbersOnly es true, solo permitir números
+    if (numbersOnly) {
+      // Remover cualquier carácter que no sea número
+      const numericValue = inputValue.replace(/\D/g, '');
+      onChange(numericValue);
+    } else {
+      onChange(inputValue);
+    }
+  };
+
   return (
     <TextField
       fullWidth
       placeholder={placeholder}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={handleChange}
+      inputProps={{
+        inputMode: numbersOnly ? 'numeric' : 'text',
+        pattern: numbersOnly ? '[0-9]*' : undefined,
+      }}
       InputProps={{
         startAdornment: (
           <InputAdornment position="start">

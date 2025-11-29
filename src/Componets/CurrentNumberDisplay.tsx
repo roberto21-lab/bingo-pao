@@ -187,7 +187,7 @@ export default function CurrentNumberDisplay({
               Iniciando juego...
             </Typography>
           </Box>
-        ) : roundTransitionCountdown !== null && roundTransitionCountdown > 0 && !isCallingNumber && !currentNumber ? (
+        ) : roundTransitionCountdown !== null && roundTransitionCountdown > 0 && !isCallingNumber && !currentNumber && !isGameStarting ? (
           <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
             <Typography
               sx={{
@@ -261,7 +261,7 @@ export default function CurrentNumberDisplay({
               Otros pueden cantar bingo...
             </Typography>
           </Box>
-        ) : isGameStarting ? (
+        ) : isGameStarting && !isCallingNumber && !currentNumber ? (
           <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
             <Typography
               sx={{
@@ -337,38 +337,6 @@ export default function CurrentNumberDisplay({
                 return "Iniciando...";
               })()}
             </Typography>
-          </Box>
-        ) : isGameStarting && !roundTransitionCountdown ? (
-          <Box sx={{ textAlign: "center", position: "relative", zIndex: 2 }}>
-            <Typography
-              sx={{
-                fontSize: "20px",
-                fontWeight: 700,
-                color: "#d4af37",
-                textShadow: "0 2px 6px rgba(0, 0, 0, 0.5)",
-                fontFamily: "'Montserrat', sans-serif",
-                mb: 0.5,
-                animation: "pulse 1s ease-in-out infinite",
-                "@keyframes pulse": {
-                  "0%, 100%": { opacity: 1 },
-                  "50%": { opacity: 0.7 },
-                },
-              }}
-            >
-              Iniciando juego...
-            </Typography>
-              <Typography
-                sx={{
-                  fontSize: "12px",
-                fontWeight: 500,
-                color: "#f5e6d3",
-                  textShadow: "0 1px 2px rgba(0, 0, 0, 0.5)",
-                  fontFamily: "'Montserrat', sans-serif",
-                opacity: 0.8,
-                }}
-              >
-              Preparando números...
-              </Typography>
           </Box>
         ) : isFinished ? (
           <Typography
@@ -472,7 +440,7 @@ export default function CurrentNumberDisplay({
           ? `Otros pueden cantar bingo: ${bingoClaimCountdown}s`
           : roomScheduledAt && currentNumber === "" && !isFinished
           ? "Esperando inicio del juego"
-          : roundTransitionCountdown !== null && roundTransitionCountdown > 0
+          : roundTransitionCountdown !== null && roundTransitionCountdown > 0 && !isCallingNumber && !currentNumber
           ? `Próxima ronda en ${roundTransitionCountdown}s`
           : isFinished
           ? (roomFinished ? "Partida Finalizada" : "Ronda Finalizada")

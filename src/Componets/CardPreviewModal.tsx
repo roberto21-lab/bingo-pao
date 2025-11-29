@@ -678,7 +678,16 @@ export default function CardPreviewModal({
       <DialogActions sx={{ p: 3, pt: 0, gap: 2, justifyContent: "center" }}>
         {hasBingo && (
           <Button
-            onClick={onBingo}
+            onClick={() => {
+              console.log(`[CardPreviewModal] 🎯 Botón BINGO clickeado`);
+              console.log(`[CardPreviewModal]    - hasBingo: ${hasBingo}`);
+              console.log(`[CardPreviewModal]    - onBingo: ${typeof onBingo}`);
+              if (onBingo) {
+                onBingo();
+              } else {
+                console.error(`[CardPreviewModal] ❌ onBingo no está definido!`);
+              }
+            }}
             className="gold-metallic"
             sx={{
               flex: 1,

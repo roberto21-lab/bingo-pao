@@ -496,6 +496,7 @@ export const onRoomPrizeUpdated = (
     admin_fee: number;
     total_pot: number;
     enrolled_cards_count: number;
+    enrolled_users_count?: number; // Número de usuarios únicos inscritos
     price_per_card: number;
     rewards: Array<{
       round_number: number | null;
@@ -814,6 +815,42 @@ export const onRoomStatusUpdated = (
 };
 
 // Escuchar evento de cambio de status de round
+// Escuchar evento de que el countdown fue detenido (para limpiar countdowns obsoletos)
+export const onRoundCountdownStopped = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "round_number" in data &&
+        "room_id" in data
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+        });
+      }
+    };
+    
+    socket.on("round-countdown-stopped", handler);
+    
+    return () => {
+      socket?.off("round-countdown-stopped", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 export const onRoundStatusChanged = (
   callback: (data: {
     round_number: number;
@@ -898,6 +935,7 @@ export const onCardsEnrolled = (
     enrolled_card_ids: string[];
     user_id: string;
     enrolled_count: number;
+    enrolled_users_count?: number; // Número de usuarios únicos inscritos
   }) => void
 ): (() => void) => {
   if (!socket) {

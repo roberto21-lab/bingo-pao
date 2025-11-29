@@ -218,57 +218,86 @@ export default function Home() {
               // Obtener información de la room
               const room: Room = await getRoomById(roomId);
 
-              // Obtener rounds para determinar el estado
+              // Obtener rounds para determinar la ronda actual y el patrón
               const rounds = await getRoomRounds(roomId);
 
-              // Determinar el estado basado en los rounds
+              // CRÍTICO: Usar el status real de la sala, no inferirlo de los rounds
+              // Esto asegura que todas las páginas muestren el mismo status
               let status: "active" | "waiting" | "finished" = "waiting";
+              const roomStatus = room.status;
+              
+              if (roomStatus === "in_progress" || roomStatus === "preparing") {
+                status = "active";
+              } else if (roomStatus === "locked") {
+                status = "finished";
+              } else {
+                status = "waiting";
+              }
+
+              // Obtener la ronda actual y el patrón basándose en el status de la sala y los rounds
               let currentRound: number | undefined = undefined;
               let currentPattern: string | undefined = undefined;
 
               if (rounds.length > 0) {
-                // Buscar si hay algún round en progreso o en countdown (starting)
+                if (status === "active") {
+                  // Si la sala está activa, buscar el round en progreso o en countdown (starting)
                 const activeRound = rounds.find((round) => {
                   const statusObj =
                     typeof round.status_id === "object" && round.status_id
                       ? round.status_id
                       : null;
-                  return statusObj?.name === "in_progress" || statusObj?.name === "starting";
-                });
-
-                // Buscar si todos los rounds están finalizados
-                const allFinished = rounds.every((round) => {
-                  const statusObj =
-                    typeof round.status_id === "object" && round.status_id
-                      ? round.status_id
-                      : null;
-                  return statusObj?.name === "finished";
+                    return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
                 });
 
                 if (activeRound) {
-                  status = "active";
                   currentRound = activeRound.round_number;
-                  // Obtener el pattern de la ronda activa (starting o in_progress)
+                    // Obtener el pattern de la ronda activa
                   if (activeRound.pattern_id) {
                     if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
                       currentPattern = activeRound.pattern_id.name;
                     }
                   }
-                } else if (allFinished) {
-                  status = "finished";
                 } else {
-                  status = "waiting";
-                  // Si hay rounds pero ninguno en progreso, mostrar el último round creado
+                    // Si no hay round activo pero la sala está activa, mostrar el último round creado
                   const sortedRounds = [...rounds].sort(
                     (a, b) => b.round_number - a.round_number
                   );
                   if (sortedRounds.length > 0) {
                     currentRound = sortedRounds[0].round_number;
+                      if (sortedRounds[0].pattern_id) {
+                        if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                          currentPattern = sortedRounds[0].pattern_id.name;
+                        }
+                      }
+                    }
+                  }
+                } else if (status === "finished") {
+                  // Si la sala está finalizada, mostrar el último round
+                  const sortedRounds = [...rounds].sort(
+                    (a, b) => b.round_number - a.round_number
+                  );
+                  if (sortedRounds.length > 0) {
+                    currentRound = sortedRounds[0].round_number;
+                    if (sortedRounds[0].pattern_id) {
+                      if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                        currentPattern = sortedRounds[0].pattern_id.name;
+                      }
                   }
                 }
               } else {
-                // Si no hay rounds, la room está esperando
-                status = "waiting";
+                  // Si la sala está esperando, mostrar el primer round si existe
+                  const sortedRounds = [...rounds].sort(
+                    (a, b) => a.round_number - b.round_number
+                  );
+                  if (sortedRounds.length > 0) {
+                    currentRound = sortedRounds[0].round_number;
+                    if (sortedRounds[0].pattern_id) {
+                      if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                        currentPattern = sortedRounds[0].pattern_id.name;
+                      }
+                    }
+                  }
+                }
               }
 
               return {
@@ -347,34 +376,68 @@ export default function Home() {
                   status = "waiting";
                 }
 
+                // Obtener la ronda actual y el patrón basándose en el status de la sala y los rounds
                 let currentRound: number | undefined = undefined;
                 let currentPattern: string | undefined = undefined;
 
                 if (rounds.length > 0) {
-                  // Buscar si hay algún round en progreso o en countdown (starting)
+                  if (status === "active") {
+                    // Si la sala está activa, buscar el round en progreso o en countdown (starting)
                   const activeRound = rounds.find((round) => {
                     const statusObj =
                       typeof round.status_id === "object" && round.status_id
                         ? round.status_id
                         : null;
-                    return statusObj?.name === "in_progress" || statusObj?.name === "starting";
+                      return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
                   });
 
                   if (activeRound) {
                     currentRound = activeRound.round_number;
-                    // Obtener el pattern de la ronda activa (starting o in_progress)
+                      // Obtener el pattern de la ronda activa
                     if (activeRound.pattern_id) {
                       if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
                         currentPattern = activeRound.pattern_id.name;
                       }
                     }
                   } else {
-                    // Si hay rounds pero ninguno en progreso, mostrar el último round creado
+                      // Si no hay round activo pero la sala está activa, mostrar el último round creado
                     const sortedRounds = [...rounds].sort(
                       (a, b) => b.round_number - a.round_number
                     );
                     if (sortedRounds.length > 0) {
                       currentRound = sortedRounds[0].round_number;
+                        if (sortedRounds[0].pattern_id) {
+                          if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                            currentPattern = sortedRounds[0].pattern_id.name;
+                          }
+                        }
+                      }
+                    }
+                  } else if (status === "finished") {
+                    // Si la sala está finalizada, mostrar el último round
+                    const sortedRounds = [...rounds].sort(
+                      (a, b) => b.round_number - a.round_number
+                    );
+                    if (sortedRounds.length > 0) {
+                      currentRound = sortedRounds[0].round_number;
+                      if (sortedRounds[0].pattern_id) {
+                        if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                          currentPattern = sortedRounds[0].pattern_id.name;
+                        }
+                      }
+                    }
+                  } else {
+                    // Si la sala está esperando, mostrar el primer round si existe
+                    const sortedRounds = [...rounds].sort(
+                      (a, b) => a.round_number - b.round_number
+                    );
+                    if (sortedRounds.length > 0) {
+                      currentRound = sortedRounds[0].round_number;
+                      if (sortedRounds[0].pattern_id) {
+                        if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                          currentPattern = sortedRounds[0].pattern_id.name;
+                        }
+                      }
                     }
                   }
                 }
@@ -437,54 +500,83 @@ export default function Home() {
                   // Obtener rounds para determinar el estado
                   const rounds = await getRoomRounds(roomId);
 
-                  // Determinar el estado basado en los rounds
+                  // CRÍTICO: Usar el status real de la sala, no inferirlo de los rounds
+                  // Esto asegura que todas las páginas muestren el mismo status
                   let status: "active" | "waiting" | "finished" = "waiting";
+                  const roomStatus = room.status;
+                  
+                  if (roomStatus === "in_progress" || roomStatus === "preparing") {
+                    status = "active";
+                  } else if (roomStatus === "locked") {
+                    status = "finished";
+                  } else {
+                    status = "waiting";
+                  }
+
+                  // Obtener la ronda actual y el patrón basándose en el status de la sala y los rounds
                   let currentRound: number | undefined = undefined;
                   let currentPattern: string | undefined = undefined;
 
                   if (rounds.length > 0) {
-                    // Buscar si hay algún round en progreso o en countdown (starting)
+                    if (status === "active") {
+                      // Si la sala está activa, buscar el round en progreso o en countdown (starting)
                     const activeRound = rounds.find((round) => {
                       const statusObj =
                         typeof round.status_id === "object" && round.status_id
                           ? round.status_id
                           : null;
-                      return statusObj?.name === "in_progress" || statusObj?.name === "starting";
-                    });
-
-                    // Buscar si todos los rounds están finalizados
-                    const allFinished = rounds.every((round) => {
-                      const statusObj =
-                        typeof round.status_id === "object" && round.status_id
-                          ? round.status_id
-                          : null;
-                      return statusObj?.name === "finished";
+                        return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
                     });
 
                     if (activeRound) {
-                      status = "active";
                       currentRound = activeRound.round_number;
-                      // Obtener el pattern de la ronda activa (starting o in_progress)
+                        // Obtener el pattern de la ronda activa
                       if (activeRound.pattern_id) {
                         if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
                           currentPattern = activeRound.pattern_id.name;
                         }
                       }
-                    } else if (allFinished) {
-                      status = "finished";
                     } else {
-                      status = "waiting";
-                      // Si hay rounds pero ninguno en progreso, mostrar el último round creado
+                        // Si no hay round activo pero la sala está activa, mostrar el último round creado
                       const sortedRounds = [...rounds].sort(
                         (a, b) => b.round_number - a.round_number
                       );
                       if (sortedRounds.length > 0) {
                         currentRound = sortedRounds[0].round_number;
+                          if (sortedRounds[0].pattern_id) {
+                            if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                              currentPattern = sortedRounds[0].pattern_id.name;
+                            }
+                          }
+                        }
+                      }
+                    } else if (status === "finished") {
+                      // Si la sala está finalizada, mostrar el último round
+                      const sortedRounds = [...rounds].sort(
+                        (a, b) => b.round_number - a.round_number
+                      );
+                      if (sortedRounds.length > 0) {
+                        currentRound = sortedRounds[0].round_number;
+                        if (sortedRounds[0].pattern_id) {
+                          if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                            currentPattern = sortedRounds[0].pattern_id.name;
+                          }
                       }
                     }
                   } else {
-                    // Si no hay rounds, la room está esperando
-                    status = "waiting";
+                      // Si la sala está esperando, mostrar el primer round si existe
+                      const sortedRounds = [...rounds].sort(
+                        (a, b) => a.round_number - b.round_number
+                      );
+                      if (sortedRounds.length > 0) {
+                        currentRound = sortedRounds[0].round_number;
+                        if (sortedRounds[0].pattern_id) {
+                          if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
+                            currentPattern = sortedRounds[0].pattern_id.name;
+                          }
+                        }
+                      }
+                    }
                   }
 
                   return {
@@ -551,14 +643,16 @@ export default function Home() {
   // Escuchar actualizaciones de premio en tiempo real para todas las salas
   React.useEffect(() => {
     const unsubscribePrizeUpdated = onRoomPrizeUpdated((data) => {
-      console.log(`[Home] Premio actualizado para sala ${data.room_name}: Total pot: ${data.total_pot}`);
+      console.log(`[Home] Premio actualizado para sala ${data.room_name}: Total pot: ${data.total_pot}, Prize pool: ${data.total_prize}`);
+      // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
+      // Esto asegura que todos los usuarios vean el mismo premio
       // Actualizar el premio de la sala en la lista de salas activas
       setActiveRooms((prevRooms) => {
         return prevRooms.map((room) => {
           if (room.id === data.room_id) {
             return {
               ...room,
-              prizeAmount: data.total_pot, // Actualizar con el nuevo total_pot
+              prizeAmount: data.total_prize, // Usar total_prize (premio real que se distribuye)
             };
           }
           return room;
@@ -571,8 +665,8 @@ export default function Home() {
           if (room.id === data.room_id) {
             return {
               ...room,
-              estimatedPrize: data.total_pot, // Actualizar con el nuevo total_pot
-              jackpot: data.total_pot, // También actualizar jackpot para consistencia
+              estimatedPrize: data.total_prize, // Usar total_prize (premio real que se distribuye)
+              jackpot: data.total_prize, // También actualizar jackpot para consistencia
             };
           }
           return room;
@@ -609,12 +703,26 @@ export default function Home() {
     setError(null);
     
     // La validación y creación de la transacción se hace en el modal
-    // Aquí solo recargamos el wallet para actualizar los balances
+    // Aquí solo recargamos el wallet y la cuenta bancaria para actualizar los balances
     try {
       if (userId) {
         const wallet = await getWalletByUser(userId);
         setAvailableBalance(wallet.balance || 0);
         setFrozenBalance(wallet.frozen_balance || 0);
+        
+        // Recargar también la cuenta bancaria (puede haberse creado automáticamente)
+        try {
+          const account = await getBankAccountByUser(userId);
+          setBankAccount(account);
+        } catch (error: unknown) {
+          // Si no hay cuenta bancaria, está bien (puede que no se haya creado)
+          if (error && typeof error === "object" && "response" in error) {
+            const httpError = error as { response?: { status?: number } };
+            if (httpError.response?.status !== 404) {
+              console.error("Error al obtener cuenta bancaria:", error);
+            }
+          }
+        }
       }
       
       // Mostrar toaster de éxito
@@ -624,10 +732,11 @@ export default function Home() {
       const errorMessage = error instanceof Error ? error.message : "Error al procesar la recarga";
       setRechargeErrorMessage(errorMessage);
       setShowRechargeErrorToast(true);
+      // Re-lanzar el error para que el modal no se cierre
+      throw error;
     }
 
-    // Cerrar el modal
-    setOpenReport(false);
+    // El modal se cierra automáticamente después de que esta función termine exitosamente
   };
 
   const [openWithdrawRequestDialog, setOpenWithdrawRequestDialog] =

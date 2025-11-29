@@ -1,11 +1,14 @@
 import { Box, Stack, Typography } from "@mui/material";
 import CurrentNumberDisplay from "./CurrentNumberDisplay";
+import CalledNumbersModal from "./CalledNumbersModal";
+import { useState } from "react";
 
 type GameStatusCardProps = {
   currentRound: number;
   totalRounds: number;
   lastNumbers: string[];
   currentNumber: string;
+  calledNumbers?: Set<string>; // Todos los números llamados para el modal
   progress?: number;
   countdown?: number;
   isFinished?: boolean;
@@ -25,6 +28,7 @@ export default function GameStatusCard({
   totalRounds,
   lastNumbers,
   currentNumber,
+  calledNumbers = new Set(),
   progress,
   countdown,
   isFinished = false,
@@ -38,6 +42,8 @@ export default function GameStatusCard({
   isCallingNumber = false,
   isGameStarting = false,
 }: GameStatusCardProps) {
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <Box
       className="glass-effect"
@@ -152,6 +158,11 @@ export default function GameStatusCard({
           )}
         </Box>
         <Box
+          onClick={() => {
+            if (calledNumbers.size > 0 && !roomFinished) {
+              setModalOpen(true);
+            }
+          }}
           sx={{
             px: 1.5,
             py: 1,
@@ -159,6 +170,15 @@ export default function GameStatusCard({
             background: "rgba(26, 16, 8, 0.4)",
             border: "1px solid rgba(212, 175, 55, 0.2)",
             backdropFilter: "blur(10px)",
+            cursor: calledNumbers.size > 0 && !roomFinished ? "pointer" : "default",
+            transition: "all 0.2s ease",
+            "&:hover": calledNumbers.size > 0 && !roomFinished
+              ? {
+                  background: "rgba(26, 16, 8, 0.6)",
+                  border: "1px solid rgba(212, 175, 55, 0.4)",
+                  transform: "scale(1.02)",
+                }
+              : {},
           }}
         >
           <Typography
@@ -172,6 +192,20 @@ export default function GameStatusCard({
             }}
           >
             Últimos Números:
+            <br />
+            {calledNumbers.size > 0 && !roomFinished && (
+              <Typography
+                component="span"
+                sx={{
+                  fontSize: "9px",
+                  ml: 0.5,
+                  opacity: 0.7,
+                  fontStyle: "italic",
+                }}
+              >
+                (click para ver todos)
+              </Typography>
+            )}
           </Typography>
           <Typography
             variant="body2"
@@ -201,6 +235,14 @@ export default function GameStatusCard({
         bingoClaimCountdown={bingoClaimCountdown}
         isCallingNumber={isCallingNumber}
         isGameStarting={isGameStarting}
+      />
+
+      <CalledNumbersModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        calledNumbers={calledNumbers}
+        currentRound={currentRound}
+        totalRounds={totalRounds}
       />
     </Box>
   );

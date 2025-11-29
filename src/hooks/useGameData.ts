@@ -121,7 +121,9 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
         }
         
         setRoom(roomData);
-        setTotalPot(parseDecimal(roomData.total_pot));
+        // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
+        // Esto asegura que todos los usuarios vean el mismo premio
+        setTotalPot(parseDecimal(roomData.total_prize || roomData.total_pot));
         setTotalRounds(roomData.max_rounds || 3);
         
         // Verificar si la sala está finalizada
