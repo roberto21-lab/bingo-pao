@@ -417,8 +417,6 @@ export default function GameInProgress() {
       }
     });
 
-    const UPDATE_INTERVAL = 50; // Actualizar progress cada 50ms para suavidad
-
     // Función para actualizar el progress bar basado en el último timestamp o countdown
     // CRÍTICO: Usar refs para acceder a valores actuales sin depender del closure
     const updateProgress = () => {
@@ -1273,13 +1271,13 @@ export default function GameInProgress() {
       const currentRoundValue = currentRoundRef.current;
 
       // Aceptar eventos para el round actual o para un round mayor (para manejar sincronización)
-      if (data.room_id === currentRoomId && (data.round_number === currentRoundValue || data.round_number >= currentRoundValue)) {
+      if (data.room_id === currentRoomId && data.round_number !== undefined && (data.round_number === currentRoundValue || data.round_number >= currentRoundValue)) {
         console.log(
           `[GameInProgress] Round ${data.round_number} cambió a status '${data.status}'`
         );
 
         // Si el round del evento es mayor, actualizar el round actual
-        if (data.round_number > currentRoundValue) {
+        if (data.round_number !== undefined && data.round_number > currentRoundValue) {
           console.log(
             `[GameInProgress] Actualizando round actual desde round-status-changed: Round ${data.round_number} (antes: Round ${currentRoundValue})`
           );
@@ -1299,38 +1297,40 @@ export default function GameInProgress() {
           
           // CRÍTICO: Cargar números llamados de forma asíncrona pero sin bloquear
           // Usar una promesa sin await para no bloquear el flujo
-          getCalledNumbers(currentRoomId, data.round_number)
-            .then((calledNumbersData) => {
-              if (!isMounted) return;
-              
-              if (calledNumbersData.length > 0) {
-                const calledSet = new Set(calledNumbersData.map((cn) => cn.number));
-                setCalledNumbers(calledSet);
+          if (currentRoomId && data.round_number !== undefined && typeof data.round_number === 'number') {
+            getCalledNumbers(currentRoomId, data.round_number)
+              .then((calledNumbersData) => {
+                if (!isMounted) return;
+                
+                if (calledNumbersData.length > 0) {
+                  const calledSet = new Set(calledNumbersData.map((cn) => cn.number));
+                  setCalledNumbers(calledSet);
 
-                const lastCalled = calledNumbersData[calledNumbersData.length - 1];
-                setCurrentNumber(lastCalled.number);
-                const timestamp = new Date(lastCalled.called_at).getTime();
-                setLastCalledTimestamp(timestamp);
-                lastCalledTimestampRef.current = timestamp;
+                  const lastCalled = calledNumbersData[calledNumbersData.length - 1];
+                  setCurrentNumber(lastCalled.number);
+                  const timestamp = new Date(lastCalled.called_at).getTime();
+                  setLastCalledTimestamp(timestamp);
+                  lastCalledTimestampRef.current = timestamp;
 
-                const lastThree = calledNumbersData
-                  .slice(-3)
-                  .reverse()
-                  .map((cn) => cn.number);
-                setLastNumbers(lastThree);
+                  const lastThree = calledNumbersData
+                    .slice(-3)
+                    .reverse()
+                    .map((cn) => cn.number);
+                  setLastNumbers(lastThree);
 
-                setIsCallingNumber(true);
-                setRoundEnded(false);
-                setRoundFinished(false);
-                setProgress(0);
-              }
-            })
-            .catch((error) => {
-              console.error(
-                `[GameInProgress] Error al cargar números cuando round cambió a "in_progress":`,
-                error
-              );
-            });
+                  setIsCallingNumber(true);
+                  setRoundEnded(false);
+                  setRoundFinished(false);
+                  setProgress(0);
+                }
+              })
+              .catch((error) => {
+                console.error(
+                  `[GameInProgress] Error al cargar números cuando round cambió a "in_progress":`,
+                  error
+                );
+              });
+          }
         }
       }
     });

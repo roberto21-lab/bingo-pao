@@ -153,7 +153,7 @@ const WalletPage: React.FC = () => {
           // Normalizar VES a Bs
           setCurrency(normalizeCurrency(wallet.currency_id.code));
         }
-
+        
         // Cargar transacciones
         const walletTransactions = await getWalletTransactions(wallet._id);
         
@@ -277,6 +277,39 @@ const WalletPage: React.FC = () => {
       fetchData();
     }
   }, [userId, isAuthenticated, authLoading]);
+
+  // Escuchar actualizaciones de wallet en tiempo real (useEffect separado)
+  useEffect(() => {
+    if (!isAuthenticated || !userId) {
+      return;
+    }
+
+    console.log("[WalletPage] 🔌 Configurando listener wallet-updated...");
+
+    const setupListener = async () => {
+      const { onWalletUpdated } = await import("../Services/socket.service");
+      
+      const unsubscribe = onWalletUpdated((data: any) => {
+        console.log("[WalletPage] 💰 Wallet actualizado en tiempo real:", data);
+        setBalance(parseFloat(data.balance) || 0);
+        setFrozenBalance(parseFloat(data.frozen_balance) || 0);
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | null = null;
+    setupListener().then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) {
+        console.log("[WalletPage] 🧹 Limpiando listener wallet-updated");
+        unsubscribe();
+      }
+    };
+  }, [isAuthenticated, userId]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTab(newValue);

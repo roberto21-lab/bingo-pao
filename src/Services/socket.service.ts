@@ -85,6 +85,12 @@ export const connectSocket = (): Socket => {
       socket.emit("join-room", currentRoomId);
     }
     
+    // Re-registrar listeners de wallet-updated después de reconexión
+    registerWalletUpdatedListeners();
+    
+    // Re-registrar listeners de notification después de reconexión
+    registerNotificationListeners();
+    
     // Procesar eventos en cola
     processQueuedEvents();
   });
@@ -120,6 +126,12 @@ export const connectSocket = (): Socket => {
     if (currentRoomId && socket) {
       socket.emit("join-room", currentRoomId);
     }
+    
+    // Re-registrar listeners de wallet-updated después de reconexión
+    registerWalletUpdatedListeners();
+    
+    // Re-registrar listeners de notification después de reconexión
+    registerNotificationListeners();
     
     // Procesar eventos en cola
     processQueuedEvents();
@@ -1044,4 +1056,295 @@ export const reconnect = () => {
   } else {
     connectSocket();
   }
+};
+
+// Lista de callbacks para notification (para re-registrarlos en reconexión)
+const notificationCallbacks = new Set<(notification: {
+  _id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: Record<string, any>;
+  read: boolean;
+  read_at?: string;
+  created_at: string;
+  expires_at?: string;
+}) => void>();
+
+// Función para registrar todos los listeners de notification
+const registerNotificationListeners = () => {
+  if (!socket || !socket.connected) {
+    console.log(`[SocketService] ⏸️ No se pueden re-registrar listeners de notification: socket=${!!socket}, connected=${socket?.connected}`);
+    return;
+  }
+
+  console.log(`[SocketService] 🔄 Re-registrando ${notificationCallbacks.size} listener(s) de notification...`, {
+    socketId: socket.id,
+    connected: socket.connected
+  });
+  
+  // Remover todos los listeners anteriores para evitar duplicados
+  socket.removeAllListeners("notification");
+  
+  notificationCallbacks.forEach((callback) => {
+    const handler = (data: unknown) => {
+      console.log("[SocketService] 📥 Evento 'notification' recibido:", data);
+      if (
+        data &&
+        typeof data === "object" &&
+        "_id" in data &&
+        "type" in data &&
+        "title" in data &&
+        "message" in data
+      ) {
+        console.log("[SocketService] ✅ Datos de notificación válidos, ejecutando callback");
+        callback(data as {
+          _id: string;
+          user_id: string;
+          type: string;
+          title: string;
+          message: string;
+          data?: Record<string, any>;
+          read: boolean;
+          read_at?: string;
+          created_at: string;
+          expires_at?: string;
+        });
+      } else {
+        console.warn("[SocketService] ⚠️ Datos de notificación inválidos:", data);
+      }
+    };
+    
+    socket.on("notification", handler);
+  });
+  
+  console.log("[SocketService] ✅ Todos los listeners de notification re-registrados", {
+    totalListeners: notificationCallbacks.size,
+    socketId: socket.id
+  });
+};
+
+// Escuchar evento de notificaciones en tiempo real
+export const onNotification = (
+  callback: (notification: {
+    _id: string;
+    user_id: string;
+    type: string;
+    title: string;
+    message: string;
+    data?: Record<string, any>;
+    read: boolean;
+    read_at?: string;
+    created_at: string;
+    expires_at?: string;
+  }) => void
+): (() => void) => {
+  // Agregar callback a la lista
+  notificationCallbacks.add(callback);
+  console.log(`[SocketService] 📝 Callback agregado a notification (total: ${notificationCallbacks.size})`);
+  
+  // Asegurar que el socket esté conectado
+  const currentSocket = socket || connectSocket();
+  
+  const handler = (data: unknown) => {
+    console.log("[SocketService] 📥 Evento 'notification' recibido:", data);
+    if (
+      data &&
+      typeof data === "object" &&
+      "_id" in data &&
+      "type" in data &&
+      "title" in data &&
+      "message" in data
+    ) {
+      console.log("[SocketService] ✅ Datos de notificación válidos, ejecutando callback");
+      callback(data as {
+        _id: string;
+        user_id: string;
+        type: string;
+        title: string;
+        message: string;
+        data?: Record<string, any>;
+        read: boolean;
+        read_at?: string;
+        created_at: string;
+        expires_at?: string;
+      });
+    } else {
+      console.warn("[SocketService] ⚠️ Datos de notificación inválidos:", data);
+    }
+  };
+  
+  // Si el socket ya está conectado, registrar el listener inmediatamente
+  if (currentSocket.connected) {
+    currentSocket.on("notification", handler);
+    console.log("[SocketService] ✅ Listener 'notification' registrado (socket ya conectado)", {
+      socketId: currentSocket.id,
+      connected: currentSocket.connected,
+      event: "notification",
+      totalCallbacks: notificationCallbacks.size
+    });
+  } else {
+    // Si no está conectado, esperar a que se conecte
+    console.log("[SocketService] ⏳ Socket no conectado, esperando conexión para registrar listener notification...", {
+      socketId: currentSocket.id,
+      connected: currentSocket.connected
+    });
+    const connectHandler = () => {
+      currentSocket.on("notification", handler);
+      console.log("[SocketService] ✅ Listener 'notification' registrado (después de conexión)", {
+        socketId: currentSocket.id,
+        connected: currentSocket.connected,
+        event: "notification",
+        totalCallbacks: notificationCallbacks.size
+      });
+    };
+    currentSocket.once("connect", connectHandler);
+  }
+  
+  return () => {
+    // Remover callback de la lista
+    notificationCallbacks.delete(callback);
+    console.log(`[SocketService] 🧹 Callback removido de notification (total: ${notificationCallbacks.size})`);
+    
+    if (currentSocket) {
+      currentSocket.off("notification", handler);
+      console.log("[SocketService] 🧹 Listener 'notification' removido");
+    }
+  };
+};
+
+// Desuscribirse de notificaciones
+export const offNotification = (handler: (data: any) => void) => {
+  if (socket) {
+    socket.off("notification", handler);
+  }
+};
+
+// Lista de callbacks para wallet-updated (para re-registrarlos en reconexión)
+const walletUpdatedCallbacks = new Set<(data: {
+  wallet_id: string;
+  balance: string;
+  frozen_balance: string;
+  currency: string;
+}) => void>();
+
+// Función para registrar todos los listeners de wallet-updated
+const registerWalletUpdatedListeners = () => {
+  if (!socket || !socket.connected) {
+    console.log(`[SocketService] ⏸️ No se pueden re-registrar listeners: socket=${!!socket}, connected=${socket?.connected}`);
+    return;
+  }
+
+  console.log(`[SocketService] 🔄 Re-registrando ${walletUpdatedCallbacks.size} listener(s) de wallet-updated...`, {
+    socketId: socket.id,
+    connected: socket.connected
+  });
+  
+  // Remover todos los listeners anteriores para evitar duplicados
+  socket.removeAllListeners("wallet-updated");
+  
+  walletUpdatedCallbacks.forEach((callback) => {
+    const handler = (data: unknown) => {
+      console.log("[SocketService] 📥 Evento wallet-updated recibido:", data);
+      if (
+        data &&
+        typeof data === "object" &&
+        "wallet_id" in data &&
+        "balance" in data
+      ) {
+        console.log("[SocketService] ✅ Datos de wallet válidos, ejecutando callback");
+        callback(data as {
+          wallet_id: string;
+          balance: string;
+          frozen_balance: string;
+          currency: string;
+        });
+      } else {
+        console.warn("[SocketService] ⚠️ Datos de wallet inválidos:", data);
+      }
+    };
+    
+    socket.on("wallet-updated", handler);
+  });
+  
+  console.log("[SocketService] ✅ Todos los listeners de wallet-updated re-registrados", {
+    totalListeners: walletUpdatedCallbacks.size,
+    socketId: socket.id
+  });
+};
+
+// Escuchar evento de actualización de wallet en tiempo real
+export const onWalletUpdated = (
+  callback: (data: {
+    wallet_id: string;
+    balance: string;
+    frozen_balance: string;
+    currency: string;
+  }) => void
+): (() => void) => {
+  // Agregar callback a la lista
+  walletUpdatedCallbacks.add(callback);
+  console.log(`[SocketService] 📝 Callback agregado a wallet-updated (total: ${walletUpdatedCallbacks.size})`);
+  
+  // Asegurar que el socket esté conectado
+  const currentSocket = socket || connectSocket();
+  
+  const handler = (data: unknown) => {
+    console.log("[SocketService] 📥 Evento wallet-updated recibido:", data);
+    if (
+      data &&
+      typeof data === "object" &&
+      "wallet_id" in data &&
+      "balance" in data
+    ) {
+      console.log("[SocketService] ✅ Datos de wallet válidos, ejecutando callback");
+      callback(data as {
+        wallet_id: string;
+        balance: string;
+        frozen_balance: string;
+        currency: string;
+      });
+    } else {
+      console.warn("[SocketService] ⚠️ Datos de wallet inválidos:", data);
+    }
+  };
+  
+  // Si el socket ya está conectado, registrar el listener inmediatamente
+  if (currentSocket.connected) {
+    currentSocket.on("wallet-updated", handler);
+    console.log("[SocketService] ✅ Listener wallet-updated registrado (socket ya conectado)", {
+      socketId: currentSocket.id,
+      connected: currentSocket.connected,
+      event: "wallet-updated"
+    });
+  } else {
+    // Si no está conectado, esperar a que se conecte
+    console.log("[SocketService] ⏳ Socket no conectado, esperando conexión para registrar listener wallet-updated...", {
+      socketId: currentSocket.id,
+      connected: currentSocket.connected
+    });
+    currentSocket.once("connect", () => {
+      currentSocket.on("wallet-updated", handler);
+      console.log("[SocketService] ✅ Listener wallet-updated registrado (después de conexión)", {
+        socketId: currentSocket.id,
+        connected: currentSocket.connected,
+        event: "wallet-updated"
+      });
+    });
+  }
+  
+  // También registrar el listener en la función de re-registro para reconexiones
+  // Esto asegura que el listener se mantenga activo después de reconexiones
+  
+  return () => {
+    // Remover callback de la lista
+    walletUpdatedCallbacks.delete(callback);
+    console.log(`[SocketService] 🧹 Callback removido de wallet-updated (total: ${walletUpdatedCallbacks.size})`);
+    
+    if (currentSocket) {
+      currentSocket.off("wallet-updated", handler);
+      console.log("[SocketService] 🧹 Listener wallet-updated removido");
+    }
+  };
 };

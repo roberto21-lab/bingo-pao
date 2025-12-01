@@ -295,7 +295,8 @@ export const MobilePaymentReportDialog: React.FC<MobilePaymentReportDialogProps>
       try {
         console.log("🔄 Ejecutando onSubmit...");
         const result = onSubmit(form);
-        if (result instanceof Promise) {
+        // Verificar si es una Promise usando type guard
+        if (result !== undefined && result !== null && typeof result === 'object' && 'then' in result && typeof (result as any).then === 'function') {
           await result;
         }
         console.log("✅ onSubmit completado exitosamente");

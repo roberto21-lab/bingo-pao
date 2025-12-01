@@ -37,6 +37,7 @@ export type BackendRoom = {
   status_id?: BackendStatus | string;
   description?: string | null;
   total_pot?: ApiDecimal | number; // Puede venir como número o como ApiDecimal
+  total_prize?: ApiDecimal | number; // Premio total (90% del pool) - puede venir como número o como ApiDecimal
   admin_fee?: ApiDecimal | number; // Puede venir como número o como ApiDecimal
   players?: string[] | any[];
   rewards?: string[] | any[];
@@ -135,7 +136,6 @@ function mapBackendRoomToRoom(backendRoom: BackendRoom): Room {
   // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
   // Esto asegura que todos los usuarios vean el mismo premio
   const totalPrize = parseDecimal(backendRoom.total_prize || backendRoom.total_pot);
-  const totalPot = parseDecimal(backendRoom.total_pot);
   // Normalizar VES a Bs
   const currencyCode = normalizeCurrency(currency?.code);
   // const currencySymbol = currency?.symbol || "Bs";

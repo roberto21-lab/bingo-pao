@@ -11,6 +11,7 @@ import { useAuth } from "../hooks/useAuth";
 import { getUserRooms } from "../Services/cards.service";
 import { getRoomById, type Room } from "../Services/rooms.service";
 import { getRoomRounds } from "../Services/rounds.service";
+import { connectSocket } from "../Services/socket.service";
 
 type ActiveGameInfo = {
   roomId: string | null;
@@ -24,6 +25,13 @@ const TabBar: React.FC = () => {
   const [activeGame, setActiveGame] = React.useState<ActiveGameInfo>({ roomId: null, isActive: false });
   const [loadingGame, setLoadingGame] = React.useState(false);
   const [accountMenuAnchor, setAccountMenuAnchor] = React.useState<null | HTMLElement>(null);
+
+  // Asegurar que el socket esté conectado cuando el usuario está autenticado
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      connectSocket();
+    }
+  }, [isAuthenticated]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -148,6 +156,7 @@ const TabBar: React.FC = () => {
     navigate(path);
     handleMenuClose();
   };
+
 
   return (
     <Box
@@ -389,6 +398,7 @@ const TabBar: React.FC = () => {
         {getButtonText()}
       </Button>
 
+
       {/* Mi Cuenta Tab o Login Tab */}
       <Box>
       <Box
@@ -497,6 +507,7 @@ const TabBar: React.FC = () => {
           </MenuItem>
         </Menu>
       </Box>
+
     </Box>
   );
 };

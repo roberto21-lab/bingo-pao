@@ -10,6 +10,7 @@ import GameInProgress from "./Pages/GameInProgress";
 import PurchasedCartons from "./Pages/PurchasedCartons";
 import Profile from "./Pages/Profile";
 import TabBar from "./Componets/TabBar";
+import Header from "./Componets/Header";
 import Register from "./Pages/Register";
 import WalletPage from "./Pages/WalletPage";
 import Login from "./Pages/Login";
@@ -30,6 +31,7 @@ function AppContent() {
 
   return (
     <>
+      <Header />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/rooms" element={<Rooms />} />

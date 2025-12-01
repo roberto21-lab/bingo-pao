@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Dialog,
   DialogTitle,
@@ -334,12 +333,12 @@ export default function WinnerCardModal({
             >
               {/* Agrupar por letras */}
               {[
-                { letter: "B", start: 1, end: 15 },
-                { letter: "I", start: 16, end: 30 },
-                { letter: "N", start: 31, end: 45 },
-                { letter: "G", start: 46, end: 60 },
-                { letter: "O", start: 61, end: 75 },
-              ].map(({ letter, start, end }) => {
+                { letter: "B" },
+                { letter: "I" },
+                { letter: "N" },
+                { letter: "G" },
+                { letter: "O" },
+              ].map(({ letter }) => {
                 const letterNumbers = allBingoNumbers.filter(
                   (num) => num.startsWith(`${letter}-`)
                 );

@@ -27,7 +27,7 @@ import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
 import { getWalletByUser } from "../Services/wallets.service";
 import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount, type BankAccount } from "../Services/bankAccounts.service";
 import { getUserById } from "../Services/users.service";
-import { onRoomPrizeUpdated, onRoomsReordered, joinRoom, leaveRoom } from "../Services/socket.service";
+import { onRoomPrizeUpdated, onRoomsReordered, joinRoom, leaveRoom, onWalletUpdated } from "../Services/socket.service";
 
 type ActiveRoom = {
   id: string;
@@ -115,6 +115,26 @@ export default function Home() {
       fetchWallet();
     }
   }, [userId, isAuthenticated, authLoading]);
+
+  // Escuchar actualizaciones de wallet en tiempo real
+  React.useEffect(() => {
+    if (!isAuthenticated || !userId) {
+      return;
+    }
+
+    console.log("[Home] 🔌 Configurando listener wallet-updated...");
+    
+    const unsubscribe = onWalletUpdated((data) => {
+      console.log("[Home] 💰 Wallet actualizado en tiempo real:", data);
+      setAvailableBalance(parseFloat(data.balance) || 0);
+      setFrozenBalance(parseFloat(data.frozen_balance) || 0);
+    });
+
+    return () => {
+      console.log("[Home] 🧹 Limpiando listener wallet-updated");
+      unsubscribe();
+    };
+  }, [isAuthenticated, userId]);
 
   // Cargar cuenta bancaria y perfil del usuario
   React.useEffect(() => {

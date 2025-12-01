@@ -193,6 +193,44 @@ function ProfileContent() {
     loadUserData();
   }, [userId]);
 
+  // Escuchar actualizaciones de wallet en tiempo real (useEffect separado)
+  React.useEffect(() => {
+    if (!isAuthenticated || !userId) {
+      return;
+    }
+
+    console.log("[Profile] 🔌 Configurando listener wallet-updated...");
+
+    const setupListener = async () => {
+      const { onWalletUpdated } = await import("../Services/socket.service");
+      
+      const unsubscribe = onWalletUpdated((data: any) => {
+        console.log("[Profile] 💰 Wallet actualizado en tiempo real:", data);
+        setWallet((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            balance: parseFloat(data.balance) || 0,
+          };
+        });
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | null = null;
+    setupListener().then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) {
+        console.log("[Profile] 🧹 Limpiando listener wallet-updated");
+        unsubscribe();
+      }
+    };
+  }, [isAuthenticated, userId]);
+
   // Preparar datos para mostrar (después de todos los hooks)
   const profile = user?.profile;
   const documentType =
