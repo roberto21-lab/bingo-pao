@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import * as React from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import BingoLogo from '../Componets/BingoLogo';
+import BingoLogo from '../Components/BingoLogo';
 import { useAuth } from '../hooks/useAuth';
 import { forgotPasswordService } from '../Services/auth.service';
 
