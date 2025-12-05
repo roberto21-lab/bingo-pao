@@ -82,3 +82,4 @@ simulate-login.js
 .cloudflared/
 *.pem
 cert.pem
+.env.production

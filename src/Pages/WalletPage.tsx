@@ -1,4 +1,3 @@
-// src/pages/WalletPage.tsx
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     Box,
@@ -21,19 +20,27 @@ import {
 import { useNavigate } from 'react-router-dom';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import BalanceCard from '../Componets/BalanceCard';
+import BalanceCard from '../Components/BalanceCard';
 import { getWalletByUser } from '../Services/wallets.service';
-import { getWalletTransactions, type Transaction } from '../Services/transactionService';
+import { getWalletTransactions, type Transaction } from '../Services/transaction.service';
 import { getTransactionTypes } from '../Services/transactionTypes.service';
 import { getStatusByNameAndCategory } from '../Services/status.service';
 import { getUserId } from '../Services/auth.service';
 import { useAuth } from '../hooks/useAuth';
-import { MobilePaymentReportDialog } from '../Componets/MobilePaymentReportDialog';
-import { WithdrawRequestDialog } from '../Componets/WithdrawRequestDialog';
-import { TransactionDetailDialog } from '../Componets/TransactionDetailDialog';
+import { MobilePaymentReportDialog } from '../Components/MobilePaymentReportDialog';
+import { WithdrawRequestDialog } from '../Components/WithdrawRequestDialog';
+import { TransactionDetailDialog } from '../Components/TransactionDetailDialog';
 import { getBankAccountByUser, type BankAccount } from '../Services/bankAccounts.service';
 import { getUserById } from '../Services/users.service';
-import { COLORS } from '../constants/colors';
+import { walletPageStyles } from '../styles/walletPage.styles';
+import type { TransactionDisplay, UserProfile, WalletUpdateData } from '../types/walletPage.types';
+import { 
+  getTransactionLabel, 
+  normalizeCurrency, 
+  formatCurrency, 
+  formatDate,
+  mapTransactionToDisplay 
+} from '../utils/walletPage.utils';
 
 const BANKS = [
   "Banco de Venezuela",
@@ -44,73 +51,6 @@ const BANKS = [
   "Banco del Tesoro",
   "Bancamiga",
 ];
-
-type TransactionDisplay = {
-  id: string;
-  type: string;
-  typeLabel: string;
-  amount: number;
-  description: string;
-  status?: string;
-  statusLabel?: string;
-  createdAt: string;
-};
-
-const getTransactionLabel = (typeName: string): string => {
-  const typeMap: Record<string, string> = {
-    'recharge': 'Recarga',
-    'withdrawal': 'Retiro',
-    'withdraw': 'Retiro', // Alias por si acaso
-    'game_entry': 'Entrada a juego',
-    'prize': 'Premio',
-    'refund': 'Reembolso',
-    'unknown': 'Desconocido',
-  };
-  return typeMap[typeName.toLowerCase()] || 'Desconocido';
-};
-
-// Función helper para normalizar VES a Bs
-const normalizeCurrency = (currencyCode?: string | null): string => {
-  if (!currencyCode) return "Bs";
-  const normalized = currencyCode.toLowerCase().trim();
-  return normalized === "ves" ? "Bs" : currencyCode;
-};
-
-// Función para convertir amount a número (puede venir como Decimal128 o número)
-const parseAmount = (amount: number | string | { $numberDecimal: string } | undefined | null): number => {
-  if (typeof amount === 'number') {
-    return amount;
-  }
-  if (typeof amount === 'string') {
-    return parseFloat(amount) || 0;
-  }
-  if (amount && typeof amount === 'object' && '$numberDecimal' in amount) {
-    // MongoDB Decimal128 formato
-    return parseFloat(amount.$numberDecimal) || 0;
-  }
-  return 0;
-};
-
-const formatCurrency = (amount: number, currency: string = 'Bs'): string => {
-  if (isNaN(amount) || amount === null || amount === undefined) {
-    return `0.00 ${currency}`;
-  }
-  return new Intl.NumberFormat('es-VE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(amount)) + ` ${currency}`;
-};
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('es-VE', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
 
 const WalletPage: React.FC = () => {
   const navigate = useNavigate();
@@ -129,10 +69,39 @@ const WalletPage: React.FC = () => {
   const [frozenBalance, setFrozenBalance] = useState(0);
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
   const [bankAccount, setBankAccount] = useState<BankAccount | null>(null);
-  const [userProfile, setUserProfile] = useState<{ document_type_id?: { _id: string; code: string }; document_number?: string; phone?: string } | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [currency, setCurrency] = useState<string>('Bs');
+  const [transactionTypeMap, setTransactionTypeMap] = useState<Record<string, string>>({});
+  const [transactionStatusMap, setTransactionStatusMap] = useState<Record<string, string>>({});
 
-  // Cargar wallet y transacciones
+  const loadTransactions = async (walletId: string) => {
+    const walletTransactions = await getWalletTransactions(walletId);
+        const [transactionTypes, pendingStatus, completedStatus] = await Promise.all([
+          getTransactionTypes(),
+          getStatusByNameAndCategory('pending', 'transaction'),
+          getStatusByNameAndCategory('completed', 'transaction'),
+        ]);
+
+        const statusMap: Record<string, string> = {};
+        if (pendingStatus) statusMap[pendingStatus._id] = 'pending';
+        if (completedStatus) statusMap[completedStatus._id] = 'completed';
+        setTransactionStatusMap(statusMap);
+
+        const typeMap: Record<string, string> = {};
+        transactionTypes.forEach(t => {
+          typeMap[t._id] = t.name;
+        });
+        setTransactionTypeMap(typeMap);
+
+    const mappedTransactions = walletTransactions
+      .map(tx => mapTransactionToDisplay(tx, typeMap, statusMap))
+      .filter((tx): tx is TransactionDisplay => tx !== null)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    setTransactions(mappedTransactions);
+    setAllTransactions(walletTransactions);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       if (!userId || !isAuthenticated) {
@@ -145,104 +114,15 @@ const WalletPage: React.FC = () => {
         setLoading(true);
         setTransactionsLoading(true);
 
-        // Cargar wallet
         const wallet = await getWalletByUser(userId);
         setBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
         if (wallet.currency_id && typeof wallet.currency_id === 'object' && 'code' in wallet.currency_id) {
-          // Normalizar VES a Bs
           setCurrency(normalizeCurrency(wallet.currency_id.code));
         }
-
-        // Cargar transacciones
-        const walletTransactions = await getWalletTransactions(wallet._id);
         
-        // Obtener tipos de transacción y status para mapear
-        const [transactionTypes, pendingStatus, completedStatus] = await Promise.all([
-          getTransactionTypes(),
-          getStatusByNameAndCategory('pending', 'transaction'),
-          getStatusByNameAndCategory('completed', 'transaction'),
-        ]);
+        await loadTransactions(wallet._id);
 
-        const statusMap: Record<string, string> = {};
-        if (pendingStatus) statusMap[pendingStatus._id] = 'pending';
-        if (completedStatus) statusMap[completedStatus._id] = 'completed';
-        setTransactionStatusMap(statusMap);
-
-        const typeMap: Record<string, string> = {};
-        transactionTypes.forEach(t => {
-          typeMap[t._id] = t.name;
-        });
-        setTransactionTypeMap(typeMap);
-
-        const mappedTransactions: TransactionDisplay[] = walletTransactions.reduce<TransactionDisplay[]>((acc, tx: Transaction) => {
-          // Validar que transaction_type_id y status_id existan
-          if (!tx.transaction_type_id || !tx.status_id) {
-            console.warn('Transacción con datos incompletos:', tx);
-            return acc;
-          }
-
-          const typeId = typeof tx.transaction_type_id === 'string'
-            ? tx.transaction_type_id
-            : (tx.transaction_type_id as any)?._id;
-          const statusId = typeof tx.status_id === 'string'
-            ? tx.status_id
-            : (tx.status_id as any)?._id;
-
-          // Si no se pudo obtener el ID, saltar esta transacción
-          if (!typeId || !statusId) {
-            console.warn('Transacción sin IDs válidos:', tx);
-            return acc;
-          }
-
-          // Obtener el nombre del tipo desde el map o desde el objeto si está poblado
-          let typeName = typeMap[typeId] || 'unknown';
-          if (typeName === 'unknown' && typeof tx.transaction_type_id === 'object' && (tx.transaction_type_id as any)?.name) {
-            typeName = (tx.transaction_type_id as any).name;
-          }
-          const statusName = statusMap[statusId] || 'unknown';
-
-          // Generar descripción basada en el tipo y metadata
-          let description = getTransactionLabel(typeName);
-          if (tx.metadata) {
-            if (tx.metadata.bank_name) {
-              description = `${getTransactionLabel(typeName)} a ${tx.metadata.bank_name}`;
-            } else if (tx.metadata.room_name) {
-              description = `${getTransactionLabel(typeName)} - ${tx.metadata.room_name}`;
-            } else if (tx.metadata.round_number) {
-              description = `${getTransactionLabel(typeName)} - Ronda ${tx.metadata.round_number}`;
-            }
-          }
-
-          // Convertir amount a número
-          const rawAmount = parseAmount(tx.amount);
-          
-          // Determinar si el monto es positivo o negativo basado en el tipo
-          // Retiros y entradas a juego son negativos, recargas, premios y reembolsos son positivos
-          const isPositive = typeName === 'recharge' || typeName === 'prize' || typeName === 'refund';
-          const amount = isPositive ? Math.abs(rawAmount) : -Math.abs(rawAmount);
-
-          acc.push({
-            id: tx._id,
-            type: typeName,
-            typeLabel: getTransactionLabel(typeName),
-            amount,
-            description,
-            status: statusName !== 'unknown' ? statusName : undefined,
-            statusLabel: statusName === 'pending' ? 'Pendiente' : statusName === 'completed' ? 'Completado' : statusName === 'unknown' ? 'Desconocido' : undefined,
-            createdAt: tx.created_at,
-          });
-
-          return acc;
-        }, []);
-
-        // Ordenar por fecha más reciente primero
-        mappedTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-        setTransactions(mappedTransactions);
-        setAllTransactions(walletTransactions);
-
-        // Cargar cuenta bancaria y perfil
         try {
           const account = await getBankAccountByUser(userId);
           setBankAccount(account);
@@ -250,7 +130,7 @@ const WalletPage: React.FC = () => {
           if (error && typeof error === 'object' && 'response' in error) {
             const httpError = error as { response?: { status?: number } };
             if (httpError.response?.status !== 404) {
-              console.error('Error al cargar cuenta bancaria:', error);
+              // Error silencioso para 404
             }
           }
           setBankAccount(null);
@@ -261,12 +141,12 @@ const WalletPage: React.FC = () => {
           if (userData?.profile) {
             setUserProfile(userData.profile);
           }
-        } catch (error) {
-          console.error('Error al cargar perfil:', error);
+        } catch {
+          // Error silencioso
         }
 
-      } catch (error) {
-        console.error('Error al cargar datos:', error);
+      } catch {
+        // Error silencioso
       } finally {
         setLoading(false);
         setTransactionsLoading(false);
@@ -278,6 +158,39 @@ const WalletPage: React.FC = () => {
     }
   }, [userId, isAuthenticated, authLoading]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !userId) {
+      return;
+    }
+
+    const setupListener = async () => {
+      const { onWalletUpdated } = await import("../Services/socket.service");
+      const { throttle } = await import("../utils/throttle");
+      
+      const throttledUpdate = throttle((data: WalletUpdateData) => {
+        setBalance(parseFloat(data.balance || "0") || 0);
+        setFrozenBalance(parseFloat(data.frozen_balance || "0") || 0);
+      }, 1000);
+      
+      const unsubscribe = onWalletUpdated((data: WalletUpdateData) => {
+        throttledUpdate(data);
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | null = null;
+    setupListener().then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [isAuthenticated, userId]);
+
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTab(newValue);
   };
@@ -287,8 +200,6 @@ const WalletPage: React.FC = () => {
       return transactions;
     }
     if (tab === 1) {
-      // Filtrar retiros: puede ser 'withdrawal', 'withdraw' o 'game_entry' (entradas a juegos)
-      // También verificamos el typeLabel por si acaso
       return transactions.filter((t) => {
         const typeLower = t.type.toLowerCase();
         const labelLower = t.typeLabel.toLowerCase();
@@ -300,7 +211,6 @@ const WalletPage: React.FC = () => {
       });
     }
     if (tab === 2) {
-      // Filtrar recargas y premios (ambos suman al balance)
       return transactions.filter((t) => {
         const typeLower = t.type.toLowerCase();
         const labelLower = t.typeLabel.toLowerCase();
@@ -313,9 +223,6 @@ const WalletPage: React.FC = () => {
     return transactions;
   }, [tab, transactions]);
 
-  const [transactionTypeMap, setTransactionTypeMap] = useState<Record<string, string>>({});
-  const [transactionStatusMap, setTransactionStatusMap] = useState<Record<string, string>>({});
-
   const handleTransactionClick = (transactionId: string) => {
     const fullTransaction = allTransactions.find(tx => tx._id === transactionId);
     if (fullTransaction) {
@@ -325,165 +232,35 @@ const WalletPage: React.FC = () => {
   };
 
   const handleSubmitReport = async () => {
-    // Recargar wallet después del reporte
     if (userId) {
       try {
         const wallet = await getWalletByUser(userId);
         setBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
-        
-        // Recargar transacciones
-        const walletTransactions = await getWalletTransactions(wallet._id);
-        const [transactionTypes, pendingStatus, completedStatus] = await Promise.all([
-          getTransactionTypes(),
-          getStatusByNameAndCategory('pending', 'transaction'),
-          getStatusByNameAndCategory('completed', 'transaction'),
-        ]);
-
-        const statusMap: Record<string, string> = {};
-        if (pendingStatus) statusMap[pendingStatus._id] = 'pending';
-        if (completedStatus) statusMap[completedStatus._id] = 'completed';
-        setTransactionStatusMap(statusMap);
-
-        const typeMap: Record<string, string> = {};
-        transactionTypes.forEach(t => {
-          typeMap[t._id] = t.name;
-        });
-        setTransactionTypeMap(typeMap);
-
-        const mappedTransactions: TransactionDisplay[] = walletTransactions.map((tx: Transaction) => {
-          const typeId = typeof tx.transaction_type_id === 'string' ? tx.transaction_type_id : tx.transaction_type_id._id;
-          const statusId = typeof tx.status_id === 'string' ? tx.status_id : tx.status_id._id;
-          // Obtener el nombre del tipo desde el map o desde el objeto si está poblado
-          let typeName = typeMap[typeId] || 'unknown';
-          if (typeName === 'unknown' && typeof tx.transaction_type_id === 'object' && tx.transaction_type_id.name) {
-            typeName = tx.transaction_type_id.name;
-          }
-          const statusName = statusMap[statusId] || 'unknown';
-
-          let description = getTransactionLabel(typeName);
-          if (tx.metadata) {
-            if (tx.metadata.bank_name) {
-              description = `${getTransactionLabel(typeName)} a ${tx.metadata.bank_name}`;
-            } else if (tx.metadata.room_name) {
-              description = `${getTransactionLabel(typeName)} - ${tx.metadata.room_name}`;
-            } else if (tx.metadata.round_number) {
-              description = `${getTransactionLabel(typeName)} - Ronda ${tx.metadata.round_number}`;
-            }
-          }
-
-          // Convertir amount a número
-          const rawAmount = parseAmount(tx.amount);
-          
-          // Determinar si el monto es positivo o negativo basado en el tipo
-          // Retiros y entradas a juego son negativos, recargas, premios y reembolsos son positivos
-          const isPositive = typeName === 'recharge' || typeName === 'prize' || typeName === 'refund';
-          const amount = isPositive ? Math.abs(rawAmount) : -Math.abs(rawAmount);
-
-          return {
-            id: tx._id,
-            type: typeName,
-            typeLabel: getTransactionLabel(typeName),
-            amount,
-            description,
-            status: statusName !== 'unknown' ? statusName : undefined,
-            statusLabel: statusName === 'pending' ? 'Pendiente' : statusName === 'completed' ? 'Completado' : statusName === 'unknown' ? 'Desconocido' : undefined,
-            createdAt: tx.created_at,
-          };
-        });
-
-        mappedTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setTransactions(mappedTransactions);
-        setAllTransactions(walletTransactions);
-      } catch (error) {
-        console.error('Error al recargar datos:', error);
+        await loadTransactions(wallet._id);
+      } catch {
+        // Error silencioso
       }
     }
     setOpenReport(false);
   };
 
   const handleSubmitWithdraw = async () => {
-    // Recargar wallet después del retiro
     if (userId) {
       try {
         const wallet = await getWalletByUser(userId);
         setBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
-        
-        // Recargar transacciones
-        const walletTransactions = await getWalletTransactions(wallet._id);
-        const [transactionTypes, pendingStatus, completedStatus] = await Promise.all([
-          getTransactionTypes(),
-          getStatusByNameAndCategory('pending', 'transaction'),
-          getStatusByNameAndCategory('completed', 'transaction'),
-        ]);
+        await loadTransactions(wallet._id);
 
-        const statusMap: Record<string, string> = {};
-        if (pendingStatus) statusMap[pendingStatus._id] = 'pending';
-        if (completedStatus) statusMap[completedStatus._id] = 'completed';
-        setTransactionStatusMap(statusMap);
-
-        const typeMap: Record<string, string> = {};
-        transactionTypes.forEach(t => {
-          typeMap[t._id] = t.name;
-        });
-        setTransactionTypeMap(typeMap);
-
-        const mappedTransactions: TransactionDisplay[] = walletTransactions.map((tx: Transaction) => {
-          const typeId = typeof tx.transaction_type_id === 'string' ? tx.transaction_type_id : tx.transaction_type_id._id;
-          const statusId = typeof tx.status_id === 'string' ? tx.status_id : tx.status_id._id;
-          // Obtener el nombre del tipo desde el map o desde el objeto si está poblado
-          let typeName = typeMap[typeId] || 'unknown';
-          if (typeName === 'unknown' && typeof tx.transaction_type_id === 'object' && tx.transaction_type_id.name) {
-            typeName = tx.transaction_type_id.name;
-          }
-          const statusName = statusMap[statusId] || 'unknown';
-
-          let description = getTransactionLabel(typeName);
-          if (tx.metadata) {
-            if (tx.metadata.bank_name) {
-              description = `${getTransactionLabel(typeName)} a ${tx.metadata.bank_name}`;
-            } else if (tx.metadata.room_name) {
-              description = `${getTransactionLabel(typeName)} - ${tx.metadata.room_name}`;
-            } else if (tx.metadata.round_number) {
-              description = `${getTransactionLabel(typeName)} - Ronda ${tx.metadata.round_number}`;
-            }
-          }
-
-          // Convertir amount a número
-          const rawAmount = parseAmount(tx.amount);
-          
-          // Determinar si el monto es positivo o negativo basado en el tipo
-          // Retiros y entradas a juego son negativos, recargas, premios y reembolsos son positivos
-          const isPositive = typeName === 'recharge' || typeName === 'prize' || typeName === 'refund';
-          const amount = isPositive ? Math.abs(rawAmount) : -Math.abs(rawAmount);
-
-          return {
-            id: tx._id,
-            type: typeName,
-            typeLabel: getTransactionLabel(typeName),
-            amount,
-            description,
-            status: statusName !== 'unknown' ? statusName : undefined,
-            statusLabel: statusName === 'pending' ? 'Pendiente' : statusName === 'completed' ? 'Completado' : statusName === 'unknown' ? 'Desconocido' : undefined,
-            createdAt: tx.created_at,
-          };
-        });
-
-        mappedTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setTransactions(mappedTransactions);
-        setAllTransactions(walletTransactions);
-
-        // Recargar cuenta bancaria
         try {
           const account = await getBankAccountByUser(userId);
           setBankAccount(account);
-        } catch (error) {
-          console.error('Error al recargar cuenta bancaria:', error);
+        } catch {
           setBankAccount(null);
         }
-      } catch (error) {
-        console.error('Error al recargar datos:', error);
+      } catch {
+        // Error silencioso
       }
     }
     setOpenWithdraw(false);
@@ -498,8 +275,8 @@ const WalletPage: React.FC = () => {
       const wallet = await getWalletByUser(userId);
       setBalance(Math.max(0, wallet.balance || 0));
       setFrozenBalance(wallet.frozen_balance || 0);
-    } catch (error) {
-      console.error('Error al eliminar cuenta bancaria:', error);
+    } catch {
+      // Error silencioso
     }
   };
 
@@ -507,42 +284,22 @@ const WalletPage: React.FC = () => {
 
   if (authLoading || loading) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-      >
-        <CircularProgress sx={{ color: '#d4af37' }} />
+      <Box sx={walletPageStyles.loadingContainer}>
+        <CircularProgress sx={walletPageStyles.loadingProgress} />
       </Box>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          flexDirection: 'column',
-          gap: 2,
-        }}
-      >
-        <Typography variant="h5" sx={{ color: '#f5e6d3' }}>
+      <Box sx={walletPageStyles.notAuthenticatedContainer}>
+        <Typography variant="h5" sx={walletPageStyles.notAuthenticatedText}>
           Debes iniciar sesión para ver tu wallet
         </Typography>
         <Button
           variant="contained"
           onClick={() => navigate('/login')}
-          sx={{
-            bgcolor: '#d4af37',
-            color: '#1a1008',
-            '&:hover': { bgcolor: '#b8941f' },
-          }}
+          sx={walletPageStyles.loginButton}
         >
           Iniciar sesión
         </Button>
@@ -551,35 +308,25 @@ const WalletPage: React.FC = () => {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: 'transparent',
-        color: '#f5e6d3',
-        paddingBottom: '80px',
-        position: 'relative',
-      }}
-    >
-      <Container maxWidth="sm" sx={{ py: 4 }}>
-        {/* Header */}
-        <Box mb={4}>
+    <Box sx={walletPageStyles.pageContainer}>
+      <Container maxWidth="sm" sx={walletPageStyles.container}>
+        <Box sx={walletPageStyles.headerContainer}>
           <Typography
             variant="h4"
             fontWeight={700}
-            sx={{ color: '#f5e6d3', mb: 1 }}
+            sx={walletPageStyles.headerTitle}
           >
             Wallet Bingo PAO
           </Typography>
           <Typography
             variant="subtitle1"
-            sx={{ color: 'rgba(245, 230, 211, 0.7)' }}
+            sx={walletPageStyles.headerSubtitle}
           >
             Administra tu saldo, recargas, retiros y movimientos.
           </Typography>
         </Box>
 
-        {/* Balance Cards */}
-        <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
+        <Stack direction="row" spacing={2} sx={walletPageStyles.balanceStack}>
           <BalanceCard
             title="Mi Saldo"
             amount={balance}
@@ -596,7 +343,6 @@ const WalletPage: React.FC = () => {
           />
         </Stack>
 
-        {/* Action Buttons */}
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           spacing={1.5}
@@ -607,16 +353,7 @@ const WalletPage: React.FC = () => {
             fullWidth
             startIcon={<ArrowDownwardIcon />}
             onClick={() => setOpenReport(true)}
-            sx={{
-              background: 'linear-gradient(135deg, #00E676 0%, #00C853 100%)',
-              fontWeight: 700,
-              py: 1.5,
-              borderRadius: 2,
-              textTransform: 'none',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #00C853 0%, #00B248 100%)',
-              },
-            }}
+            sx={walletPageStyles.rechargeButton}
           >
             Recargar saldo
           </Button>
@@ -626,87 +363,38 @@ const WalletPage: React.FC = () => {
             fullWidth
             startIcon={<ArrowUpwardIcon />}
             onClick={() => setOpenWithdraw(true)}
-            sx={{
-              fontWeight: 700,
-              py: 1.5,
-              borderRadius: 2,
-              textTransform: 'none',
-              borderColor: '#d4af37',
-              color: '#d4af37',
-              '&:hover': {
-                borderColor: '#b8941f',
-                bgcolor: 'rgba(212, 175, 55, 0.1)',
-              },
-            }}
+            sx={walletPageStyles.withdrawButton}
           >
             Solicitar retiro
           </Button>
         </Stack>
 
-        {/* Transactions Card */}
         <Card
           className="glass-effect"
-          sx={{
-            borderRadius: 4,
-            overflow: 'hidden',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-          }}
+          sx={walletPageStyles.transactionsCard}
         >
-          <Box px={3} pt={3} pb={1.5}>
+          <Box sx={walletPageStyles.transactionsHeader}>
             <Typography
               variant="h5"
               fontWeight={700}
-              sx={{ color: '#f5e6d3', mb: 0.5 }}
+              sx={walletPageStyles.transactionsTitle}
             >
               Movimientos
             </Typography>
             <Typography
               variant="body2"
-              sx={{ color: 'rgba(245, 230, 211, 0.7)' }}
+              sx={walletPageStyles.transactionsSubtitle}
             >
               Historial de recargas, retiros, premios y entradas a salas
             </Typography>
           </Box>
 
-          {/* Tabs */}
-          <Box sx={{ px: 1.5, pb: 1 }}>
+          <Box sx={walletPageStyles.tabsContainer}>
             <Tabs
               value={tab}
               onChange={handleTabChange}
               variant="fullWidth"
-              sx={{
-                minHeight: 0,
-                '& .MuiTabs-flexContainer': {
-                  bgcolor: 'rgba(31, 19, 9, 0.8)',
-                  borderRadius: 2,
-                  border: `1px solid ${COLORS.BORDER.GOLD}`,
-                  gap: 0.5,
-                  p: 0.5,
-                },
-                '& .MuiTab-root': {
-                  minHeight: 0,
-                  py: 1.2,
-                  px: 2,
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  fontSize: 14,
-                  color: 'rgba(245, 230, 211, 0.7)',
-                  borderRadius: 1.5,
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    bgcolor: 'rgba(212, 175, 55, 0.15)',
-                    color: '#f5e6d3',
-                  },
-                },
-                '& .MuiTab-root.Mui-selected': {
-                  color: '#f5e6d3',
-                  bgcolor: 'rgba(212, 175, 55, 0.25)',
-                  border: `1px solid ${COLORS.BORDER.GOLD}`,
-                },
-                '& .MuiTabs-indicator': {
-                  display: 'none',
-                },
-              }}
+              sx={walletPageStyles.tabs}
             >
               <Tab label="Todos" />
               <Tab label="Retiros" />
@@ -716,28 +404,14 @@ const WalletPage: React.FC = () => {
 
           <CardContent sx={{ p: 0 }}>
             {transactionsLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress sx={{ color: '#d4af37' }} />
+              <Box sx={walletPageStyles.transactionsLoadingContainer}>
+                <CircularProgress sx={walletPageStyles.loadingProgress} />
               </Box>
             ) : (
-              <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+              <Box sx={walletPageStyles.transactionsTableContainer}>
                 <Table
                   size="small"
-                  sx={{
-                    '& th, & td': {
-                      borderColor: 'rgba(212, 175, 55, 0.2)',
-                      color: '#f5e6d3',
-                    },
-                    '& th': {
-                      fontWeight: 600,
-                      fontSize: 13,
-                      backgroundColor: 'rgba(31, 19, 9, 0.4)',
-                      color: 'rgba(245, 230, 211, 0.9)',
-                    },
-                    '& tbody tr:hover': {
-                      backgroundColor: 'rgba(212, 175, 55, 0.1)',
-                    },
-                  }}
+                  sx={walletPageStyles.table}
                 >
                   <TableHead>
                     <TableRow>
@@ -753,55 +427,26 @@ const WalletPage: React.FC = () => {
                       <TableRow 
                         key={tx.id}
                         onClick={() => handleTransactionClick(tx.id)}
-                        sx={{
-                          cursor: 'pointer',
-                          '&:hover': {
-                            backgroundColor: 'rgba(212, 175, 55, 0.15)',
-                          },
-                        }}
+                        sx={walletPageStyles.tableRow}
                       >
-                        <TableCell sx={{ fontSize: 13 }}>
+                        <TableCell sx={walletPageStyles.tableCell}>
                           {formatDate(tx.createdAt)}
                         </TableCell>
                         <TableCell>
                           <Chip
                             label={tx.typeLabel}
                             size="small"
-                            sx={{
-                              fontSize: 11,
-                              fontWeight: 600,
-                              borderRadius: 999,
-                              px: 1.5,
-                              bgcolor:
-                                tx.type === 'recharge'
-                                  ? 'rgba(212, 175, 55, 0.2)'
-                                  : tx.type === 'prize'
-                                  ? 'rgba(76, 175, 80, 0.2)'
-                                  : 'rgba(31, 19, 9, 0.4)',
-                              color:
-                                tx.type === 'recharge'
-                                  ? '#d4af37'
-                                  : tx.type === 'prize'
-                                  ? '#4caf50'
-                                  : '#f5e6d3',
-                              border:
-                                tx.type === 'game_entry'
-                                  ? '1px solid rgba(212, 175, 55, 0.3)'
-                                  : 'none',
-                            }}
+                            sx={walletPageStyles.typeChip(tx.type)}
                           />
                         </TableCell>
-                        <TableCell sx={{ fontSize: 13 }}>
+                        <TableCell sx={walletPageStyles.tableCell}>
                           {tx.description}
                         </TableCell>
                         <TableCell align="right">
                           <Typography
                             variant="body2"
                             fontWeight={600}
-                            sx={{
-                              color: tx.amount >= 0 ? '#4caf50' : '#ef5350',
-                              fontSize: 13,
-                            }}
+                            sx={walletPageStyles.amountText(tx.amount >= 0)}
                           >
                             {tx.amount >= 0
                               ? `+${formatCurrency(Math.abs(tx.amount), currency)}`
@@ -813,30 +458,12 @@ const WalletPage: React.FC = () => {
                             <Chip
                               label={tx.statusLabel}
                               size="small"
-                              sx={{
-                                fontSize: 11,
-                                textTransform: 'capitalize',
-                                borderRadius: 999,
-                                px: 1.6,
-                                bgcolor:
-                                  tx.status === 'completed'
-                                    ? 'rgba(76, 175, 80, 0.2)'
-                                    : tx.status === 'pending'
-                                    ? 'rgba(255, 193, 7, 0.2)'
-                                    : 'rgba(31, 19, 9, 0.4)',
-                                color:
-                                  tx.status === 'completed'
-                                    ? '#4caf50'
-                                    : tx.status === 'pending'
-                                    ? '#ffc107'
-                                    : '#f5e6d3',
-                                border: '1px solid rgba(212, 175, 55, 0.3)',
-                              }}
+                              sx={walletPageStyles.statusChip(tx.status)}
                             />
                           ) : (
                             <Typography
                               variant="caption"
-                              sx={{ color: 'rgba(245, 230, 211, 0.5)', fontSize: 11 }}
+                              sx={walletPageStyles.emptyStateCaption}
                             >
                               —
                             </Typography>
@@ -850,7 +477,7 @@ const WalletPage: React.FC = () => {
                         <TableCell colSpan={5} align="center">
                           <Typography
                             variant="body2"
-                            sx={{ color: 'rgba(245, 230, 211, 0.7)', py: 3 }}
+                            sx={walletPageStyles.emptyStateText}
                           >
                             Aún no hay movimientos para mostrar.
                           </Typography>
@@ -865,7 +492,6 @@ const WalletPage: React.FC = () => {
         </Card>
       </Container>
 
-      {/* Dialogs */}
       <MobilePaymentReportDialog
         open={openReport}
         onClose={() => setOpenReport(false)}

@@ -16,12 +16,12 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import LogoutIcon from "@mui/icons-material/Logout";
 import IconButton from "@mui/material/IconButton";
 import { useNavigate } from "react-router";
-import BackgroundStars from "../Componets/BackgroundStars";
-import ErrorToast from "../Componets/ErrorToast";
-import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
-import ProtectedRoute from "../Componets/ProtectedRoute";
-import SuccessToast from "../Componets/SuccessToast";
-import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
+import BackgroundStars from "../Components/BackgroundStars";
+import ErrorToast from "../Components/ErrorToast";
+import { MobilePaymentReportDialog } from "../Components/MobilePaymentReportDialog";
+import ProtectedRoute from "../Components/ProtectedRoute";
+import SuccessToast from "../Components/SuccessToast";
+import { WithdrawRequestDialog } from "../Components/WithdrawRequestDialog";
 import { logout } from "../Services/auth.service";
 import { getUserById, type User } from "../Services/users.service";
 import { useAuth } from "../hooks/useAuth";
@@ -193,6 +193,49 @@ function ProfileContent() {
     loadUserData();
   }, [userId]);
 
+  // Escuchar actualizaciones de wallet en tiempo real (useEffect separado)
+  React.useEffect(() => {
+    if (!isAuthenticated || !userId) {
+      return;
+    }
+
+    console.log("[Profile] 🔌 Configurando listener wallet-updated...");
+
+    const setupListener = async () => {
+      const { onWalletUpdated } = await import("../Services/socket.service");
+      const { throttle } = await import("../utils/throttle");
+      
+      // OPTIMIZACIÓN: Throttle para evitar actualizaciones excesivas (máximo 1 vez por segundo)
+      const throttledUpdate = throttle((data: any) => {
+        setWallet((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            balance: parseFloat(data.balance) || 0,
+          };
+        });
+      }, 1000);
+      
+      const unsubscribe = onWalletUpdated((data: any) => {
+        throttledUpdate(data);
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | null = null;
+    setupListener().then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) {
+        console.log("[Profile] 🧹 Limpiando listener wallet-updated");
+        unsubscribe();
+      }
+    };
+  }, [isAuthenticated, userId]);
+
   // Preparar datos para mostrar (después de todos los hooks)
   const profile = user?.profile;
   const documentType =
@@ -240,7 +283,7 @@ function ProfileContent() {
     setError("");
     
     // La validación y creación de la transacción se hace en el modal
-    // Aquí solo recargamos el wallet para actualizar los balances
+    // Aquí solo recargamos el wallet y la cuenta bancaria para actualizar los balances
     try {
       if (userId) {
         const { getWalletByUser } = await import("../Services/wallets.service");
@@ -252,6 +295,21 @@ function ProfileContent() {
           balance: updatedWallet.balance || 0,
           currency_id: currencyId
         });
+        
+        // Recargar también la cuenta bancaria (puede haberse creado automáticamente)
+        try {
+          const { getBankAccountByUser } = await import("../Services/bankAccounts.service");
+          const account = await getBankAccountByUser(userId);
+          setBankAccount(account);
+        } catch (error: unknown) {
+          // Si no hay cuenta bancaria, está bien (puede que no se haya creado)
+          if (error && typeof error === "object" && "response" in error) {
+            const httpError = error as { response?: { status?: number } };
+            if (httpError.response?.status !== 404) {
+              console.error("Error al obtener cuenta bancaria:", error);
+            }
+          }
+        }
       }
       
       // Mostrar toaster de éxito
@@ -261,10 +319,11 @@ function ProfileContent() {
       const errorMessage = error instanceof Error ? error.message : "Error al procesar la recarga";
       setRechargeErrorMessage(errorMessage);
       setShowRechargeErrorToast(true);
+      // Re-lanzar el error para que el modal no se cierre
+      throw error;
     }
 
-    // Cerrar el modal
-    setOpenReport(false);
+    // El modal se cierra automáticamente después de que esta función termine exitosamente
   };
 
   const handleLogout = () => {
@@ -574,7 +633,7 @@ function ProfileContent() {
         <BackgroundStars />
         <Container
           maxWidth="md"
-          sx={{ py: 4, position: "relative", zIndex: 1 }}
+          sx={{ pt: "80px", pb: 4, position: "relative", zIndex: 1 }}
         >
           <Stack
             direction="row"

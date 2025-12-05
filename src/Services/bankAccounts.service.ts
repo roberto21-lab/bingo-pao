@@ -51,6 +51,25 @@ export async function getBankAccountByUser(userId: string): Promise<BankAccount 
 }
 
 /**
+ * POST /bank-accounts/create
+ * Crear solo cuenta bancaria (sin transacción de retiro)
+ */
+export async function createBankAccount(data: {
+  userId: string;
+  bank_name: string;
+  account_number?: string;
+  phone_number: string;
+  document_number: string;
+  document_type_id: string;
+}): Promise<{ message: string; bank_account: BankAccount }> {
+  const response = await api.post<{ message: string; bank_account: BankAccount }>(
+    "/bank-accounts/create",
+    data
+  );
+  return response.data;
+}
+
+/**
  * POST /bank-accounts/create-with-withdraw
  * Crear cuenta bancaria y transacción de retiro
  */

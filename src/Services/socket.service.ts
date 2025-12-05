@@ -1,5 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { getToken } from "./auth.service";
+import { logger } from "../utils/logger";
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -42,13 +43,22 @@ const getAuthToken = (): string | null => {
 
 // Inicializar conexión WebSocket con autenticación
 export const connectSocket = (): Socket => {
-  // Si ya está conectado, retornar la instancia existente
+  // OPTIMIZACIÓN: Si ya está conectado, retornar la instancia existente
   if (socket?.connected) {
+    logger.socket("✅ Socket ya conectado, reutilizando instancia existente");
     return socket;
   }
 
-  // Si existe pero no está conectado, desconectar primero para limpiar
+  // OPTIMIZACIÓN: Si existe pero no está conectado, reutilizar la instancia
+  if (socket && !socket.connected) {
+    logger.socket("🔄 Socket existe pero no conectado, reconectando...");
+    socket.connect();
+    return socket;
+  }
+
+  // Si no existe, crear nueva conexión
   if (socket) {
+    // Limpiar instancia anterior si existe
     socket.removeAllListeners();
     socket.disconnect();
     socket = null;
@@ -56,7 +66,7 @@ export const connectSocket = (): Socket => {
 
   const token = getAuthToken();
   
-  // Configuración optimizada para baja latencia
+  // Configuración optimizada para baja latencia y reconexión robusta
   socket = io(SOCKET_URL, {
     transports: ["websocket", "polling"], // Preferir websocket, fallback a polling
     upgrade: true,
@@ -67,6 +77,10 @@ export const connectSocket = (): Socket => {
     reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
     timeout: 20000,
     forceNew: false,
+    // CRÍTICO: Configuraciones mejoradas para prevenir desconexiones inesperadas
+    // Aumentar timeouts para conexiones lentas
+    // pingTimeout: 60000, // 60 segundos - tiempo máximo sin respuesta (no disponible en socket.io-client v4)
+    // pingInterval: 25000, // 25 segundos - intervalo entre pings del cliente (no disponible en socket.io-client v4)
     // Autenticación
     auth: token ? { token } : undefined,
     // Headers de autenticación (fallback)
@@ -77,7 +91,7 @@ export const connectSocket = (): Socket => {
 
   // Evento: Conectado
   socket.on("connect", () => {
-    console.log("✅ Socket conectado:", socket?.id);
+    logger.socket("✅ Socket conectado:", socket?.id);
     notifyStateChange("connected");
     
     // Re-join room si había una activa
@@ -85,13 +99,19 @@ export const connectSocket = (): Socket => {
       socket.emit("join-room", currentRoomId);
     }
     
+    // Re-registrar listeners de wallet-updated después de reconexión
+    registerWalletUpdatedListeners();
+    
+    // Re-registrar listeners de notification después de reconexión
+    registerNotificationListeners();
+    
     // Procesar eventos en cola
     processQueuedEvents();
   });
 
   // Evento: Desconectado
   socket.on("disconnect", (reason) => {
-    console.log("❌ Socket desconectado:", reason);
+    logger.socket("❌ Socket desconectado:", reason);
     
     if (reason === "io server disconnect") {
       // El servidor desconectó, intentar reconectar manualmente
@@ -107,13 +127,13 @@ export const connectSocket = (): Socket => {
 
   // Evento: Reconectando
   socket.on("reconnect_attempt", (attemptNumber: number) => {
-    console.log(`🔄 Intentando reconectar (${attemptNumber}/${MAX_RECONNECT_ATTEMPTS})...`);
+    logger.socket(`🔄 Intentando reconectar (${attemptNumber}/${MAX_RECONNECT_ATTEMPTS})...`);
     notifyStateChange("reconnecting");
   });
 
   // Evento: Reconectado exitosamente
   socket.on("reconnect", (attemptNumber: number) => {
-    console.log(`✅ Reconectado exitosamente después de ${attemptNumber} intentos`);
+    logger.socket(`✅ Reconectado exitosamente después de ${attemptNumber} intentos`);
     notifyStateChange("connected");
     
     // Re-join room si había una activa
@@ -121,25 +141,31 @@ export const connectSocket = (): Socket => {
       socket.emit("join-room", currentRoomId);
     }
     
+    // Re-registrar listeners de wallet-updated después de reconexión
+    registerWalletUpdatedListeners();
+    
+    // Re-registrar listeners de notification después de reconexión
+    registerNotificationListeners();
+    
     // Procesar eventos en cola
     processQueuedEvents();
   });
 
   // Evento: Error de conexión
   socket.on("connect_error", (error) => {
-    console.error("❌ Error de conexión socket:", error.message);
+    logger.error("❌ Error de conexión socket:", error.message);
     notifyStateChange("error");
     
     // Si el error es de autenticación, limpiar token
     if (error.message.includes("auth") || error.message.includes("401")) {
-      console.warn("⚠️ Error de autenticación en socket, limpiando conexión");
+      logger.warn("⚠️ Error de autenticación en socket, limpiando conexión");
       disconnectSocket();
     }
   });
 
   // Evento: Error general
   socket.on("error", (error) => {
-    console.error("❌ Error en socket:", error);
+    logger.error("❌ Error en socket:", error);
   });
 
   notifyStateChange("connecting");
@@ -150,7 +176,7 @@ export const connectSocket = (): Socket => {
 const processQueuedEvents = () => {
   if (!socket?.connected || queuedEvents.length === 0) return;
   
-  console.log(`📤 Procesando ${queuedEvents.length} eventos en cola...`);
+  logger.socket(`📤 Procesando ${queuedEvents.length} eventos en cola...`);
   const events = [...queuedEvents];
   queuedEvents = [];
   
@@ -174,7 +200,7 @@ export const disconnectSocket = () => {
     socket.disconnect();
     socket = null;
     notifyStateChange("disconnected");
-    console.log("🔌 Socket desconectado y limpiado");
+    logger.socket("🔌 Socket desconectado y limpiado");
   }
 };
 
@@ -198,7 +224,7 @@ export const getConnectionState = (): SocketConnectionState => {
 // Unirse a una room (con manejo robusto)
 export const joinRoom = (roomId: string) => {
   if (!roomId) {
-    console.warn("⚠️ Intento de unirse a room sin ID");
+    logger.warn("⚠️ Intento de unirse a room sin ID");
     return;
   }
 
@@ -206,18 +232,18 @@ export const joinRoom = (roomId: string) => {
   
   if (socket?.connected) {
     socket.emit("join-room", roomId);
-    console.log(`[socket.service] ✅ Unido a room: ${roomId} (socket conectado)`);
+    logger.socket(`✅ Unido a room: ${roomId} (socket conectado)`);
   } else {
     // Si no está conectado, encolar y conectar
     queuedEvents.push({ event: "join-room", data: roomId });
-    console.log(`[socket.service] ⏳ Socket no conectado, encolando join-room para ${roomId}`);
+    logger.socket(`⏳ Socket no conectado, encolando join-room para ${roomId}`);
     if (!socket || connectionState === "disconnected") {
       connectSocket();
     }
     // Si ya está conectando, el evento se procesará cuando se conecte
     socket?.once("connect", () => {
       socket?.emit("join-room", roomId);
-      console.log(`[socket.service] ✅ Unido a room después de reconectar: ${roomId}`);
+      logger.socket(`✅ Unido a room después de reconectar: ${roomId}`);
     });
   }
 };
@@ -226,7 +252,7 @@ export const joinRoom = (roomId: string) => {
 export const leaveRoom = (roomId: string) => {
   if (socket?.connected) {
     socket.emit("leave-room", roomId);
-    console.log(`👋 Salido de room: ${roomId}`);
+    logger.socket(`👋 Salido de room: ${roomId}`);
   }
   
   if (currentRoomId === roomId) {
@@ -244,13 +270,13 @@ export const onNumberCalled = (
   }) => void
 ): (() => void) => {
   if (!socket) {
-    console.log(`[socket.service] 🔌 Socket no existe, conectando...`);
+    logger.socket("🔌 Socket no existe, conectando...");
     connectSocket();
   }
   
   if (socket) {
     const handler = (data: unknown) => {
-      console.log(`[socket.service] 📨 Evento 'number-called' recibido:`, data);
+      logger.socket("📨 Evento 'number-called' recibido:", data);
       // Validar datos antes de llamar callback
       if (
         data &&
@@ -260,7 +286,7 @@ export const onNumberCalled = (
         "round_number" in data &&
         "called_at" in data
       ) {
-        console.log(`[socket.service] ✅ Datos válidos, llamando callback`);
+        logger.socket("✅ Datos válidos, llamando callback");
         callback(data as {
           number: string;
           called_at: string;
@@ -268,22 +294,29 @@ export const onNumberCalled = (
           room_id: string;
         });
       } else {
-        console.warn(`[socket.service] ⚠️ Datos inválidos en evento 'number-called':`, data);
+        logger.warn("⚠️ Datos inválidos en evento 'number-called':", data);
       }
     };
     
-    console.log(`[socket.service] 👂 Registrando listener para 'number-called'`);
+    logger.socket("👂 Registrando listener para 'number-called'");
+    
+    // OPTIMIZACIÓN: Remover listener anterior si existe para evitar duplicados
+    socket.off("number-called", handler);
     socket.on("number-called", handler);
     
-    // También registrar el listener cuando se reconecte
+    // También registrar el listener cuando se reconecte (solo una vez)
     const reconnectHandler = () => {
-      console.log(`[socket.service] 🔄 Reconectado, re-registrando listener 'number-called'`);
+      logger.socket("🔄 Reconectado, re-registrando listener 'number-called'");
+      socket?.off("number-called", handler); // Remover antes de agregar
       socket?.on("number-called", handler);
     };
+    
+    // OPTIMIZACIÓN: Usar once para evitar múltiples registros del reconnect handler
+    socket.off("reconnect", reconnectHandler);
     socket.on("reconnect", reconnectHandler);
     
     return () => {
-      console.log(`[socket.service] 🧹 Removiendo listener 'number-called'`);
+      logger.socket("🧹 Removiendo listener 'number-called'");
       socket?.off("number-called", handler);
       socket?.off("reconnect", reconnectHandler);
     };
@@ -496,6 +529,7 @@ export const onRoomPrizeUpdated = (
     admin_fee: number;
     total_pot: number;
     enrolled_cards_count: number;
+    enrolled_users_count?: number; // Número de usuarios únicos inscritos
     price_per_card: number;
     rewards: Array<{
       round_number: number | null;
@@ -730,7 +764,9 @@ export const onBingoClaimed = (
     room_id: string;
     winner: {
       card_id: string;
+      card_code?: string;
       user_id: string;
+      user_name?: string;
       winner_id: string;
       is_first: boolean;
     };
@@ -755,7 +791,9 @@ export const onBingoClaimed = (
           room_id: string;
           winner: {
             card_id: string;
+            card_code?: string;
             user_id: string;
+            user_name?: string;
             winner_id: string;
             is_first: boolean;
           };
@@ -814,6 +852,42 @@ export const onRoomStatusUpdated = (
 };
 
 // Escuchar evento de cambio de status de round
+// Escuchar evento de que el countdown fue detenido (para limpiar countdowns obsoletos)
+export const onRoundCountdownStopped = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "round_number" in data &&
+        "room_id" in data
+      ) {
+        callback(data as {
+          round_number: number;
+          room_id: string;
+        });
+      }
+    };
+    
+    socket.on("round-countdown-stopped", handler);
+    
+    return () => {
+      socket?.off("round-countdown-stopped", handler);
+    };
+  }
+  
+  return () => {};
+};
+
 export const onRoundStatusChanged = (
   callback: (data: {
     round_number: number;
@@ -898,6 +972,7 @@ export const onCardsEnrolled = (
     enrolled_card_ids: string[];
     user_id: string;
     enrolled_count: number;
+    enrolled_users_count?: number; // Número de usuarios únicos inscritos
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -926,6 +1001,125 @@ export const onCardsEnrolled = (
     
     return () => {
       socket?.off("cards-enrolled", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de reordenamiento de salas (cuando una sala termina y se crea una nueva)
+export const onRoomsReordered = (
+  callback: (data: {
+    rooms: Array<{
+      room_id: string;
+      name: string;
+      orderIndex: number | null;
+    }>;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "rooms" in data &&
+        Array.isArray((data as any).rooms)
+      ) {
+        callback(data as {
+          rooms: Array<{
+            room_id: string;
+            name: string;
+            orderIndex: number | null;
+          }>;
+        });
+      }
+    };
+    
+    socket.on("rooms-reordered", handler);
+    
+    return () => {
+      socket?.off("rooms-reordered", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de limpieza entre rondas
+export const onRoundCleanup = (
+  callback: (data: {
+    room_id: string;
+    previous_round_number: number;
+    next_round_number: number;
+    cleanup_type: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "previous_round_number" in data &&
+        "next_round_number" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          previous_round_number: number;
+          next_round_number: number;
+          cleanup_type: string;
+        });
+      }
+    };
+    
+    socket.on("round-cleanup", handler);
+    
+    return () => {
+      socket?.off("round-cleanup", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// Escuchar evento de partida iniciada
+export const onGameStarted = (
+  callback: (data: {
+    room_id: string;
+    room_name: string;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "room_name" in data
+      ) {
+        callback(data as {
+          room_id: string;
+          room_name: string;
+        });
+      }
+    };
+    
+    socket.on("room-started", handler);
+    
+    return () => {
+      socket?.off("room-started", handler);
     };
   }
   
@@ -964,4 +1158,231 @@ export const reconnect = () => {
   } else {
     connectSocket();
   }
+};
+
+// Lista de callbacks para notification (para re-registrarlos en reconexión)
+const notificationCallbacks = new Set<(notification: {
+  _id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: Record<string, any>;
+  read: boolean;
+  read_at?: string;
+  created_at: string;
+  expires_at?: string;
+}) => void>();
+
+// Función para registrar todos los listeners de notification
+const registerNotificationListeners = () => {
+  if (!socket || !socket.connected) {
+    console.log(`[SocketService] ⏸️ No se pueden re-registrar listeners de notification: socket=${!!socket}, connected=${socket?.connected}`);
+    return;
+  }
+
+  console.log(`[SocketService] 🔄 Re-registrando ${notificationCallbacks.size} listener(s) de notification...`, {
+    socketId: socket.id,
+    connected: socket.connected
+  });
+  
+  // Remover todos los listeners anteriores para evitar duplicados
+  socket.removeAllListeners("notification");
+  
+  notificationCallbacks.forEach((callback) => {
+    const handler = (data: unknown) => {
+      console.log("[SocketService] 📥 Evento 'notification' recibido:", data);
+      if (
+        data &&
+        typeof data === "object" &&
+        "_id" in data &&
+        "type" in data &&
+        "title" in data &&
+        "message" in data
+      ) {
+        console.log("[SocketService] ✅ Datos de notificación válidos, ejecutando callback");
+        callback(data as {
+          _id: string;
+          user_id: string;
+          type: string;
+          title: string;
+          message: string;
+          data?: Record<string, any>;
+          read: boolean;
+          read_at?: string;
+          created_at: string;
+          expires_at?: string;
+        });
+      } else {
+        console.warn("[SocketService] ⚠️ Datos de notificación inválidos:", data);
+      }
+    };
+    
+    if (socket) {
+      socket.on("notification", handler);
+    }
+  });
+  
+  console.log("[SocketService] ✅ Todos los listeners de notification re-registrados", {
+    totalListeners: notificationCallbacks.size,
+    socketId: socket.id
+  });
+};
+
+// Escuchar evento de notificaciones en tiempo real
+export const onNotification = (
+  callback: (notification: {
+    _id: string;
+    user_id: string;
+    type: string;
+    title: string;
+    message: string;
+    data?: Record<string, any>;
+    read: boolean;
+    read_at?: string;
+    created_at: string;
+    expires_at?: string;
+  }) => void
+): (() => void) => {
+  // Agregar callback a la lista
+  notificationCallbacks.add(callback);
+  logger.notification(`📝 Callback agregado a notification (total: ${notificationCallbacks.size})`);
+  
+  // Asegurar que el socket esté conectado
+  const currentSocket = socket || connectSocket();
+  
+  // OPTIMIZACIÓN: Re-registrar listeners si el socket está conectado
+  // Esto asegura que el nuevo callback reciba eventos
+  if (currentSocket.connected) {
+    registerNotificationListeners();
+  } else {
+    // Si no está conectado, esperar a que se conecte y luego registrar
+    const connectHandler = () => {
+      registerNotificationListeners();
+    };
+    currentSocket.once("connect", connectHandler);
+  }
+  
+  return () => {
+    // Remover callback de la lista
+    notificationCallbacks.delete(callback);
+    logger.notification(`🧹 Callback removido de notification (total: ${notificationCallbacks.size})`);
+    
+    // Si no hay más callbacks, remover el listener
+    if (notificationCallbacks.size === 0 && currentSocket) {
+      currentSocket.removeAllListeners("notification");
+      logger.notification("🧹 Listener 'notification' removido (no hay más callbacks)");
+    }
+  };
+};
+
+// Desuscribirse de notificaciones
+export const offNotification = (handler: (data: any) => void) => {
+  if (socket) {
+    socket.off("notification", handler);
+  }
+};
+
+// Lista de callbacks para wallet-updated (para re-registrarlos en reconexión)
+const walletUpdatedCallbacks = new Set<(data: {
+  wallet_id: string;
+  balance: string;
+  frozen_balance: string;
+  currency: string;
+}) => void>();
+
+// Función para registrar todos los listeners de wallet-updated
+const registerWalletUpdatedListeners = () => {
+  if (!socket || !socket.connected) {
+    logger.wallet(`⏸️ No se pueden re-registrar listeners: socket=${!!socket}, connected=${socket?.connected}`);
+    return;
+  }
+
+  logger.wallet(`🔄 Re-registrando ${walletUpdatedCallbacks.size} listener(s) de wallet-updated...`, {
+    socketId: socket.id,
+    connected: socket.connected
+  });
+  
+  // OPTIMIZACIÓN: Remover todos los listeners anteriores para evitar duplicados
+  socket.removeAllListeners("wallet-updated");
+  
+  // OPTIMIZACIÓN: Crear un solo handler que distribuye a todos los callbacks
+  const masterHandler = (data: unknown) => {
+    logger.wallet("📥 Evento wallet-updated recibido:", data);
+    if (
+      data &&
+      typeof data === "object" &&
+      "wallet_id" in data &&
+      "balance" in data
+    ) {
+      logger.wallet("✅ Datos de wallet válidos, ejecutando callbacks");
+      const walletData = data as {
+        wallet_id: string;
+        balance: string;
+        frozen_balance: string;
+        currency: string;
+      };
+      
+      // Ejecutar todos los callbacks
+      walletUpdatedCallbacks.forEach((callback) => {
+        try {
+          callback(walletData);
+        } catch (error) {
+          logger.error("Error ejecutando callback de wallet-updated:", error);
+        }
+      });
+    } else {
+      logger.warn("⚠️ Datos de wallet inválidos:", data);
+    }
+  };
+  
+  if (socket) {
+    socket.on("wallet-updated", masterHandler);
+  }
+  
+  logger.wallet("✅ Todos los listeners de wallet-updated re-registrados", {
+    totalListeners: walletUpdatedCallbacks.size,
+    socketId: socket.id
+  });
+};
+
+// Escuchar evento de actualización de wallet en tiempo real
+export const onWalletUpdated = (
+  callback: (data: {
+    wallet_id: string;
+    balance: string;
+    frozen_balance: string;
+    currency: string;
+  }) => void
+): (() => void) => {
+  // Agregar callback a la lista
+  walletUpdatedCallbacks.add(callback);
+  logger.wallet(`📝 Callback agregado a wallet-updated (total: ${walletUpdatedCallbacks.size})`);
+  
+  // Asegurar que el socket esté conectado
+  const currentSocket = socket || connectSocket();
+  
+  // OPTIMIZACIÓN: Re-registrar listeners si el socket está conectado
+  // Esto asegura que el nuevo callback reciba eventos
+  if (currentSocket.connected) {
+    registerWalletUpdatedListeners();
+  } else {
+    // Si no está conectado, esperar a que se conecte y luego registrar
+    const connectHandler = () => {
+      registerWalletUpdatedListeners();
+    };
+    currentSocket.once("connect", connectHandler);
+  }
+  
+  return () => {
+    // Remover callback de la lista
+    walletUpdatedCallbacks.delete(callback);
+    logger.wallet(`🧹 Callback removido de wallet-updated (total: ${walletUpdatedCallbacks.size})`);
+    
+    // Si no hay más callbacks, remover el listener
+    if (walletUpdatedCallbacks.size === 0 && currentSocket) {
+      currentSocket.removeAllListeners("wallet-updated");
+      logger.wallet("🧹 Listener wallet-updated removido (no hay más callbacks)");
+    }
+  };
 };

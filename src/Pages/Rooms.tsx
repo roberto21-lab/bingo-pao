@@ -2,13 +2,13 @@
 import * as React from "react";
 import { Box, Container, Typography, CircularProgress, Alert } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import BingoLogo from "../Componets/BingoLogo";
-import RoomCard from "../Componets/RoomCard";
-import SectionHeader from "../Componets/SectionHeader";
+import BingoLogo from "../Components/BingoLogo";
+import RoomCard from "../Components/RoomCard";
+import SectionHeader from "../Components/SectionHeader";
 import { getRooms, type Room } from "../Services/rooms.service";
-import BackgroundStars from "../Componets/BackgroundStars";
+import BackgroundStars from "../Components/BackgroundStars";
 import { useAuth } from "../hooks/useAuth";
-import { onRoomStatusUpdated } from "../Services/socket.service";
+import { onRoomStatusUpdated, onRoomsReordered } from "../Services/socket.service";
 
 export default function Rooms() {
   const navigate = useNavigate();
@@ -58,8 +58,23 @@ export default function Rooms() {
       fetchRooms();
     });
 
+    const unsubscribeRoomsReordered = onRoomsReordered((data) => {
+      console.log(`[Rooms] Salas reordenadas:`, data.rooms);
+      // Refrescar salas cuando se reordenen
+      const fetchRooms = async () => {
+        try {
+          const data = await getRooms();
+          setRooms(data);
+        } catch (err: unknown) {
+          console.error("Error al refrescar salas:", err);
+        }
+      };
+      fetchRooms();
+    });
+
     return () => {
       unsubscribeStatusUpdated();
+      unsubscribeRoomsReordered();
     };
   }, []);
 
@@ -102,7 +117,7 @@ export default function Rooms() {
     >
       <BackgroundStars />
 
-      <Container maxWidth="sm" sx={{ py: 4, position: "relative", zIndex: 1 }}>
+      <Container maxWidth="sm" sx={{ pt: "80px", pb: 4, position: "relative", zIndex: 1 }}>
         {/* Header Section */}
         <Box sx={{ textAlign: "center", mb: 4, position: "relative" }}>
           {/* Logo */}
@@ -171,6 +186,9 @@ export default function Rooms() {
                     jackpot={currentRoom.jackpot}
                     players={currentRoom.players}
                     scheduledAt={currentRoom.scheduledAt}
+                    orderIndex={currentRoom.orderIndex}
+                    minPlayers={currentRoom.minPlayers}
+                    enrolledUsersCount={currentRoom.enrolledUsersCount}
                     onJoin={() => handleJoin(currentRoom.id)}
                 />
                 )}

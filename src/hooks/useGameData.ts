@@ -8,9 +8,7 @@ import type { BingoGrid } from "../utils/bingo";
 import type { BingoType } from "../utils/bingoUtils";
 import { mapPatternToBingoType } from "../utils/patternMapper";
 
-function convertCardNumbers(numbers: (number | "FREE")[][]): number[][] {
-  return numbers.map((row) => row.map((num) => (num === "FREE" ? 0 : num)));
-}
+import { convertCardNumbers } from "../utils/gameHelpers";
 
 function parseDecimal(decimal: unknown): number {
   if (!decimal) return 0;
@@ -121,7 +119,9 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
         }
         
         setRoom(roomData);
-        setTotalPot(parseDecimal(roomData.total_pot));
+        // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
+        // Esto asegura que todos los usuarios vean el mismo premio
+        setTotalPot(parseDecimal(roomData.total_prize || roomData.total_pot));
         setTotalRounds(roomData.max_rounds || 3);
         
         // Verificar si la sala está finalizada

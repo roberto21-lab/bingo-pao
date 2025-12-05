@@ -131,11 +131,16 @@ export async function enrollCards(
 }
 
 // GET /cards/room/:roomId/available - obtener cartones disponibles para una sala
-export async function getAvailableCards(roomId: string): Promise<BackendCard[]> {
+// search: término de búsqueda por código (ej: "19" para buscar 0019, 0119, 0419, etc.)
+export async function getAvailableCards(roomId: string, search?: string): Promise<BackendCard[]> {
   try {
-    const response = await api.get<{ success: boolean; data: BackendCard[] }>(
-      `/cards/room/${roomId}/available`
-    );
+    const params = new URLSearchParams();
+    if (search && search.trim().length > 0) {
+      params.append('search', search.trim());
+    }
+    
+    const url = `/cards/room/${roomId}/available${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await api.get<{ success: boolean; data: BackendCard[] }>(url);
 
     if (response.data.success && Array.isArray(response.data.data)) {
       return response.data.data;

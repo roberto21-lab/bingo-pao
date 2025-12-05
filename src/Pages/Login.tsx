@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import * as React from 'react';
-import BingoLogo from '../Componets/BingoLogo';
+import BingoLogo from '../Components/BingoLogo';
 import { loginService } from '../Services/auth.service';
 import { useNavigate, useSearchParams, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
