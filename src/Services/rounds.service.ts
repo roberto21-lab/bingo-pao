@@ -15,6 +15,11 @@ export type BackendRound = {
     category: string;
   } | string;
   prize_percent: number;
+  reward?: {
+    percent: number;
+    amount: number;
+    pattern: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
 };

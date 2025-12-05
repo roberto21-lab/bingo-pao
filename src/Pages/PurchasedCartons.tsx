@@ -1,7 +1,7 @@
 // src/Pages/PurchasedCartons.tsx
 import * as React from "react";
 import { Container, Box, Typography, Chip } from "@mui/material";
-import BingoCard from "../Componets/BingoCard";
+import BingoCard from "../Components/BingoCard";
 
 /** ====== DEMO DATA (siempre mock) ====== */
 type DemoCard = { id: string; grid: number[][] };
@@ -48,7 +48,7 @@ const DEMO_CALLED = [3, 7, 12, 18, 22, 34, 45, 52, 60, 71];
 
 export default function PurchasedCartons() {
   return (
-    <Container maxWidth="lg" sx={{ py: 3 }}>
+    <Container maxWidth="lg" sx={{ pt: "80px", pb: 3 }}>
       {/* Barra de números llamados */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h6" fontWeight={800}>

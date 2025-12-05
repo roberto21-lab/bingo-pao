@@ -5,39 +5,30 @@ import {
   Button,
   Stack,
   CircularProgress,
-  Chip,
 } from "@mui/material";
 import { useNavigate, useLocation } from "react-router-dom";
 import * as React from "react";
-import BingoLogo from "../Componets/BingoLogo";
-import BalanceCard from "../Componets/BalanceCard";
-import ActiveRoomCard from "../Componets/ActiveRoomCard";
-import SectionHeader from "../Componets/SectionHeader";
-import { getUserRooms } from "../Services/cards.service";
-import { getRoomById, getRooms, type Room } from "../Services/rooms.service";
-import { getRoomRounds } from "../Services/rounds.service";
+import BingoLogo from "../Components/BingoLogo";
+import BalanceCard from "../Components/BalanceCard";
+import ActiveRoomCard from "../Components/ActiveRoomCard";
+import SectionHeader from "../Components/SectionHeader";
+import { getRooms, type Room, getUserActiveRooms } from "../Services/rooms.service";
 import { getUserId } from "../Services/auth.service";
 import { useAuth } from "../hooks/useAuth";
-import AuthToast from "../Componets/AuthToast";
-import SuccessToast from "../Componets/SuccessToast";
-import ErrorToast from "../Componets/ErrorToast";
-import AvailableRoomsPreview from "../Componets/AvailableRoomsPreview";
-import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
-import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
+import AuthToast from "../Components/AuthToast";
+import SuccessToast from "../Components/SuccessToast";
+import ErrorToast from "../Components/ErrorToast";
+import AvailableRoomsPreview from "../Components/AvailableRoomsPreview";
+import { MobilePaymentReportDialog } from "../Components/MobilePaymentReportDialog";
+import { WithdrawRequestDialog } from "../Components/WithdrawRequestDialog";
 import { getWalletByUser } from "../Services/wallets.service";
 import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount, type BankAccount } from "../Services/bankAccounts.service";
 import { getUserById } from "../Services/users.service";
-import { onRoomPrizeUpdated, onRoomsReordered, joinRoom, leaveRoom, onWalletUpdated } from "../Services/socket.service";
-
-type ActiveRoom = {
-  id: string;
-  title: string;
-  status: "active" | "waiting" | "finished";
-  prizeAmount: number;
-  currency: string;
-  currentRound?: number; // Número de ronda actual si la sala no está finalizada
-  currentPattern?: string; // Pattern de la ronda actual si la sala está activa
-};
+import { onRoomPrizeUpdated, onRoomsReordered, joinRoom, leaveRoom } from "../Services/socket.service";
+import { homeStyles } from "../styles/home.styles";
+import type { ActiveRoom, UserProfile, WithdrawFormData, WalletUpdateData } from "../types/home.types";
+import { mapOptimizedToActiveRoom } from "../types/home.types";
+import { translateError, translateActiveRoomsError } from "../utils/errorTranslator";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -52,7 +43,7 @@ export default function Home() {
   const [frozenBalance, setFrozenBalance] = React.useState<number>(0);
   const [walletLoading, setWalletLoading] = React.useState(false);
   const [bankAccount, setBankAccount] = React.useState<BankAccount | null>(null);
-  const [userProfile, setUserProfile] = React.useState<{ document_type_id?: { _id: string; code: string }; document_number?: string; phone?: string } | null>(null);
+  const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
 
   const BANKS = [
     "Banco de Venezuela",
@@ -65,27 +56,20 @@ export default function Home() {
   ];
   const [currentRoomIndex, setCurrentRoomIndex] = React.useState(0);
 
-  // Obtener información del usuario autenticado
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const userId = user?.id || getUserId() || null;
 
-  // Mostrar toast solo cuando el usuario acaba de hacer login
   React.useEffect(() => {
-    // Verificar si hay una marca de login reciente en sessionStorage
     const justLoggedIn = sessionStorage.getItem("justLoggedIn") === "true";
     
     if (justLoggedIn && isAuthenticated) {
-      // Mostrar el toaster solo si acaba de hacer login
     setShowToast(true);
-      // Eliminar la marca para que no se muestre de nuevo
       sessionStorage.removeItem("justLoggedIn");
     } else {
-      // Si no acaba de hacer login, no mostrar el toaster
       setShowToast(false);
     }
   }, [isAuthenticated, user]);
 
-  // Cargar wallet del usuario cuando esté autenticado
   React.useEffect(() => {
     const fetchWallet = async () => {
       if (!userId || !isAuthenticated) {
@@ -97,13 +81,9 @@ export default function Home() {
       try {
         setWalletLoading(true);
         const wallet = await getWalletByUser(userId);
-        // El balance ya está reducido por retiros pendientes en el backend
-        // El balance disponible es simplemente el balance (ya incluye la reducción de retiros pendientes)
         setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
-      } catch (error) {
-        console.error("Error al cargar wallet:", error);
-        // Si no hay wallet, mantener valores en 0
+      } catch {
         setAvailableBalance(0);
         setFrozenBalance(0);
       } finally {
@@ -116,27 +96,38 @@ export default function Home() {
     }
   }, [userId, isAuthenticated, authLoading]);
 
-  // Escuchar actualizaciones de wallet en tiempo real
   React.useEffect(() => {
     if (!isAuthenticated || !userId) {
       return;
     }
 
-    console.log("[Home] 🔌 Configurando listener wallet-updated...");
-    
-    const unsubscribe = onWalletUpdated((data) => {
-      console.log("[Home] 💰 Wallet actualizado en tiempo real:", data);
-      setAvailableBalance(parseFloat(data.balance) || 0);
-      setFrozenBalance(parseFloat(data.frozen_balance) || 0);
+    const setupListener = async () => {
+      const { onWalletUpdated } = await import("../Services/socket.service");
+      const { throttle } = await import("../utils/throttle");
+      const throttledUpdate = throttle((data: WalletUpdateData) => {
+        setAvailableBalance(parseFloat(data.balance || "0") || 0);
+        setFrozenBalance(parseFloat(data.frozen_balance || "0") || 0);
+      }, 1000);
+      
+      const unsubscribe = onWalletUpdated((data) => {
+        throttledUpdate(data);
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | null = null;
+    setupListener().then((unsub) => {
+      unsubscribe = unsub;
     });
 
     return () => {
-      console.log("[Home] 🧹 Limpiando listener wallet-updated");
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, [isAuthenticated, userId]);
 
-  // Cargar cuenta bancaria y perfil del usuario
   React.useEffect(() => {
     const fetchBankAccountAndProfile = async () => {
       if (!userId || !isAuthenticated) {
@@ -146,7 +137,6 @@ export default function Home() {
       }
 
       try {
-        // Cargar cuenta bancaria
         try {
           const account = await getBankAccountByUser(userId);
           setBankAccount(account);
@@ -154,25 +144,22 @@ export default function Home() {
           if (error && typeof error === "object" && "response" in error) {
             const httpError = error as { response?: { status?: number } };
             if (httpError.response?.status !== 404) {
-              console.error("Error al cargar cuenta bancaria:", error);
+              // Error silencioso para 404
             }
-          } else {
-            console.error("Error al cargar cuenta bancaria:", error);
           }
           setBankAccount(null);
         }
 
-        // Cargar perfil del usuario
         try {
           const userData = await getUserById(userId);
           if (userData?.profile) {
             setUserProfile(userData.profile);
           }
-        } catch (error) {
-          console.error("Error al cargar perfil:", error);
+        } catch {
+          // Error silencioso
         }
-      } catch (error) {
-        console.error("Error al cargar datos del usuario:", error);
+      } catch {
+        // Error silencioso
       }
     };
 
@@ -181,7 +168,6 @@ export default function Home() {
     }
   }, [userId, isAuthenticated, authLoading]);
 
-  // Cargar salas disponibles cuando no hay usuario logueado
   React.useEffect(() => {
     const fetchAvailableRooms = async () => {
       if (isAuthenticated) {
@@ -191,13 +177,12 @@ export default function Home() {
 
       try {
         const rooms = await getRooms();
-        // Filtrar solo las salas que están esperando jugadores o en progreso
         const filteredRooms = rooms.filter(
           (room) => room.status === "waiting" || room.status === "in_progress"
         );
         setAvailableRooms(filteredRooms);
       } catch {
-        setError("Error al cargar salas disponibles");
+        setError("Error al cargar las salas disponibles. Por favor, intenta nuevamente.");
       }
     };
 
@@ -206,450 +191,99 @@ export default function Home() {
     }
   }, [isAuthenticated, authLoading]);
 
-  // Cargar partidas activas del usuario
-  React.useEffect(() => {
-    const fetchActiveRooms = async () => {
-      // Solo cargar si hay usuario autenticado
-      if (!userId || !isAuthenticated) {
+  const lastFetchRef = React.useRef<number>(Date.now() - 60000);
+  const isFetchingRef = React.useRef<boolean>(false);
+
+  const fetchActiveRoomsOptimized = React.useCallback(async (force: boolean = false, showLoading: boolean = false) => {
+    if (!userId || !isAuthenticated) {
+      setActiveRooms([]);
+      if (showLoading) setLoading(false);
+      return;
+    }
+
+    if (isFetchingRef.current && !force) {
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastFetch = now - lastFetchRef.current;
+    
+    if (!force && timeSinceLastFetch < 30000) {
+      if (showLoading) setLoading(false);
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      if (showLoading) {
+        setLoading(true);
+        setError(null);
+      }
+
+      const optimizedRooms = await getUserActiveRooms(userId);
+
+      if (optimizedRooms.length === 0) {
         setActiveRooms([]);
-        setLoading(false);
+        if (showLoading) setLoading(false);
         return;
       }
 
-      try {
-        setLoading(true);
-        setError(null);
+      const roomsData: ActiveRoom[] = optimizedRooms.map(mapOptimizedToActiveRoom);
 
-        // Obtener todas las rooms en las que el usuario tiene cartones
-        const roomIds = await getUserRooms(userId);
-        console.log("🔍 Room IDs obtenidos:", roomIds);
-
-        if (roomIds.length === 0) {
-          console.log("⚠️ No se encontraron salas para el usuario");
-          setActiveRooms([]);
-          setLoading(false);
-          return;
-        }
-
-        // Para cada room, obtener su información y determinar el estado
-        const roomsData: (ActiveRoom | null)[] = await Promise.all(
-          roomIds.map(async (roomId) => {
-            try {
-              // Obtener información de la room
-              const room: Room = await getRoomById(roomId);
-
-              // Obtener rounds para determinar la ronda actual y el patrón
-              const rounds = await getRoomRounds(roomId);
-
-              // CRÍTICO: Usar el status real de la sala, no inferirlo de los rounds
-              // Esto asegura que todas las páginas muestren el mismo status
-              let status: "active" | "waiting" | "finished" = "waiting";
-              const roomStatus = room.status;
-              
-              if (roomStatus === "in_progress" || roomStatus === "preparing") {
-                status = "active";
-              } else if (roomStatus === "locked") {
-                status = "finished";
-              } else {
-                status = "waiting";
-              }
-
-              // Obtener la ronda actual y el patrón basándose en el status de la sala y los rounds
-              let currentRound: number | undefined = undefined;
-              let currentPattern: string | undefined = undefined;
-
-              if (rounds.length > 0) {
-                if (status === "active") {
-                  // Si la sala está activa, buscar el round en progreso o en countdown (starting)
-                const activeRound = rounds.find((round) => {
-                  const statusObj =
-                    typeof round.status_id === "object" && round.status_id
-                      ? round.status_id
-                      : null;
-                    return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
-                });
-
-                if (activeRound) {
-                  currentRound = activeRound.round_number;
-                    // Obtener el pattern de la ronda activa
-                  if (activeRound.pattern_id) {
-                    if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
-                      currentPattern = activeRound.pattern_id.name;
-                    }
-                  }
-                } else {
-                    // Si no hay round activo pero la sala está activa, mostrar el último round creado
-                  const sortedRounds = [...rounds].sort(
-                    (a, b) => b.round_number - a.round_number
-                  );
-                  if (sortedRounds.length > 0) {
-                    currentRound = sortedRounds[0].round_number;
-                      if (sortedRounds[0].pattern_id) {
-                        if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                          currentPattern = sortedRounds[0].pattern_id.name;
-                        }
-                      }
-                    }
-                  }
-                } else if (status === "finished") {
-                  // Si la sala está finalizada, mostrar el último round
-                  const sortedRounds = [...rounds].sort(
-                    (a, b) => b.round_number - a.round_number
-                  );
-                  if (sortedRounds.length > 0) {
-                    currentRound = sortedRounds[0].round_number;
-                    if (sortedRounds[0].pattern_id) {
-                      if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                        currentPattern = sortedRounds[0].pattern_id.name;
-                      }
-                  }
-                }
-              } else {
-                  // Si la sala está esperando, mostrar el primer round si existe
-                  const sortedRounds = [...rounds].sort(
-                    (a, b) => a.round_number - b.round_number
-                  );
-                  if (sortedRounds.length > 0) {
-                    currentRound = sortedRounds[0].round_number;
-                    if (sortedRounds[0].pattern_id) {
-                      if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                        currentPattern = sortedRounds[0].pattern_id.name;
-                      }
-                    }
-                  }
-                }
-              }
-
-              return {
-                id: room.id,
-                title: room.title,
-                status,
-                prizeAmount: room.estimatedPrize || room.jackpot || 0,
-                currency: room.currency,
-                currentRound,
-                currentPattern,
-              };
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        // Filtrar nulls y ordenar: active primero, luego waiting, luego finished
-        const validRooms = roomsData
-          .filter((room): room is ActiveRoom => room !== null)
-          .sort((a, b) => {
-            const order = { active: 0, waiting: 1, finished: 2 };
-            return order[a.status] - order[b.status];
-          });
-
-        console.log("✅ Salas válidas encontradas:", validRooms);
-        setActiveRooms(validRooms);
-        setCurrentRoomIndex(0); // Resetear al índice inicial cuando se cargan las salas
-      } catch (err) {
-        console.error("❌ Error al cargar partidas activas:", err);
-        const errorMessage =
-          err && typeof err === "object" && "message" in err
-            ? String(err.message)
-            : "Error al cargar las partidas activas. Por favor, intenta nuevamente.";
+      setActiveRooms(roomsData);
+      setCurrentRoomIndex(0);
+      lastFetchRef.current = Date.now();
+    } catch (err) {
+      if (showLoading) {
+        const errorMessage = translateActiveRoomsError(err);
         setError(errorMessage);
-      } finally {
-        setLoading(false);
       }
-    };
-
-    fetchActiveRooms();
+    } finally {
+      isFetchingRef.current = false;
+      if (showLoading) setLoading(false);
+    }
   }, [userId, isAuthenticated]);
 
-  // Refrescar salas activas cuando el usuario navega de vuelta al Home
+  const hasInitialLoadRef = React.useRef(false);
   React.useEffect(() => {
-    if (userId && isAuthenticated && location.pathname === "/") {
-      const fetchActiveRooms = async () => {
-        try {
-          const roomIds = await getUserRooms(userId);
-
-          if (roomIds.length === 0) {
-            setActiveRooms([]);
-            return;
-          }
-
-          // Para cada room, obtener su información y determinar el estado
-          const roomsData: (ActiveRoom | null)[] = await Promise.all(
-            roomIds.map(async (roomId) => {
-              try {
-                // Obtener información de la room
-                const room: Room = await getRoomById(roomId);
-
-                // Obtener rounds para determinar el estado
-                const rounds = await getRoomRounds(roomId);
-
-                // CRÍTICO: Usar el status real de la sala, no inferirlo de los rounds
-                // Esto asegura que todas las páginas muestren el mismo status
-                let status: "active" | "waiting" | "finished" = "waiting";
-                const roomStatus = room.status;
-                
-                if (roomStatus === "in_progress" || roomStatus === "preparing") {
-                  status = "active";
-                } else if (roomStatus === "locked") {
-                  status = "finished";
-                } else {
-                  status = "waiting";
-                }
-
-                // Obtener la ronda actual y el patrón basándose en el status de la sala y los rounds
-                let currentRound: number | undefined = undefined;
-                let currentPattern: string | undefined = undefined;
-
-                if (rounds.length > 0) {
-                  if (status === "active") {
-                    // Si la sala está activa, buscar el round en progreso o en countdown (starting)
-                  const activeRound = rounds.find((round) => {
-                    const statusObj =
-                      typeof round.status_id === "object" && round.status_id
-                        ? round.status_id
-                        : null;
-                      return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
-                  });
-
-                  if (activeRound) {
-                    currentRound = activeRound.round_number;
-                      // Obtener el pattern de la ronda activa
-                    if (activeRound.pattern_id) {
-                      if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
-                        currentPattern = activeRound.pattern_id.name;
-                      }
-                    }
-                  } else {
-                      // Si no hay round activo pero la sala está activa, mostrar el último round creado
-                    const sortedRounds = [...rounds].sort(
-                      (a, b) => b.round_number - a.round_number
-                    );
-                    if (sortedRounds.length > 0) {
-                      currentRound = sortedRounds[0].round_number;
-                        if (sortedRounds[0].pattern_id) {
-                          if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                            currentPattern = sortedRounds[0].pattern_id.name;
-                          }
-                        }
-                      }
-                    }
-                  } else if (status === "finished") {
-                    // Si la sala está finalizada, mostrar el último round
-                    const sortedRounds = [...rounds].sort(
-                      (a, b) => b.round_number - a.round_number
-                    );
-                    if (sortedRounds.length > 0) {
-                      currentRound = sortedRounds[0].round_number;
-                      if (sortedRounds[0].pattern_id) {
-                        if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                          currentPattern = sortedRounds[0].pattern_id.name;
-                        }
-                      }
-                    }
-                  } else {
-                    // Si la sala está esperando, mostrar el primer round si existe
-                    const sortedRounds = [...rounds].sort(
-                      (a, b) => a.round_number - b.round_number
-                    );
-                    if (sortedRounds.length > 0) {
-                      currentRound = sortedRounds[0].round_number;
-                      if (sortedRounds[0].pattern_id) {
-                        if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                          currentPattern = sortedRounds[0].pattern_id.name;
-                        }
-                      }
-                    }
-                  }
-                }
-
-                return {
-                  id: room.id,
-                  title: room.title,
-                  status,
-                  prizeAmount: room.estimatedPrize || room.jackpot || 0,
-                  currency: room.currency,
-                  currentRound,
-                  currentPattern,
-                };
-              } catch {
-                return null;
-              }
-            })
-          );
-
-          // Filtrar nulls y ordenar: active primero, luego waiting, luego finished
-          const validRooms = roomsData
-            .filter((room): room is ActiveRoom => room !== null)
-            .sort((a, b) => {
-              const order = { active: 0, waiting: 1, finished: 2 };
-              return order[a.status] - order[b.status];
-            });
-
-          setActiveRooms(validRooms);
-          setCurrentRoomIndex(0); // Resetear al índice inicial cuando se refrescan las salas
-        } catch (err) {
-          console.error("Error al refrescar salas activas:", err);
-        }
-      };
-
-      fetchActiveRooms();
+    if (!userId || !isAuthenticated || location.pathname !== "/") {
+      return;
     }
-  }, [location.pathname, userId, isAuthenticated]);
 
-  // Refrescar salas activas cuando el usuario vuelve a la página
+    if (!hasInitialLoadRef.current) {
+      hasInitialLoadRef.current = true;
+      fetchActiveRoomsOptimized(false, true);
+    } else {
+      fetchActiveRoomsOptimized();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, isAuthenticated, location.pathname]);
+
+  const fetchActiveRoomsRef = React.useRef(fetchActiveRoomsOptimized);
+  React.useEffect(() => {
+    fetchActiveRoomsRef.current = fetchActiveRoomsOptimized;
+  }, [fetchActiveRoomsOptimized]);
+
   React.useEffect(() => {
     const handleFocus = () => {
-      if (userId && isAuthenticated) {
-        // Refrescar las salas activas cuando el usuario vuelve a la página
-        const fetchActiveRooms = async () => {
-          try {
-            const roomIds = await getUserRooms(userId);
-
-            if (roomIds.length === 0) {
-              setActiveRooms([]);
-              return;
-            }
-
-            // Para cada room, obtener su información y determinar el estado
-            const roomsData: (ActiveRoom | null)[] = await Promise.all(
-              roomIds.map(async (roomId) => {
-                try {
-                  // Obtener información de la room
-                  const room: Room = await getRoomById(roomId);
-
-                  // Obtener rounds para determinar el estado
-                  const rounds = await getRoomRounds(roomId);
-
-                  // CRÍTICO: Usar el status real de la sala, no inferirlo de los rounds
-                  // Esto asegura que todas las páginas muestren el mismo status
-                  let status: "active" | "waiting" | "finished" = "waiting";
-                  const roomStatus = room.status;
-                  
-                  if (roomStatus === "in_progress" || roomStatus === "preparing") {
-                    status = "active";
-                  } else if (roomStatus === "locked") {
-                    status = "finished";
-                  } else {
-                    status = "waiting";
-                  }
-
-                  // Obtener la ronda actual y el patrón basándose en el status de la sala y los rounds
-                  let currentRound: number | undefined = undefined;
-                  let currentPattern: string | undefined = undefined;
-
-                  if (rounds.length > 0) {
-                    if (status === "active") {
-                      // Si la sala está activa, buscar el round en progreso o en countdown (starting)
-                    const activeRound = rounds.find((round) => {
-                      const statusObj =
-                        typeof round.status_id === "object" && round.status_id
-                          ? round.status_id
-                          : null;
-                        return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
-                    });
-
-                    if (activeRound) {
-                      currentRound = activeRound.round_number;
-                        // Obtener el pattern de la ronda activa
-                      if (activeRound.pattern_id) {
-                        if (typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
-                          currentPattern = activeRound.pattern_id.name;
-                        }
-                      }
-                    } else {
-                        // Si no hay round activo pero la sala está activa, mostrar el último round creado
-                      const sortedRounds = [...rounds].sort(
-                        (a, b) => b.round_number - a.round_number
-                      );
-                      if (sortedRounds.length > 0) {
-                        currentRound = sortedRounds[0].round_number;
-                          if (sortedRounds[0].pattern_id) {
-                            if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                              currentPattern = sortedRounds[0].pattern_id.name;
-                            }
-                          }
-                        }
-                      }
-                    } else if (status === "finished") {
-                      // Si la sala está finalizada, mostrar el último round
-                      const sortedRounds = [...rounds].sort(
-                        (a, b) => b.round_number - a.round_number
-                      );
-                      if (sortedRounds.length > 0) {
-                        currentRound = sortedRounds[0].round_number;
-                        if (sortedRounds[0].pattern_id) {
-                          if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                            currentPattern = sortedRounds[0].pattern_id.name;
-                          }
-                      }
-                    }
-                  } else {
-                      // Si la sala está esperando, mostrar el primer round si existe
-                      const sortedRounds = [...rounds].sort(
-                        (a, b) => a.round_number - b.round_number
-                      );
-                      if (sortedRounds.length > 0) {
-                        currentRound = sortedRounds[0].round_number;
-                        if (sortedRounds[0].pattern_id) {
-                          if (typeof sortedRounds[0].pattern_id === "object" && "name" in sortedRounds[0].pattern_id) {
-                            currentPattern = sortedRounds[0].pattern_id.name;
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  return {
-                    id: room.id,
-                    title: room.title,
-                    status,
-                    prizeAmount: room.estimatedPrize || room.jackpot || 0,
-                    currency: room.currency,
-                    currentRound,
-                    currentPattern,
-                  };
-                } catch {
-                  return null;
-                }
-              })
-            );
-
-            // Filtrar nulls y ordenar: active primero, luego waiting, luego finished
-            const validRooms = roomsData
-              .filter((room): room is ActiveRoom => room !== null)
-              .sort((a, b) => {
-                const order = { active: 0, waiting: 1, finished: 2 };
-                return order[a.status] - order[b.status];
-              });
-
-            setActiveRooms(validRooms);
-            setCurrentRoomIndex(0); // Resetear al índice inicial cuando se refrescan las salas
-          } catch (err) {
-            console.error("Error al refrescar salas activas:", err);
-          }
-        };
-
-        fetchActiveRooms();
+      if (userId && isAuthenticated && location.pathname === "/") {
+        fetchActiveRoomsRef.current();
       }
     };
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [userId, isAuthenticated]);
+  }, [userId, isAuthenticated, location.pathname]);
 
-  // Unirse a todas las salas (activas y disponibles) para recibir actualizaciones en tiempo real
   React.useEffect(() => {
-    // Unirse a todas las salas activas
     activeRooms.forEach((room) => {
       joinRoom(room.id);
     });
 
-    // Unirse a todas las salas disponibles
     availableRooms.forEach((room) => {
       joinRoom(room.id);
     });
 
-    // Limpiar al desmontar o cuando cambien las salas
     return () => {
       activeRooms.forEach((room) => {
         leaveRoom(room.id);
@@ -660,33 +294,27 @@ export default function Home() {
     };
   }, [activeRooms, availableRooms]);
 
-  // Escuchar actualizaciones de premio en tiempo real para todas las salas
   React.useEffect(() => {
     const unsubscribePrizeUpdated = onRoomPrizeUpdated((data) => {
-      console.log(`[Home] Premio actualizado para sala ${data.room_name}: Total pot: ${data.total_pot}, Prize pool: ${data.total_prize}`);
-      // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
-      // Esto asegura que todos los usuarios vean el mismo premio
-      // Actualizar el premio de la sala en la lista de salas activas
       setActiveRooms((prevRooms) => {
         return prevRooms.map((room) => {
           if (room.id === data.room_id) {
             return {
               ...room,
-              prizeAmount: data.total_prize, // Usar total_prize (premio real que se distribuye)
+              prizeAmount: data.total_prize,
             };
           }
           return room;
         });
       });
       
-      // También actualizar el premio en las salas disponibles
       setAvailableRooms((prevRooms) => {
         return prevRooms.map((room) => {
           if (room.id === data.room_id) {
             return {
               ...room,
-              estimatedPrize: data.total_prize, // Usar total_prize (premio real que se distribuye)
-              jackpot: data.total_prize, // También actualizar jackpot para consistencia
+              estimatedPrize: data.total_prize,
+              jackpot: data.total_prize,
             };
           }
           return room;
@@ -694,70 +322,23 @@ export default function Home() {
       });
     });
 
-    const unsubscribeRoomsReordered = onRoomsReordered((data) => {
-      console.log(`[Home] Salas reordenadas:`, data.rooms);
-      // Refrescar salas cuando se reordenen
-      const refreshRooms = async () => {
-        try {
-          if (userId && isAuthenticated) {
-            // Refrescar salas activas del usuario
-            const roomIds = await getUserRooms(userId);
-            if (roomIds.length > 0) {
-              const roomsData: (ActiveRoom | null)[] = await Promise.all(
-                roomIds.map(async (roomId) => {
-                  try {
-                    const room: Room = await getRoomById(roomId);
-                    const rounds = await getRoomRounds(roomId);
-                    let status: "active" | "waiting" | "finished" = "waiting";
-                    const roomStatus = room.status;
-                    if (roomStatus === "in_progress" || roomStatus === "preparing") {
-                      status = "active";
-                    } else if (roomStatus === "locked") {
-                      status = "finished";
-                    }
-                    let currentRound: number | undefined = undefined;
-                    let currentPattern: string | undefined = undefined;
-                    if (rounds.length > 0 && status === "active") {
-                      const activeRound = rounds.find((round) => {
-                        const statusObj = typeof round.status_id === "object" && round.status_id ? round.status_id : null;
-                        return statusObj?.name === "in_progress" || statusObj?.name === "starting" || statusObj?.name === "bingo_claimed";
-                      });
-                      if (activeRound) {
-                        currentRound = activeRound.round_number;
-                        if (activeRound.pattern_id && typeof activeRound.pattern_id === "object" && "name" in activeRound.pattern_id) {
-                          currentPattern = activeRound.pattern_id.name;
-                        }
-                      }
-                    }
-                    return {
-                      id: room.id,
-                      title: room.title,
-                      status,
-                      prizeAmount: room.estimatedPrize,
-                      currency: room.currency,
-                      currentRound,
-                      currentPattern,
-                    };
-                  } catch {
-                    return null;
-                  }
-                })
-              );
-              const validRooms = roomsData.filter((room): room is ActiveRoom => room !== null);
-              setActiveRooms(validRooms);
-            }
-          }
-          // Refrescar salas disponibles
-          if (!isAuthenticated) {
+    const unsubscribeRoomsReordered = onRoomsReordered(() => {
+      if (userId && isAuthenticated) {
+        fetchActiveRoomsRef.current(true);
+      }
+      
+      if (!isAuthenticated) {
+        const refreshAvailable = async () => {
+          try {
             const rooms = await getRooms();
             const filteredRooms = rooms.filter((room) => room.status === "waiting" || room.status === "in_progress");
             setAvailableRooms(filteredRooms);
+          } catch {
+            // Error silencioso
           }
-        } catch (err) {
-          console.error("Error al refrescar salas después de reordenamiento:", err);
-        }
-      };
-      refreshRooms();
+        };
+        refreshAvailable();
+      }
     });
 
     return () => {
@@ -789,41 +370,32 @@ export default function Home() {
   const submitReport = async () => {
     setError(null);
     
-    // La validación y creación de la transacción se hace en el modal
-    // Aquí solo recargamos el wallet y la cuenta bancaria para actualizar los balances
     try {
       if (userId) {
         const wallet = await getWalletByUser(userId);
         setAvailableBalance(wallet.balance || 0);
         setFrozenBalance(wallet.frozen_balance || 0);
         
-        // Recargar también la cuenta bancaria (puede haberse creado automáticamente)
         try {
           const account = await getBankAccountByUser(userId);
           setBankAccount(account);
         } catch (error: unknown) {
-          // Si no hay cuenta bancaria, está bien (puede que no se haya creado)
           if (error && typeof error === "object" && "response" in error) {
             const httpError = error as { response?: { status?: number } };
             if (httpError.response?.status !== 404) {
-              console.error("Error al obtener cuenta bancaria:", error);
+              // Error silencioso para 404
             }
           }
         }
       }
       
-      // Mostrar toaster de éxito
       setShowRechargeSuccessToast(true);
     } catch (error) {
-      console.error("Error al recargar wallet después del reporte:", error);
-      const errorMessage = error instanceof Error ? error.message : "Error al procesar la recarga";
+      const errorMessage = translateError(error, "Error al procesar la recarga. Por favor, intenta nuevamente.");
       setRechargeErrorMessage(errorMessage);
       setShowRechargeErrorToast(true);
-      // Re-lanzar el error para que el modal no se cierre
       throw error;
     }
-
-    // El modal se cierra automáticamente después de que esta función termine exitosamente
   };
 
   const [openWithdrawRequestDialog, setOpenWithdrawRequestDialog] =
@@ -836,14 +408,7 @@ export default function Home() {
   const [showWithdrawErrorToast, setShowWithdrawErrorToast] = React.useState(false);
   const [withdrawErrorMessage, setWithdrawErrorMessage] = React.useState<string>("");
 
-  const handleSubmitWithdrawRequestDialog = async (formData: {
-    bankName: string;
-    document_type_id: string;
-    docId: string;
-    phone: string;
-    amount: string;
-    notes: string;
-  }) => {
+  const handleSubmitWithdrawRequestDialog = async (formData: WithdrawFormData) => {
     if (!userId) {
       setWithdrawError("No se pudo identificar al usuario");
       return;
@@ -852,93 +417,70 @@ export default function Home() {
     try {
       setWithdrawError(null);
 
-      // Si no hay cuenta bancaria, crear una nueva junto con la transacción
       if (!bankAccount) {
-        // Validar que el perfil tenga los datos necesarios
         if (!userProfile?.document_type_id || !userProfile?.document_number || !userProfile?.phone) {
           setWithdrawError("Debe completar su perfil con documento y teléfono antes de retirar fondos");
-      return;
-    }
+          return;
+        }
 
-        // Validar que los datos del formulario coincidan con el perfil
         const profileDocTypeId = userProfile.document_type_id._id;
         
         if (profileDocTypeId !== formData.document_type_id) {
           setWithdrawError("El tipo de documento no coincide con el registrado en su perfil");
-      return;
-    }
+          return;
+        }
 
         if (userProfile.document_number !== formData.docId) {
           setWithdrawError("El número de documento no coincide con el registrado en su perfil");
-      return;
-    }
+          return;
+        }
 
         if (userProfile.phone !== formData.phone) {
           setWithdrawError("El número de teléfono no coincide con el registrado en su perfil");
           return;
         }
 
-        // Validar que bankName esté completo
         if (!formData.bankName) {
           setWithdrawError("Debe seleccionar un banco");
           return;
         }
 
-        // Crear cuenta bancaria y transacción de retiro (sin account_number)
         const result = await createBankAccountWithWithdraw({
           userId,
           bank_name: formData.bankName,
-          account_number: "", // Ya no se requiere
+          account_number: "",
           phone_number: formData.phone,
           document_number: formData.docId,
           document_type_id: formData.document_type_id,
           amount: parseFloat(formData.amount)
         });
 
-        // Actualizar balances (el balance ya está reducido por retiros pendientes en el backend)
         setAvailableBalance(Math.max(0, result.new_balance || 0));
         setFrozenBalance(result.new_frozen_balance);
-        
-        // Actualizar cuenta bancaria
         setBankAccount(result.bank_account);
 
-        // Recargar wallet para asegurar sincronización
         const wallet = await getWalletByUser(userId);
         setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
 
-        // Mostrar toaster de éxito
         setShowWithdrawSuccessToast(true);
         setOpenWithdrawRequestDialog(false);
       } else {
-        // Ya hay cuenta bancaria, solo crear la transacción de retiro
         const { createWithdrawOnly } = await import("../Services/bankAccounts.service");
         const result = await createWithdrawOnly(userId, parseFloat(formData.amount));
 
-        // Actualizar balances (el balance ya está reducido por retiros pendientes en el backend)
         setAvailableBalance(Math.max(0, result.new_balance || 0));
         setFrozenBalance(result.new_frozen_balance);
         
-        // Recargar wallet para asegurar sincronización
         const wallet = await getWalletByUser(userId);
         setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
 
-        // Mostrar toaster de éxito
         setShowWithdrawSuccessToast(true);
         setOpenWithdrawRequestDialog(false);
       }
     } catch (error: unknown) {
-      console.error("Error al procesar retiro:", error);
-      let errorMessage = "Error al procesar la solicitud de retiro";
-      if (error && typeof error === "object") {
-        if ("response" in error) {
-          const httpError = error as { response?: { data?: { message?: string } } };
-          errorMessage = httpError.response?.data?.message || errorMessage;
-        } else if ("message" in error) {
-          errorMessage = String(error.message);
-        }
-      }
+      const errorMessage = translateError(error, "Error al procesar la solicitud de retiro. Por favor, intenta nuevamente.");
       setWithdrawError(errorMessage);
       setWithdrawErrorMessage(errorMessage);
       setShowWithdrawErrorToast(true);
@@ -951,34 +493,19 @@ export default function Home() {
     try {
       await deleteBankAccount(bankAccount._id);
       setBankAccount(null);
-      // Recargar wallet
       if (userId) {
         const wallet = await getWalletByUser(userId);
         setAvailableBalance(Math.max(0, wallet.balance || 0));
         setFrozenBalance(wallet.frozen_balance || 0);
       }
     } catch (error: unknown) {
-      console.error("Error al eliminar cuenta bancaria:", error);
-      let errorMessage = "Error al eliminar la cuenta bancaria";
-      if (error && typeof error === "object" && "response" in error) {
-        const httpError = error as { response?: { data?: { message?: string } } };
-        errorMessage = httpError.response?.data?.message || errorMessage;
-      }
+      const errorMessage = translateError(error, "Error al eliminar la cuenta bancaria. Por favor, intenta nuevamente.");
       setWithdrawError(errorMessage);
     }
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        background: "transparent",
-        color: "#f5e6d3",
-        paddingBottom: "80px",
-        position: "relative",
-      }}
-    >
-      {/* Auth Toast Notification - positioned absolutely at top */}
+    <Box sx={homeStyles.pageContainer}>
       {!authLoading && showToast && (
         <AuthToast
           isAuthenticated={isAuthenticated}
@@ -987,54 +514,15 @@ export default function Home() {
         />
       )}
 
-      <Container maxWidth="sm" sx={{ py: 4 }}>
-        <Box sx={{ textAlign: "center", mb: 4, position: "relative" }}>
-          {!authLoading && isAuthenticated && (
-            <Box
-              sx={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-                display: "flex",
-                alignItems: "center",
-                gap: 0.5,
-              }}
-            >
-              <Chip
-                icon={
-                  <Box
-                    sx={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      backgroundColor: "#4caf50",
-                      boxShadow: "0 0 8px rgba(76, 175, 80, 0.8)",
-                    }}
-                  />
-                }
-                label="En línea"
-                size="small"
-                sx={{
-                  backgroundColor: "rgba(76, 175, 80, 0.15)",
-                  color: "#4caf50",
-                  border: "1px solid rgba(76, 175, 80, 0.3)",
-                  fontWeight: 600,
-                  fontSize: "0.75rem",
-                  "& .MuiChip-icon": {
-                    marginLeft: 1,
-                  },
-                }}
-              />
-            </Box>
-          )}
-
-          <Box sx={{ mb: 3 }}>
+      <Container maxWidth="sm" sx={homeStyles.container}>
+        <Box sx={homeStyles.logoContainer}>
+          <Box sx={homeStyles.logoBox}>
             <BingoLogo size={150} />
           </Box>
         </Box>
 
         {isAuthenticated ? (
-          <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
+          <Stack direction="row" spacing={2} sx={homeStyles.balanceStack}>
             <BalanceCard
               title="Mi Saldo"
               amount={walletLoading ? 0 : availableBalance}
@@ -1046,7 +534,7 @@ export default function Home() {
               title="Saldo Congelado"
               amount={walletLoading ? 0 : frozenBalance}
               currency="Bs"
-              subtitle="Pendiente de retiro"
+              subtitle="Pendiente por aprobar"
               variant="glass"
             />
           </Stack>
@@ -1055,8 +543,7 @@ export default function Home() {
         )}
 
         {isAuthenticated && (
-          <Box sx={{ mb: 4 }}>
-            {/* Header con navegación */}
+          <Box sx={homeStyles.sectionContainer}>
             {!loading && !error && activeRooms.length > 0 && (
               <SectionHeader
                 title="Mis Partidas"
@@ -1068,42 +555,24 @@ export default function Home() {
               />
             )}
 
-            {/* Título sin navegación cuando está cargando, hay error o no hay salas */}
             {(loading || error || activeRooms.length === 0) && (
               <SectionHeader title="Mis Partidas" showNavigation={false} />
             )}
 
             {loading ? (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                <CircularProgress sx={{ color: "#d4af37" }} />
+              <Box sx={homeStyles.loadingContainer}>
+                <CircularProgress sx={homeStyles.loadingProgress} />
               </Box>
             ) : error ? (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ff6b6b",
-                  opacity: 0.9,
-                  textAlign: "center",
-                  py: 4,
-                }}
-              >
+              <Typography variant="body2" sx={homeStyles.errorText}>
                 {error}
               </Typography>
             ) : activeRooms.length === 0 ? (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#ffffff",
-                  opacity: 0.7,
-                  textAlign: "center",
-                  py: 4,
-                }}
-              >
+              <Typography variant="body2" sx={homeStyles.emptyStateText}>
                 No se encontraron juegos activos
               </Typography>
             ) : (
-              <Box sx={{ marginTop: 0 }}>
-                {/* Sala actual */}
+              <Box sx={homeStyles.roomsContainer}>
                 {currentRoom && (
                   <ActiveRoomCard
                     key={currentRoom.id}
@@ -1112,55 +581,21 @@ export default function Home() {
                   />
                 )}
 
-                {/* Indicador de posición */}
                 {activeRooms.length > 1 && (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: 1,
-                      mt: 2,
-                    }}
-                  >
+                  <Box sx={homeStyles.paginationContainer}>
                     {activeRooms.map((_, index) => (
                       <Box
                         key={index}
-                        sx={{
-                          width: index === currentRoomIndex ? "24px" : "8px",
-                          height: "8px",
-                          borderRadius:
-                            index === currentRoomIndex ? "4px" : "50%",
-                          backgroundColor:
-                            index === currentRoomIndex
-                              ? "#d4af37"
-                              : "rgba(212, 175, 55, 0.3)",
-                          transition: "all 0.3s ease",
-                        }}
+                        sx={homeStyles.paginationDot(index === currentRoomIndex)}
                       />
                     ))}
                   </Box>
                 )}
 
-                {/* Botón para ir al listado de salas */}
                 <Button
                   fullWidth
                   onClick={() => navigate("/rooms")}
-                  sx={{
-                    mt: 2,
-                    py: 1.5,
-                    borderRadius: "8px",
-                    textTransform: "none",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "#ffffff",
-                    backgroundColor: "rgba(212, 175, 55, 0.1)",
-                    border: "1px solid rgba(212, 175, 55, 0.3)",
-                    "&:hover": {
-                      backgroundColor: "rgba(212, 175, 55, 0.2)",
-                      borderColor: "rgba(212, 175, 55, 0.5)",
-                    },
-                  }}
+                  sx={homeStyles.viewAllRoomsButton}
                 >
                   Ver todas las salas disponibles
                 </Button>
@@ -1174,112 +609,14 @@ export default function Home() {
             <Button
               fullWidth
               onClick={() => setOpenReport(true)}
-              sx={{
-                backfaceVisibility: "hidden",
-                position: "relative",
-                cursor: "pointer",
-                display: "inline-block",
-                whiteSpace: "nowrap",
-                color: "#fff",
-                fontWeight: 900,
-                fontSize: "14px",
-                py: 1.5,
-                borderRadius: "8px",
-                textTransform: "none",
-                textShadow:
-                  "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
-                border: "1px solid #d4af37",
-                backgroundImage: `
-                repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .12) 3.75%),
-                repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .04) 2.25%),
-                repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .18) 1.2%),
-                linear-gradient(180deg, #d4af37 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #f4d03f 53%, #ffd700 75%, #d4af37 100%)
-              `,
-                boxShadow: `
-                inset 0px 1px 0px rgba(255,255,255,0.9),
-                inset 0px -1px 0px rgba(0,0,0,0.2),
-                0px 1px 3px rgba(0,0,0,0.4),
-                0px 4px 12px rgba(212, 175, 55, 0.4),
-                0px 0px 20px rgba(255, 215, 0, 0.2)
-              `,
-                transition: "all 0.2s ease",
-                "&:hover": {
-                  backgroundImage: `
-                  repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
-                  repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
-                  repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .2) 1.2%),
-                  linear-gradient(180deg, #f4d03f 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #ffed4e 53%, #ffd700 75%, #f4d03f 100%)
-                `,
-                  boxShadow: `
-                  inset 0px 1px 0px rgba(255,255,255,1),
-                  inset 0px -1px 0px rgba(0,0,0,0.2),
-                  0px 2px 6px rgba(0,0,0,0.5),
-                  0px 6px 20px rgba(212, 175, 55, 0.5),
-                  0px 0px 30px rgba(255, 215, 0, 0.3)
-                `,
-                  transform: "translateY(-1px)",
-                },
-                "&:active": {
-                  transform: "translateY(2px)",
-                  boxShadow: `
-                  inset 0px 1px 0px rgba(255,255,255,0.7),
-                  inset 0px -1px 0px rgba(0,0,0,0.3),
-                  0px 1px 2px rgba(0,0,0,0.4),
-                  0px 2px 8px rgba(212, 175, 55, 0.3),
-                  0px 0px 15px rgba(255, 215, 0, 0.15)
-                `,
-                },
-              }}
+              sx={homeStyles.rechargeButton}
             >
               Recargar Saldo
             </Button>
             <Button
               fullWidth
               variant="outlined"
-              sx={{
-                backfaceVisibility: "hidden",
-                position: "relative",
-                cursor: "pointer",
-                display: "inline-block",
-                whiteSpace: "nowrap",
-                color: "#fff",
-                fontWeight: 900,
-                fontSize: "14px",
-                py: 1.5,
-                borderRadius: "8px",
-                textTransform: "none",
-                textShadow: "0px -1px 0px rgba(0,0,0,0.4)",
-                borderColor: "#7c7c7c",
-                borderWidth: "1px",
-                backgroundImage: `
-                repeating-linear-gradient(left, hsla(0,0%,100%,0) 0%, hsla(0,0%,100%,0) 6%, hsla(0,0%,100%, .1) 7.5%),
-                repeating-linear-gradient(left, hsla(0,0%, 0%,0) 0%, hsla(0,0%, 0%,0) 4%, hsla(0,0%, 0%,.03) 4.5%),
-                repeating-linear-gradient(left, hsla(0,0%,100%,0) 0%, hsla(0,0%,100%,0) 1.2%, hsla(0,0%,100%,.15) 2.2%),
-                linear-gradient(180deg, hsl(0,0%,78%) 0%, hsl(0,0%,90%) 47%, hsl(0,0%,78%) 53%, hsl(0,0%,70%) 100%)
-              `,
-                boxShadow: `
-                inset 0px 1px 0px rgba(255,255,255,1),
-                0px 1px 3px rgba(0,0,0,0.3),
-                0px 4px 12px rgba(0, 0, 0, 0.2)
-              `,
-                transition: "all 0.2s ease",
-                "&:hover": {
-                  boxShadow: `
-                  inset 0px 1px 0px rgba(255,255,255,1),
-                  0px 2px 6px rgba(0,0,0,0.4),
-                  0px 6px 16px rgba(0, 0, 0, 0.3)
-                `,
-                  transform: "translateY(-1px)",
-                },
-                "&:active": {
-                  transform: "translateY(2px)",
-                  boxShadow: `
-                  inset 0px 1px 0px rgba(255,255,255,0.8),
-                  0px 1px 2px rgba(0,0,0,0.3),
-                  0px 2px 8px rgba(0, 0, 0, 0.15)
-                `,
-                },
-              }}
+              sx={homeStyles.withdrawButton}
               onClick={() => setOpenWithdrawRequestDialog(true)}
             >
               Retirar Fondos
@@ -1287,7 +624,6 @@ export default function Home() {
           </Stack>
         )}
 
-        {/* <button onClick={() => setOpenWithdrawRequestDialog(true)}>Retirar saldo</button> */}
 
         <WithdrawRequestDialog
           open={openWithdrawRequestDialog}
@@ -1295,7 +631,6 @@ export default function Home() {
           onSubmit={handleSubmitWithdrawRequestDialog}
           error={withdrawError}
           currency="Bs"
-          // accountInfo={MOCK_ACCOUNT}
           minAmount={500}
           accountInfo={{
             bankName: "",
@@ -1328,7 +663,6 @@ export default function Home() {
           bankAccount={bankAccount ? { bank_name: bankAccount.bank_name } : null}
         />
 
-        {/* Toast de éxito para recarga */}
         {showRechargeSuccessToast && (
           <SuccessToast
             message="¡Recarga registrada exitosamente! 🎉"
@@ -1337,7 +671,6 @@ export default function Home() {
           />
         )}
 
-        {/* Toast de error para recarga */}
         {showRechargeErrorToast && (
           <ErrorToast
             message={rechargeErrorMessage}
@@ -1348,7 +681,6 @@ export default function Home() {
           />
         )}
 
-        {/* Toast de éxito para retiro */}
         {showWithdrawSuccessToast && (
           <SuccessToast
             message="¡Solicitud de retiro creada exitosamente! 🎉"
@@ -1357,7 +689,6 @@ export default function Home() {
           />
         )}
 
-        {/* Toast de error para retiro */}
         {showWithdrawErrorToast && (
           <ErrorToast
             message={withdrawErrorMessage}

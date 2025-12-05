@@ -16,12 +16,12 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import LogoutIcon from "@mui/icons-material/Logout";
 import IconButton from "@mui/material/IconButton";
 import { useNavigate } from "react-router";
-import BackgroundStars from "../Componets/BackgroundStars";
-import ErrorToast from "../Componets/ErrorToast";
-import { MobilePaymentReportDialog } from "../Componets/MobilePaymentReportDialog";
-import ProtectedRoute from "../Componets/ProtectedRoute";
-import SuccessToast from "../Componets/SuccessToast";
-import { WithdrawRequestDialog } from "../Componets/WithdrawRequestDialog";
+import BackgroundStars from "../Components/BackgroundStars";
+import ErrorToast from "../Components/ErrorToast";
+import { MobilePaymentReportDialog } from "../Components/MobilePaymentReportDialog";
+import ProtectedRoute from "../Components/ProtectedRoute";
+import SuccessToast from "../Components/SuccessToast";
+import { WithdrawRequestDialog } from "../Components/WithdrawRequestDialog";
 import { logout } from "../Services/auth.service";
 import { getUserById, type User } from "../Services/users.service";
 import { useAuth } from "../hooks/useAuth";
@@ -203,9 +203,10 @@ function ProfileContent() {
 
     const setupListener = async () => {
       const { onWalletUpdated } = await import("../Services/socket.service");
+      const { throttle } = await import("../utils/throttle");
       
-      const unsubscribe = onWalletUpdated((data: any) => {
-        console.log("[Profile] 💰 Wallet actualizado en tiempo real:", data);
+      // OPTIMIZACIÓN: Throttle para evitar actualizaciones excesivas (máximo 1 vez por segundo)
+      const throttledUpdate = throttle((data: any) => {
         setWallet((prev) => {
           if (!prev) return prev;
           return {
@@ -213,6 +214,10 @@ function ProfileContent() {
             balance: parseFloat(data.balance) || 0,
           };
         });
+      }, 1000);
+      
+      const unsubscribe = onWalletUpdated((data: any) => {
+        throttledUpdate(data);
       });
 
       return unsubscribe;
@@ -628,7 +633,7 @@ function ProfileContent() {
         <BackgroundStars />
         <Container
           maxWidth="md"
-          sx={{ py: 4, position: "relative", zIndex: 1 }}
+          sx={{ pt: "80px", pb: 4, position: "relative", zIndex: 1 }}
         >
           <Stack
             direction="row"

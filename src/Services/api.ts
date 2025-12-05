@@ -20,7 +20,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor para manejar errores de autenticación
+// Interceptor para manejar errores de autenticación y traducir errores de red
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -32,6 +32,17 @@ api.interceptors.response.use(
         window.location.href = "/login";
       }
     }
+    
+    // Traducir errores de red comunes al español
+    if (!error.response) {
+      // Error de red (sin respuesta del servidor)
+      if (error.message === "Network Error" || error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
+        error.message = "Error de conexión. Por favor, verifica tu conexión a internet e intenta nuevamente.";
+      } else if (error.message && !error.message.includes("Error") && !error.message.includes("error")) {
+        error.message = "Error de conexión. Por favor, verifica tu conexión a internet e intenta nuevamente.";
+      }
+    }
+    
     return Promise.reject(error);
   }
 );

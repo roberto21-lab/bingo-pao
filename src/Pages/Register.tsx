@@ -22,7 +22,7 @@ import {
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import HomeIcon from '@mui/icons-material/Home';
-import BingoLogo from '../Componets/BingoLogo';
+import BingoLogo from '../Components/BingoLogo';
 import { useNavigate } from 'react-router-dom';
 import { getDocumentTypes, type DocumentType } from '../Services/documentTypes.service';
 import { createUser } from '../Services/users.service';

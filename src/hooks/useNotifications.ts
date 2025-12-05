@@ -149,11 +149,17 @@ export const useNotifications = (autoFetch: boolean = true) => {
   }, []);
 
   // Cargar notificaciones al montar y cuando cambie la autenticación
+  // OPTIMIZACIÓN: Usar ref para evitar dependencia circular
+  const fetchNotificationsRef = useRef(fetchNotifications);
+  useEffect(() => {
+    fetchNotificationsRef.current = fetchNotifications;
+  }, [fetchNotifications]);
+
   useEffect(() => {
     if (autoFetch && isAuthenticated) {
-      fetchNotifications();
+      fetchNotificationsRef.current();
     }
-  }, [autoFetch, isAuthenticated, fetchNotifications]);
+  }, [autoFetch, isAuthenticated]); // Removido fetchNotifications de dependencias
 
   // Suscribirse a notificaciones en tiempo real
   useEffect(() => {

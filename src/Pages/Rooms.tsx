@@ -2,11 +2,11 @@
 import * as React from "react";
 import { Box, Container, Typography, CircularProgress, Alert } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import BingoLogo from "../Componets/BingoLogo";
-import RoomCard from "../Componets/RoomCard";
-import SectionHeader from "../Componets/SectionHeader";
+import BingoLogo from "../Components/BingoLogo";
+import RoomCard from "../Components/RoomCard";
+import SectionHeader from "../Components/SectionHeader";
 import { getRooms, type Room } from "../Services/rooms.service";
-import BackgroundStars from "../Componets/BackgroundStars";
+import BackgroundStars from "../Components/BackgroundStars";
 import { useAuth } from "../hooks/useAuth";
 import { onRoomStatusUpdated, onRoomsReordered } from "../Services/socket.service";
 
@@ -117,7 +117,7 @@ export default function Rooms() {
     >
       <BackgroundStars />
 
-      <Container maxWidth="sm" sx={{ py: 4, position: "relative", zIndex: 1 }}>
+      <Container maxWidth="sm" sx={{ pt: "80px", pb: 4, position: "relative", zIndex: 1 }}>
         {/* Header Section */}
         <Box sx={{ textAlign: "center", mb: 4, position: "relative" }}>
           {/* Logo */}

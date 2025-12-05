@@ -1,5 +1,26 @@
 import { api } from "./api";
 
+// Tipo para la respuesta optimizada de active-rooms
+export type ActiveRoomOptimized = {
+  id: string;
+  title: string;
+  status: "active" | "waiting" | "finished";
+  prizeAmount: number;
+  currency: string;
+  currentRound?: number;
+  currentPattern?: string;
+  rounds: Array<{
+    round_number: number;
+    status: string;
+    pattern: string | null;
+    reward: {
+      percent: number;
+      amount: number;
+      pattern: string | null;
+    } | null;
+  }>;
+};
+
 // Tipo para la respuesta del API (Decimal128 viene como objeto)
 export type ApiDecimal = { $numberDecimal: string };
 
@@ -220,6 +241,49 @@ export async function getRoomById(id: string): Promise<Room> {
   } catch (error) {
     console.error("Error en getRoomById:", error);
     throw error;
+  }
+}
+
+// GET /users/:userId/active-rooms - obtener salas activas del usuario (OPTIMIZADO)
+// Este endpoint devuelve toda la información necesaria en un solo request
+export async function getUserActiveRooms(userId: string): Promise<ActiveRoomOptimized[]> {
+  try {
+    const response = await api.get<{ success: boolean; data: ActiveRoomOptimized[] }>(
+      `/users/${userId}/active-rooms`
+    );
+    
+    if (response.data.success && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    
+    return [];
+  } catch (error) {
+    console.error("Error al obtener salas activas del usuario:", error);
+    
+    // Traducir errores comunes al español
+    if (error && typeof error === "object" && "message" in error) {
+      const errorMessage = String(error.message);
+      
+      // Errores de red
+      if (errorMessage.includes("Network Error") || errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND")) {
+        throw new Error("Error de conexión. Por favor, verifica tu conexión a internet e intenta nuevamente.");
+      }
+      
+      // Error 404
+      if (errorMessage.includes("404") || errorMessage.includes("Not Found")) {
+        throw new Error("No se encontraron salas activas para este usuario.");
+      }
+      
+      // Error 500
+      if (errorMessage.includes("500") || errorMessage.includes("Internal Server Error")) {
+        throw new Error("Error del servidor. Por favor, intenta nuevamente más tarde.");
+      }
+      
+      // Otros errores
+      throw new Error(`Error al cargar las salas: ${errorMessage}`);
+    }
+    
+    throw new Error("Error desconocido al cargar las salas activas. Por favor, intenta nuevamente.");
   }
 }
 

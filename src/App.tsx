@@ -9,12 +9,13 @@ import RoomDetail from "./Pages/RoomDetail";
 import GameInProgress from "./Pages/GameInProgress";
 import PurchasedCartons from "./Pages/PurchasedCartons";
 import Profile from "./Pages/Profile";
-import TabBar from "./Componets/TabBar";
-import Header from "./Componets/Header";
+import TabBar from "./Components/TabBar";
+import Header from "./Components/Header";
 import Register from "./Pages/Register";
 import WalletPage from "./Pages/WalletPage";
 import Login from "./Pages/Login";
-import ProtectedRoute from "./Componets/ProtectedRoute";
+import ProtectedRoute from "./Components/ProtectedRoute";
+import { GameProvider } from "./contexts/GameContext";
 
 function NotFound() {
   return (
@@ -54,7 +55,9 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AppContent />
+      <GameProvider>
+        <AppContent />
+      </GameProvider>
     </ThemeProvider>
   );
 }

@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:qa": "vite --mode qa",
     "build": "tsc -b && vite build",
     "build:prod": "tsc -b && vite build --mode production",
+    "build:qa": "tsc -b && vite build --mode qa",
+    "deploy": "npm run build:prod && firebase deploy --only hosting",
+    "deploy:qa": "npm run build:prod && firebase deploy --only hosting",
     "lint": "eslint .",
     "preview": "vite preview"
   },

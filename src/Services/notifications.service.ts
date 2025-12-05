@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { onNotification, offNotification } from "./socket.service";
+import { onNotification } from "./socket.service";
 
 export type NotificationType = 
   | 'transaction_approved'
@@ -117,7 +117,27 @@ export const deleteNotification = async (notificationId: string): Promise<boolea
 export const subscribeToNotifications = (callback: (notification: Notification) => void): (() => void) => {
   // Usar onNotification directamente, que retorna la función de limpieza correcta
   const unsubscribe = onNotification((data) => {
-    callback(data);
+    // Validar y convertir el tipo de string a NotificationType
+    const validTypes: NotificationType[] = [
+      'transaction_approved',
+      'transaction_rejected',
+      'game_started',
+      'bingo_claimed',
+      'round_finished',
+      'room_finished',
+      'prize_received',
+      'balance_low',
+      'custom'
+    ];
+    
+    const notification: Notification = {
+      ...data,
+      type: (validTypes.includes(data.type as NotificationType) 
+        ? data.type 
+        : 'custom') as NotificationType
+    };
+    
+    callback(notification);
   });
 
   // Retornar función de limpieza
