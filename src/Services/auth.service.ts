@@ -106,3 +106,23 @@ export async function loginService(email: string, password: string): Promise<{ u
 
   return { user, token: data.token };
 }
+
+export type ForgotPasswordPayload = {
+  email: string;
+};
+
+export type ForgotPasswordResponse = {
+  message: string;
+};
+
+export async function forgotPasswordService(
+  payload: ForgotPasswordPayload
+): Promise<ForgotPasswordResponse> {
+  // Ajusta la URL según tu ruta real en el back:
+  // por ejemplo: "/auth/forgot-password"
+  const { data } = await api.post<ForgotPasswordResponse>(
+    "/auth/forgot-password",
+    payload
+  );
+  return data;
+}
