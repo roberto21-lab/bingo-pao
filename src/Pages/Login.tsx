@@ -17,7 +17,7 @@ import {
 import * as React from 'react';
 import BingoLogo from '../Components/BingoLogo';
 import { loginService } from '../Services/auth.service';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 // const gold = '#d6bf7b';
@@ -72,7 +72,7 @@ const textFieldSx = {
     fontWeight: 500,
     '&::placeholder': {
       color: 'rgba(245, 230, 211, 0.5)',
-    opacity: 1,
+      opacity: 1,
     },
   },
   '& .MuiFormHelperText-root': {
@@ -148,44 +148,44 @@ export default function Login() {
     return Object.values(errs).every((v) => !v);
   };
 
- const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-  setServerError(null);
+    setServerError(null);
 
-  // si tienes una función validate() como antes, úsala
-  if (!validate()) return;
+    // si tienes una función validate() como antes, úsala
+    if (!validate()) return;
 
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    // Llamada al servicio de login
-    const { user, token } = await loginService(values.email, values.password);
+      // Llamada al servicio de login
+      const { user, token } = await loginService(values.email, values.password);
 
-    console.log('Usuario logueado:', user, token);
+      console.log('Usuario logueado:', user, token);
 
-    // Marcar que el usuario acaba de hacer login para mostrar el toaster de bienvenida
-    sessionStorage.setItem("justLoggedIn", "true");
+      // Marcar que el usuario acaba de hacer login para mostrar el toaster de bienvenida
+      sessionStorage.setItem("justLoggedIn", "true");
 
-    // Si hay un parámetro de redirección, ir allí, sino al home
-    const redirect = searchParams.get('redirect');
-    if (redirect) {
-      navigate(redirect, { replace: true });
-    } else {
-      navigate('/', { replace: true });
+      // Si hay un parámetro de redirección, ir allí, sino al home
+      const redirect = searchParams.get('redirect');
+      if (redirect) {
+        navigate(redirect, { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
+
+    } catch (err: any) {
+      console.error('Error en login:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Error al iniciar sesión';
+      setServerError(msg);
+    } finally {
+      setLoading(false);
     }
-
-  } catch (err: any) {
-    console.error('Error en login:', err);
-    const msg =
-      err?.response?.data?.message ||
-      err?.message ||
-      'Error al iniciar sesión';
-    setServerError(msg);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
   // No mostrar el formulario si el usuario está autenticado o se está cargando
   if (authLoading || isAuthenticated) {
     return null; // O podrías mostrar un spinner aquí
@@ -247,8 +247,8 @@ export default function Login() {
               color: '#fcead0',
               transition: 'color 0.3s ease',
             },
-      }}
-    >
+          }}
+        >
           Ir a Inicio
         </Button>
       </Box>
@@ -344,7 +344,7 @@ export default function Login() {
         >
           <Stack component="form" spacing={3} onSubmit={handleSubmit} noValidate>
             {successMessage && (
-              <Typography 
+              <Typography
                 textAlign="center"
                 sx={{
                   color: '#4caf50',
@@ -360,7 +360,7 @@ export default function Login() {
               </Typography>
             )}
             {serverError && (
-              <Typography 
+              <Typography
                 textAlign="center"
                 sx={{
                   color: '#f44336',
@@ -492,6 +492,25 @@ export default function Login() {
               ¿No tienes cuenta?{' '}
               <Link href="/register" underline="hover" sx={{ color: '#f1ca66' }}>
                 Regístrate
+              </Link>
+            </Typography>
+            <Typography
+              textAlign="center"
+              sx={{ color: 'rgba(255,255,255,0.75)' }}
+            >
+              ¿olvidaste tu contraseña?{' '}
+              <Link
+                component={RouterLink}
+                // Si hay email, lo mandas como query param, si no, solo la ruta
+                to={
+                  values.email
+                    ? `/recover-password?email=${encodeURIComponent(values.email)}`
+                    : '/recover-password'
+                }
+                underline="hover"
+                sx={{ color: '#f1ca66' }}
+              >
+                Recuperar
               </Link>
             </Typography>
           </Stack>
