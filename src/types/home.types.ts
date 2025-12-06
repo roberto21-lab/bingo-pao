@@ -8,6 +8,7 @@ export interface ActiveRoom {
   currency: string;
   currentRound?: number;
   currentPattern?: string;
+  currentRoundPrize?: number; // ISSUE-2: Premio de la ronda actual
 }
 
 export interface UserProfile {
@@ -34,6 +35,15 @@ export interface WalletUpdateData {
 }
 
 export function mapOptimizedToActiveRoom(optimized: ActiveRoomOptimized): ActiveRoom {
+  // ISSUE-2: Calcular premio de la ronda actual desde los rounds
+  let currentRoundPrize: number | undefined;
+  if (optimized.rounds && optimized.currentRound !== undefined) {
+    const currentRoundData = optimized.rounds.find(r => r.round_number === optimized.currentRound);
+    if (currentRoundData?.reward?.amount) {
+      currentRoundPrize = currentRoundData.reward.amount;
+    }
+  }
+
   return {
     id: optimized.id,
     title: optimized.title,
@@ -42,5 +52,6 @@ export function mapOptimizedToActiveRoom(optimized: ActiveRoomOptimized): Active
     currency: optimized.currency,
     currentRound: optimized.currentRound,
     currentPattern: optimized.currentPattern,
+    currentRoundPrize,
   };
 }

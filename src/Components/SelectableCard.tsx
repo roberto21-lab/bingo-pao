@@ -16,6 +16,7 @@ export type CardMiniatureProps = {
   bingoPatternNumbers?: Set<string>;
   winningNumbers?: Set<string>; // Números que hicieron bingo (para salas finalizadas)
   showLoserAnimation?: boolean; // Si se debe mostrar animación de "mala suerte"
+  isFinishedRoom?: boolean; // ISSUE-2: Si la sala está finalizada (no mostrar calledNumbers en rojo)
 };
 
 const HEADERS = ["B", "I", "N", "G", "O"] as const;
@@ -42,6 +43,7 @@ const CardMiniature: React.FC<CardMiniatureProps> = ({
   bingoPatternNumbers = new Set(),
   winningNumbers = new Set(),
   showLoserAnimation = false,
+  isFinishedRoom = false, // ISSUE-2: Por defecto false
 }) => {
   const isNumberCalled = (num: number): boolean => {
     if (num === 0) return false;
@@ -302,7 +304,9 @@ const CardMiniature: React.FC<CardMiniatureProps> = ({
                 const isFree = num === 0;
                 const isCalled = isNumberCalled(num);
                 const isMarked = isNumberMarked(num);
-                const isCalledButNotMarked = isCalled && !isMarked;
+                // ISSUE-2 FIX: En sala finalizada NO mostrar rojo porque calledNumbers
+                // contiene números de TODAS las rondas, no solo de la ronda de este ganador
+                const isCalledButNotMarked = !isFinishedRoom && isCalled && !isMarked;
                 const numFormat = num !== 0 ? numberToBingoFormat(num) : "";
                 const isPartOfBingoPattern = hasBingo && numFormat !== "" && bingoPatternNumbers.has(numFormat);
                 const isWinningNumber = numFormat !== "" && winningNumbers.has(numFormat);

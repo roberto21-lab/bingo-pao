@@ -14,7 +14,7 @@ import BingoPatternModal from "../Components/BingoPatternModal";
 import ConfettiFireworks from "../Components/ConfettiFireworks";
 import BackgroundStars from "../Components/BackgroundStars";
 import WinnerCardModal from "../Components/WinnerCardModal";
-import { disconnectSocket } from "../Services/socket.service";
+import { disconnectSocket, onRoomPrizeUpdated } from "../Services/socket.service";
 import { mapPatternToBingoType } from "../utils/patternMapper";
 import { useGameData } from "../hooks/useGameData";
 import { useWebSocketConnection } from "../hooks/useWebSocketConnection";
@@ -28,6 +28,13 @@ import { useGameStarting } from "../hooks/useGameStarting";
 import { useGameStateSync } from "../hooks/useGameStateSync";
 import { useBingoHandlers } from "../hooks/useBingoHandlers";
 import { useWebSocketListeners } from "../hooks/useWebSocketListeners";
+import { useBingoNotifications } from "../hooks/useBingoNotifications";
+import { useRoomStartedNotification } from "../hooks/useRoomStartedNotification";
+import { useReconnectSync } from "../hooks/useReconnectSync";
+import type { RoomStateData } from "../Services/rooms.service";
+import { getRoomPrizes } from "../Services/rooms.service";
+import BingoNotificationToast from "../Components/BingoNotificationToast";
+import RoomStartedNotification from "../Components/RoomStartedNotification";
 import { gameInProgressStyles, containerStyles } from "../styles/gameInProgress.styles";
 
 export default function GameInProgress() {
@@ -86,6 +93,13 @@ export default function GameInProgress() {
     setPlayerCardsData,
     setWinningNumbersMap,
     setTotalPot,
+    // FASE 4: Para sincronización de progress bar con servidor
+    nextCallAt,
+    setNextCallAt,
+    setServerTimeOffset,
+    // P2-FIX: Datos de premios centralizados desde endpoint /prizes
+    prizeData,
+    setPrizeData,
   } = gameData;
 
   // Estados locales del componente
@@ -104,6 +118,34 @@ export default function GameInProgress() {
 
   // Hook para conexión WebSocket
   useWebSocketConnection(roomId, gameStarted);
+
+  // P2-FIX: Escuchar actualizaciones de premios en tiempo real y actualizar prizeData
+  React.useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribe = onRoomPrizeUpdated(async (data) => {
+      if (data.room_id === roomId) {
+        console.log(`[GameInProgress] P2-FIX: Premio actualizado, recargando desde endpoint /prizes`);
+        // Recargar premios desde el endpoint para mantener sincronía
+        try {
+          const prizesData = await getRoomPrizes(roomId);
+          if (prizesData) {
+            setPrizeData(prizesData);
+            console.log(`[GameInProgress] P2-FIX: prizeData actualizado:`, {
+              prize_pool: prizesData.prize_pool,
+              round_prizes: prizesData.round_prizes,
+            });
+          }
+        } catch (err) {
+          console.warn("[GameInProgress] P2-FIX: Error al recargar premios:", err);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [roomId, setPrizeData]);
 
   // Actualizar contexto del juego para el Header
   React.useEffect(() => {
@@ -253,7 +295,10 @@ export default function GameInProgress() {
     timeoutCountdown,
     timeoutStartTime,
     setTimeoutCountdown,
-    setTimeoutStartTime
+    setTimeoutStartTime,
+    // FASE 4: Parámetros para sincronización con servidor
+    serverTimeOffset,
+    nextCallAt
   );
 
   // Hook para isGameStarting
@@ -285,7 +330,9 @@ export default function GameInProgress() {
     setIsCallingNumber,
     setProgress,
     setRoom,
-    roundFinished
+    roundFinished,
+    // FASE 5: Pasar timestamp del último dato del WebSocket para evitar polling innecesario
+    lastCalledTimestamp || undefined
   );
 
   // Función helper para obtener números marcados de un cartón
@@ -339,6 +386,11 @@ export default function GameInProgress() {
     checkBingo,
     isNumberCalled,
     isNumberMarked,
+    // ISSUE-1: Estados para controlar el botón de bingo
+    hasClaimedBingoInRound,
+    isClaimingBingo,
+    // ISSUE-2: Estados para controlar cartones usados
+    isCardClaimed,
   } = bingoHandlers;
 
   // Combinar showConfetti de ambos lugares
@@ -452,13 +504,97 @@ export default function GameInProgress() {
     setCurrentWinnerIndex,
     setShowConfetti,
     setShowLoserAnimation,
+    // ISSUE-FIX: Pasar estado para evitar "Mala Suerte" a usuarios que ya cantaron bingo
+    hasClaimedBingoInRound,
     setRoomStartCountdown,
     setRoomStartCountdownFinish,
-    progressIntervalRef
+    progressIntervalRef,
+    // FASE 4: Para sincronización de progress bar con servidor
+    setServerTimeOffset,
+    setNextCallAt
   );
 
-  // Obtener premios reales de cada ronda desde el backend
+  // ISSUE-5: Hook para notificaciones de bingo en tiempo real
+  const { notifications: bingoNotifications, removeNotification: removeBingoNotification } = 
+    useBingoNotifications({
+      roomId,
+      currentUserId,
+      enabled: gameStarted && !roomFinished,
+    });
+
+  // ISSUE-6: Hook para notificación de inicio de sala
+  const { 
+    showNotification: showRoomStartedNotification, 
+    roomName: roomStartedName, 
+    hideNotification: hideRoomStartedNotification 
+  } = useRoomStartedNotification({
+    roomId,
+    enabled: !roomFinished,
+  });
+
+  // ISSUE-7: Hook para sincronizar estado al reconectar WebSocket
+  useReconnectSync({
+    roomId,
+    enabled: gameStarted && !roomFinished,
+    onStateSync: React.useCallback((state: RoomStateData) => {
+      console.log("[GameInProgress] Sincronizando estado después de reconexión...");
+      
+      // Actualizar números llamados
+      if (state.calledNumbers && state.calledNumbers.length > 0) {
+        setCalledNumbers(new Set(state.calledNumbers));
+        
+        // Actualizar último número y últimos 3 números
+        const lastNum = state.calledNumbers[state.calledNumbers.length - 1];
+        if (lastNum) {
+          setCurrentNumber(lastNum);
+          setLastNumbers(state.calledNumbers.slice(-3).reverse());
+        }
+      }
+      
+      // Actualizar round actual
+      if (state.currentRound && state.currentRound !== currentRound) {
+        setCurrentRound(state.currentRound);
+      }
+      
+      // Actualizar estado de round basado en bingo claims
+      if (state.bingoState.hasWinner || state.bingoState.windowActive) {
+        setIsCallingNumber(false);
+        
+        // Si hay ventana de bingo activa, calcular tiempo restante
+        if (state.bingoState.windowActive && state.bingoState.windowFinishAt) {
+          const finishTime = new Date(state.bingoState.windowFinishAt).getTime();
+          const remaining = Math.ceil((finishTime - Date.now()) / 1000);
+          if (remaining > 0) {
+            setBingoClaimCountdown(remaining);
+          }
+        }
+      }
+      
+      console.log("[GameInProgress] Estado sincronizado:", {
+        calledNumbers: state.calledNumbers.length,
+        currentRound: state.currentRound,
+        hasWinner: state.bingoState.hasWinner,
+        windowActive: state.bingoState.windowActive,
+      });
+    }, [currentRound, setCalledNumbers, setCurrentNumber, setLastNumbers, setCurrentRound, setIsCallingNumber, setBingoClaimCountdown]),
+    onReconnect: React.useCallback(() => {
+      console.log("[GameInProgress] WebSocket reconectado, sincronizando...");
+    }, []),
+  });
+
+  // P2-FIX: Obtener premios desde endpoint centralizado /prizes como fuente de verdad
+  // Si prizeData está disponible, usarlo. Si no, fallback al cálculo local.
   const roundPrizes = React.useMemo(() => {
+    // P2-FIX: Usar prizeData del endpoint /prizes como FUENTE DE VERDAD
+    if (prizeData && prizeData.round_prizes && prizeData.round_prizes.length > 0) {
+      const prizes = prizeData.round_prizes
+        .sort((a, b) => a.round_number - b.round_number)
+        .map(rp => rp.amount);
+      console.log(`[GameInProgress] P2-FIX: roundPrizes desde endpoint /prizes:`, prizes);
+      return prizes;
+    }
+    
+    // Fallback: calcular localmente si no hay prizeData
     if (!roundsData || roundsData.length === 0) {
       return calculateRoundPrizes(totalPot, totalRounds);
     }
@@ -466,16 +602,19 @@ export default function GameInProgress() {
     const prizes = roundsData
       .sort((a, b) => a.round_number - b.round_number)
       .map((round) => {
-        const rewardAmount = round.reward?.amount || 0;
         const percentToUse = round.reward?.percent || round.prize_percent;
-        if (rewardAmount === 0 && totalPot > 0 && percentToUse) {
+        // Siempre recalcular basándose en totalPot y el porcentaje
+        // para que se actualice en tiempo real
+        if (totalPot > 0 && percentToUse) {
           return (totalPot * percentToUse) / 100;
         }
-        return rewardAmount;
+        // Solo usar el valor pre-calculado si no hay totalPot
+        return round.reward?.amount || 0;
       });
     
+    console.log(`[GameInProgress] 💵 roundPrizes (fallback) con totalPot=${totalPot}:`, prizes);
     return prizes;
-  }, [roundsData, totalPot, totalRounds]);
+  }, [prizeData, roundsData, totalPot, totalRounds]);
   
   const currentRoundPrize = roundPrizes[currentRound - 1] || 0;
 
@@ -620,6 +759,8 @@ export default function GameInProgress() {
           winners={roomFinished ? winners : undefined}
           showLoserAnimation={showLoserAnimation}
           currentUserId={currentUserId}
+          // ISSUE-4: Pasar hasClaimedBingoInRound para evitar "Mala Suerte" si ya cantó bingo
+          hasClaimedBingoInRound={hasClaimedBingoInRound}
         />
       </Container>
 
@@ -670,6 +811,15 @@ export default function GameInProgress() {
                   : false
               }
               bingoPatternNumbers={bingoPatternNumbers}
+              // ISSUE-1: Props para controlar el estado del botón de bingo
+              hasClaimedBingoInRound={hasClaimedBingoInRound}
+              isClaimingBingo={isClaimingBingo}
+              // ISSUE-2: Verificar si el cartón actual ya fue usado
+              isCurrentCardClaimed={
+                playerCardsData[previewCardIndex]?._id
+                  ? isCardClaimed(playerCardsData[previewCardIndex]._id)
+                  : false
+              }
             />
           );
         })()}
@@ -702,6 +852,29 @@ export default function GameInProgress() {
       />
 
       <ConfettiFireworks active={showConfettiCombined} />
+
+      {/* ISSUE-5: Notificaciones de bingo en tiempo real */}
+      {bingoNotifications.map((notification) => (
+        <BingoNotificationToast
+          key={notification.id}
+          type={notification.type}
+          playerName={notification.playerName}
+          cardCode={notification.cardCode}
+          message={notification.message}
+          prizeAmount={notification.prizeAmount}
+          pattern={notification.pattern}
+          onClose={() => removeBingoNotification(notification.id)}
+        />
+      ))}
+
+      {/* ISSUE-6: Notificación de inicio de sala */}
+      {showRoomStartedNotification && (
+        <RoomStartedNotification
+          roomName={roomStartedName}
+          onClose={hideRoomStartedNotification}
+          autoHideDuration={6000}
+        />
+      )}
     </Box>
   );
 }

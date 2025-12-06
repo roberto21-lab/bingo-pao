@@ -260,13 +260,20 @@ export const leaveRoom = (roomId: string) => {
   }
 };
 
+// P5-FIX: Map para trackear handlers activos y evitar duplicados
+const activeNumberCalledHandlers = new Set<(data: unknown) => void>();
+const activeReconnectHandlers = new Set<() => void>();
+
 // Escuchar evento de número llamado (optimizado)
+// P5-FIX: Mejorado para evitar listeners duplicados en reconexión
 export const onNumberCalled = (
   callback: (data: {
     number: string;
     called_at: string;
     round_number: number;
     room_id: string;
+    server_time?: number; // Timestamp del servidor para sincronización
+    next_call_at?: number; // Timestamp del próximo número
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -275,8 +282,8 @@ export const onNumberCalled = (
   }
   
   if (socket) {
+    // P5-FIX: Crear handler único para este callback
     const handler = (data: unknown) => {
-      logger.socket("📨 Evento 'number-called' recibido:", data);
       // Validar datos antes de llamar callback
       if (
         data &&
@@ -286,7 +293,6 @@ export const onNumberCalled = (
         "round_number" in data &&
         "called_at" in data
       ) {
-        logger.socket("✅ Datos válidos, llamando callback");
         callback(data as {
           number: string;
           called_at: string;
@@ -298,27 +304,35 @@ export const onNumberCalled = (
       }
     };
     
-    logger.socket("👂 Registrando listener para 'number-called'");
-    
-    // OPTIMIZACIÓN: Remover listener anterior si existe para evitar duplicados
-    socket.off("number-called", handler);
-    socket.on("number-called", handler);
-    
-    // También registrar el listener cuando se reconecte (solo una vez)
+    // P5-FIX: Handler de reconexión único
     const reconnectHandler = () => {
-      logger.socket("🔄 Reconectado, re-registrando listener 'number-called'");
-      socket?.off("number-called", handler); // Remover antes de agregar
-      socket?.on("number-called", handler);
+      logger.socket("🔄 Reconectado, verificando listener 'number-called'");
+      // P5-FIX: Solo re-registrar si el handler aún está activo
+      if (activeNumberCalledHandlers.has(handler)) {
+        socket?.off("number-called", handler);
+        socket?.on("number-called", handler);
+      }
     };
     
-    // OPTIMIZACIÓN: Usar once para evitar múltiples registros del reconnect handler
-    socket.off("reconnect", reconnectHandler);
+    // P5-FIX: Limpiar listeners anteriores ANTES de agregar nuevos
+    activeNumberCalledHandlers.forEach(h => socket?.off("number-called", h));
+    activeReconnectHandlers.forEach(h => socket?.off("reconnect", h));
+    
+    // P5-FIX: Registrar nuevos handlers
+    activeNumberCalledHandlers.add(handler);
+    activeReconnectHandlers.add(reconnectHandler);
+    
+    socket.on("number-called", handler);
     socket.on("reconnect", reconnectHandler);
     
+    logger.socket("👂 P5-FIX: Listener 'number-called' registrado (sin duplicados)");
+    
     return () => {
-      logger.socket("🧹 Removiendo listener 'number-called'");
+      logger.socket("🧹 P5-FIX: Removiendo listener 'number-called'");
       socket?.off("number-called", handler);
       socket?.off("reconnect", reconnectHandler);
+      activeNumberCalledHandlers.delete(handler);
+      activeReconnectHandlers.delete(reconnectHandler);
     };
   }
   
@@ -538,12 +552,12 @@ export const onRoomPrizeUpdated = (
     }>;
   }) => void
 ): (() => void) => {
-  if (!socket) {
-    connectSocket();
-  }
+  // Asegurar que el socket esté conectado
+  const currentSocket = socket || connectSocket();
   
-  if (socket) {
+  if (currentSocket) {
     const handler = (data: unknown) => {
+      logger.socket("📥 Evento room-prize-updated recibido", data);
       if (
         data &&
         typeof data === "object" &&
@@ -567,10 +581,58 @@ export const onRoomPrizeUpdated = (
       }
     };
     
-    socket.on("room-prize-updated", handler);
+    currentSocket.on("room-prize-updated", handler);
     
     return () => {
-      socket?.off("room-prize-updated", handler);
+      currentSocket?.off("room-prize-updated", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// ISSUE-4: Escuchar evento de actualización de precio de sala
+// Este evento se emite cuando el precio de una sala cambia
+export const onRoomPriceUpdated = (
+  callback: (data: {
+    room_id: string;
+    room_name: string;
+    price_per_card: number;
+    currency_id: string;
+    total_prize: number;
+    admin_fee: number;
+    timestamp: number;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "price_per_card" in data
+      ) {
+        logger.socket("📨 Evento 'room-price-updated' recibido:", data);
+        callback(data as {
+          room_id: string;
+          room_name: string;
+          price_per_card: number;
+          currency_id: string;
+          total_prize: number;
+          admin_fee: number;
+          timestamp: number;
+        });
+      }
+    };
+    
+    socket.on("room-price-updated", handler);
+    
+    return () => {
+      socket?.off("room-price-updated", handler);
     };
   }
   
@@ -578,6 +640,7 @@ export const onRoomPrizeUpdated = (
 };
 
 // Escuchar evento de sincronización de estado de sala (cuando te unes a una sala con juego activo)
+// ISSUE-4: Ahora también incluye datos de la sala para sincronizar precio al reconectar
 export const onRoomStateSync = (
   callback: (data: {
     room_id: string;
@@ -591,6 +654,14 @@ export const onRoomStateSync = (
       last_called_at: string | null;
       called_count: number;
       status: string;
+    } | null;
+    // ISSUE-4: Datos de la sala para sincronizar precio
+    room?: {
+      price_per_card: number;
+      total_prize: number;
+      admin_fee: number;
+      name: string;
+      currency_id: string;
     } | null;
   }) => void
 ): (() => void) => {
@@ -606,6 +677,7 @@ export const onRoomStateSync = (
         "room_id" in data &&
         "round" in data
       ) {
+        logger.socket("📨 Evento 'room-state-sync' recibido:", data);
         callback(data as {
           room_id: string;
           round: {
@@ -618,6 +690,14 @@ export const onRoomStateSync = (
             last_called_at: string | null;
             called_count: number;
             status: string;
+          } | null;
+          // ISSUE-4: Datos de la sala
+          room?: {
+            price_per_card: number;
+            total_prize: number;
+            admin_fee: number;
+            name: string;
+            currency_id: string;
           } | null;
         });
       }
@@ -805,6 +885,123 @@ export const onBingoClaimed = (
     
     return () => {
       socket?.off("bingo-claimed", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// ISSUE-5: Tipos para eventos de notificación de bingo
+export interface BingoNotificationPlayer {
+  user_id: string;
+  user_name?: string;
+  card_id: string;
+  card_code?: string;
+}
+
+export interface BingoNotificationData {
+  room_id: string;
+  round_number: number;
+  player: BingoNotificationPlayer;
+  status: "pending" | "confirmed" | "rejected";
+  timestamp: number;
+  message?: string;
+  pattern?: string;
+  prize_amount?: string;
+  winner_id?: string;
+  is_first?: boolean;
+}
+
+// ISSUE-5: Escuchar evento de bingo pendiente de validación
+export const onBingoClaimedPending = (
+  callback: (data: BingoNotificationData) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "player" in data &&
+        "status" in data
+      ) {
+        logger.socket("📨 Evento 'bingo_claimed_pending' recibido:", data);
+        callback(data as BingoNotificationData);
+      }
+    };
+    
+    socket.on("bingo_claimed_pending", handler);
+    
+    return () => {
+      socket?.off("bingo_claimed_pending", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// ISSUE-5: Escuchar evento de bingo confirmado
+export const onBingoConfirmed = (
+  callback: (data: BingoNotificationData) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "player" in data &&
+        "status" in data
+      ) {
+        logger.socket("📨 Evento 'bingo_confirmed' recibido:", data);
+        callback(data as BingoNotificationData);
+      }
+    };
+    
+    socket.on("bingo_confirmed", handler);
+    
+    return () => {
+      socket?.off("bingo_confirmed", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// ISSUE-5: Escuchar evento de bingo rechazado
+export const onBingoRejected = (
+  callback: (data: BingoNotificationData) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "room_id" in data &&
+        "player" in data &&
+        "status" in data
+      ) {
+        logger.socket("📨 Evento 'bingo_rejected' recibido:", data);
+        callback(data as BingoNotificationData);
+      }
+    };
+    
+    socket.on("bingo_rejected", handler);
+    
+    return () => {
+      socket?.off("bingo_rejected", handler);
     };
   }
   
@@ -1084,6 +1281,66 @@ export const onRoundCleanup = (
     
     return () => {
       socket?.off("round-cleanup", handler);
+    };
+  }
+  
+  return () => {};
+};
+
+// ISSUE-3: Escuchar evento de sincronización completa de ronda
+// Este evento se emite cuando una nueva ronda está lista para comenzar
+// y contiene toda la información necesaria para actualizar la UI
+// FASE 4/5: También se emite cada 10 números para recalibrar progress bar
+export const onRoundSync = (
+  callback: (data: {
+    round_number: number;
+    room_id: string;
+    status: string;
+    pattern?: string | null;
+    called_numbers?: Array<{ number: string; called_at: string }>;
+    called_count: number;
+    total_rounds?: number;
+    previous_round_finished?: boolean;
+    timestamp?: number;
+    // FASE 4/5: Nuevos campos para sincronización de progress bar
+    server_time?: number;
+    next_call_at?: number;
+  }) => void
+): (() => void) => {
+  if (!socket) {
+    connectSocket();
+  }
+  
+  if (socket) {
+    const handler = (data: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "round_number" in data &&
+        "room_id" in data &&
+        "status" in data
+      ) {
+        logger.socket("📨 Evento 'round-sync' recibido:", data);
+        callback(data as {
+          round_number: number;
+          room_id: string;
+          status: string;
+          pattern?: string | null;
+          called_numbers?: Array<{ number: string; called_at: string }>;
+          called_count: number;
+          total_rounds?: number;
+          previous_round_finished?: boolean;
+          timestamp?: number;
+          server_time?: number;
+          next_call_at?: number;
+        });
+      }
+    };
+    
+    socket.on("round-sync", handler);
+    
+    return () => {
+      socket?.off("round-sync", handler);
     };
   }
   

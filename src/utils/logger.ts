@@ -1,15 +1,21 @@
 /**
  * Sistema de logging condicional para Frontend
  * Solo loguea en desarrollo o cuando VITE_DEBUG=true
+ * 
+ * P12-FIX: Logs controlados por entorno - NO se muestran en producción
  */
 
 const isDevelopment = import.meta.env.DEV;
 const DEBUG = import.meta.env.VITE_DEBUG === "true" || isDevelopment;
+const DEBUG_GAME = import.meta.env.VITE_DEBUG_GAME === "true";
+const DEBUG_SYNC = import.meta.env.VITE_DEBUG_SYNC === "true";
 
 /**
  * Logger optimizado para producción
  * - Errores siempre se loguean
  * - Logs normales solo en desarrollo o con VITE_DEBUG=true
+ * - Logs de game solo con VITE_DEBUG_GAME=true
+ * - Logs de sync solo con VITE_DEBUG_SYNC=true
  */
 export const logger = {
   /**
@@ -62,6 +68,40 @@ export const logger = {
     if (DEBUG) {
       console.log("[Wallet]", ...args);
     }
+  },
+
+  /**
+   * P12-FIX: Log específico para Game/Bingo (solo con VITE_DEBUG_GAME)
+   */
+  game: (...args: any[]) => {
+    if (DEBUG_GAME || DEBUG) {
+      console.log("[Game]", ...args);
+    }
+  },
+
+  /**
+   * P12-FIX: Log específico para Sync/Reconnection (solo con VITE_DEBUG_SYNC)
+   */
+  sync: (...args: any[]) => {
+    if (DEBUG_SYNC || DEBUG) {
+      console.log("[Sync]", ...args);
+    }
+  },
+
+  /**
+   * P12-FIX: Log específico para Premios (solo en desarrollo)
+   */
+  prize: (...args: any[]) => {
+    if (DEBUG) {
+      console.log("[Prize]", ...args);
+    }
+  },
+
+  /**
+   * P12-FIX: Log crítico - se loguea siempre pero con prefijo
+   */
+  critical: (...args: any[]) => {
+    console.error("[CRITICAL]", ...args);
   },
 };
 

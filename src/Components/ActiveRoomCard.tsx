@@ -7,7 +7,8 @@ type ActiveRoom = {
   prizeAmount: number;
   currency: string;
   currentRound?: number; // Número de ronda actual si la sala no está finalizada
-  currentPattern?: string; // Pattern de la ronda actual si la sala está activa
+  currentPattern?: string; // Pattern de la ronda actual
+  currentRoundPrize?: number; // Premio de la ronda actual (ISSUE-2)
 };
 
 type ActiveRoomCardProps = {
@@ -151,7 +152,8 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
             >
               Ronda {room.currentRound}
             </Typography>
-            {room.status === "active" && room.currentPattern && (
+            {/* ISSUE-2: Mostrar patrón también para salas en "waiting" */}
+            {(room.status === "active" || room.status === "waiting") && room.currentPattern && (
               <Box
                 sx={{
                   mt: 0.5,
@@ -179,6 +181,20 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
             )}
           </Box>
         )}
+        {/* ISSUE-2: Mostrar premio de ronda actual si está disponible */}
+        {room.currentRoundPrize !== undefined && room.currentRoundPrize > 0 && (
+          <Typography
+            variant="body2"
+            sx={{
+              color: "#4caf50",
+              opacity: 0.9,
+              fontSize: "13px",
+              fontWeight: 500,
+            }}
+          >
+            Premio Ronda: {room.currentRoundPrize.toLocaleString()} {room.currency}
+          </Typography>
+        )}
         <Typography
           variant="body2"
           sx={{
@@ -187,7 +203,7 @@ export default function ActiveRoomCard({ room, onClick }: ActiveRoomCardProps) {
             fontSize: "14px",
           }}
         >
-          Premio: {room.prizeAmount.toLocaleString()} {room.currency}
+          Premio Total: {room.prizeAmount.toLocaleString()} {room.currency}
         </Typography>
       </CardContent>
     </Card>

@@ -4,6 +4,8 @@ import { getCardsByRoomAndUser } from "../Services/cards.service";
 import { getRoomRounds } from "../Services/rounds.service";
 import { getCalledNumbers } from "../Services/calledNumbers.service";
 import { getRoomWinners, type RoomWinner } from "../Services/bingo.service";
+// P2-FIX: Importar endpoint centralizado de premios
+import { getRoomPrizes, type RoomPrizesData } from "../Services/rooms.service";
 import type { BingoGrid } from "../utils/bingo";
 import type { BingoType } from "../utils/bingoUtils";
 import { mapPatternToBingoType } from "../utils/patternMapper";
@@ -40,10 +42,15 @@ export interface UseGameDataReturn {
   roundFinished: boolean;
   roomFinished: boolean;
   winners: RoomWinner[];
-  winningNumbersMap: Map<number, Set<string>>;
+  // ISSUE-8: Cambiado a Map<string, Set<string>> usando card_id como clave
+  // para coincidir correctamente los números ganadores con cada cartón
+  winningNumbersMap: Map<string, Set<string>>;
   roomScheduledAt: Date | null;
   serverTimeOffset: number;
   timeUntilStart: number | null;
+  // P2-FIX: Datos de premios centralizados desde el endpoint /prizes
+  prizeData: RoomPrizesData | null;
+  setPrizeData: React.Dispatch<React.SetStateAction<RoomPrizesData | null>>;
   setCurrentRound: (round: number) => void;
   setCalledNumbers: React.Dispatch<React.SetStateAction<Set<string>>>;
   setCurrentNumber: (num: string) => void;
@@ -60,9 +67,14 @@ export interface UseGameDataReturn {
   setWinners: React.Dispatch<React.SetStateAction<RoomWinner[]>>;
   setPlayerCards: React.Dispatch<React.SetStateAction<BingoGrid[]>>;
   setPlayerCardsData: React.Dispatch<React.SetStateAction<Array<{ _id: string; code: string }>>>;
-  setWinningNumbersMap: React.Dispatch<React.SetStateAction<Map<number, Set<string>>>>;
+  // ISSUE-8: Usa card_id como clave
+  setWinningNumbersMap: React.Dispatch<React.SetStateAction<Map<string, Set<string>>>>;
   setTimeUntilStart: (time: number | null) => void;
   setTotalPot: React.Dispatch<React.SetStateAction<number>>;
+  // FASE 4: Para sincronización de progress bar con servidor
+  nextCallAt: number | null;
+  setNextCallAt: (time: number | null) => void;
+  setServerTimeOffset: (offset: number) => void;
 }
 
 export function useGameData(roomId: string | undefined): UseGameDataReturn {
@@ -86,10 +98,15 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
   const [roundFinished, setRoundFinished] = useState(false);
   const [roomFinished, setRoomFinished] = useState(false);
   const [winners, setWinners] = useState<RoomWinner[]>([]);
-  const [winningNumbersMap, setWinningNumbersMap] = useState<Map<number, Set<string>>>(new Map());
+  // ISSUE-8: Usa card_id como clave para coincidir correctamente con las miniaturas
+  const [winningNumbersMap, setWinningNumbersMap] = useState<Map<string, Set<string>>>(new Map());
   const [roomScheduledAt, setRoomScheduledAt] = useState<Date | null>(null);
   const [serverTimeOffset, setServerTimeOffset] = useState<number>(0);
   const [timeUntilStart, setTimeUntilStart] = useState<number | null>(null);
+  // FASE 4: Para sincronización de progress bar con servidor
+  const [nextCallAt, setNextCallAt] = useState<number | null>(null);
+  // P2-FIX: Estado para premios centralizados desde endpoint /prizes
+  const [prizeData, setPrizeData] = useState<RoomPrizesData | null>(null);
 
   useEffect(() => {
     const fetchGameData = async () => {
@@ -119,10 +136,32 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
         }
         
         setRoom(roomData);
-        // CRÍTICO: Usar total_prize (90% del premio pool) en lugar de total_pot (100% del dinero recaudado)
-        // Esto asegura que todos los usuarios vean el mismo premio
-        setTotalPot(parseDecimal(roomData.total_prize || roomData.total_pot));
+        // ISSUE-FIX: Usar total_prize como fuente de verdad (90% del premio pool)
+        // El backend ahora devuelve tanto total_prize como total_pot para consistencia
+        // Esto asegura que Home y GameInProgress muestren el mismo monto
+        setTotalPot(parseDecimal(roomData.total_prize ?? roomData.total_pot));
         setTotalRounds(roomData.max_rounds || 3);
+        
+        // P2-FIX: Cargar premios centralizados desde endpoint /prizes
+        // Esta es la ÚNICA fuente de verdad para los premios
+        try {
+          const prizesData = await getRoomPrizes(roomId);
+          if (prizesData) {
+            setPrizeData(prizesData);
+            // Actualizar totalPot con el prize_pool del endpoint (más preciso)
+            if (prizesData.prize_pool > 0) {
+              setTotalPot(prizesData.prize_pool);
+            }
+            console.log(`[useGameData] P2-FIX: Premios cargados desde endpoint /prizes:`, {
+              prize_pool: prizesData.prize_pool,
+              enrolled_cards: prizesData.enrolled_cards_count,
+              round_prizes: prizesData.round_prizes,
+            });
+          }
+        } catch (prizeError) {
+          console.warn("[useGameData] P2-FIX: Error al cargar premios (usando fallback):", prizeError);
+          // En caso de error, continuamos con el totalPot ya calculado
+        }
         
         // Verificar si la sala está finalizada
         const roomStatus = roomData && typeof roomData.status_id === "object" && roomData.status_id
@@ -154,14 +193,16 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
             
             const winnerCards: BingoGrid[] = [];
             const winnerCardsData: Array<{ _id: string; code: string }> = [];
-            const winningNumbers = new Map<number, Set<string>>();
+            // ISSUE-8: Usar card_id como clave para que miniaturas y modal usen la misma fuente de datos
+            const winningNumbers = new Map<string, Set<string>>();
             
             const sortedWinners = [...winnersData].sort((a, b) => a.round_number - b.round_number);
             
-            sortedWinners.forEach((winner, index) => {
+            sortedWinners.forEach((winner) => {
               winnerCards.push(convertCardNumbers(winner.card_numbers));
               winnerCardsData.push({ _id: winner.card_id, code: winner.card_code });
-              winningNumbers.set(index, new Set(winner.bingo_numbers));
+              // ISSUE-8: Usar card_id como clave (misma fuente que bingo_numbers del modal)
+              winningNumbers.set(winner.card_id, new Set(winner.bingo_numbers));
             });
             
             setPlayerCards(winnerCards);
@@ -388,6 +429,9 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
     roomScheduledAt,
     serverTimeOffset,
     timeUntilStart,
+    // P2-FIX: Datos de premios centralizados
+    prizeData,
+    setPrizeData,
     setCurrentRound,
     setCalledNumbers,
     setCurrentNumber,
@@ -407,6 +451,10 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
     setWinningNumbersMap,
     setTimeUntilStart,
     setTotalPot,
+    // FASE 4: Para sincronización de progress bar con servidor
+    nextCallAt,
+    setNextCallAt,
+    setServerTimeOffset,
   };
 }
 
