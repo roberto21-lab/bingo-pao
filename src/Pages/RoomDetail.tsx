@@ -23,6 +23,8 @@ import { useAuth } from "../hooks/useAuth";
 import {
   onRoomStatusUpdated,
   onRoomPrizeUpdated,
+  onRoomPriceUpdated,
+  onRoomStateSync,
   onCardsEnrolled,
   joinRoom,
   leaveRoom,
@@ -209,6 +211,52 @@ export default function RoomDetail() {
 
     return () => {
       unsubscribePrizeUpdated();
+    };
+  }, [roomId]);
+
+  // ISSUE-4: Escuchar actualizaciones de precio en tiempo real
+  React.useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribePriceUpdated = onRoomPriceUpdated((data) => {
+      if (data.room_id === roomId) {
+        setRoom((prevRoom) => {
+          if (!prevRoom) return prevRoom;
+
+          return {
+            ...prevRoom,
+            ticketPrice: data.price_per_card,
+            prizeAmount: data.total_prize,
+          };
+        });
+      }
+    });
+
+    return () => {
+      unsubscribePriceUpdated();
+    };
+  }, [roomId]);
+
+  // ISSUE-4: Sincronizar precio al reconectarse a una sala
+  React.useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribeStateSync = onRoomStateSync((data) => {
+      if (data.room_id === roomId && data.room) {
+        setRoom((prevRoom) => {
+          if (!prevRoom) return prevRoom;
+
+          return {
+            ...prevRoom,
+            ticketPrice: data.room?.price_per_card ?? prevRoom.ticketPrice,
+            prizeAmount: data.room?.total_prize ?? prevRoom.prizeAmount,
+          };
+        });
+      }
+    });
+
+    return () => {
+      unsubscribeStateSync();
     };
   }, [roomId]);
 
@@ -496,16 +544,22 @@ export default function RoomDetail() {
       
       if (errorResponse?.message) {
         const msg = String(errorResponse.message);
-        if (msg.includes("Network Error") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
+        // ISSUE-1 FIX: Detectar error de saldo insuficiente y mostrar mensaje claro
+        if (msg.toLowerCase().includes("saldo insuficiente") || msg.toLowerCase().includes("insufficient")) {
+          errorMessage = `${msg}. Puedes recargar saldo desde tu perfil o billetera.`;
+        } else if (msg.includes("Network Error") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
           errorMessage = "Error de conexión. Por favor, verifica tu conexión a internet e intenta nuevamente.";
-        } else if (msg.includes("Error") || msg.includes("error") || msg.includes("conexión") || msg.includes("servidor")) {
+        } else {
+          // Mostrar el mensaje del backend directamente
           errorMessage = msg;
         }
       } else if (err instanceof Error) {
         const msg = err.message;
-        if (msg.includes("Network Error") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
+        if (msg.toLowerCase().includes("saldo insuficiente") || msg.toLowerCase().includes("insufficient")) {
+          errorMessage = `${msg}. Puedes recargar saldo desde tu perfil o billetera.`;
+        } else if (msg.includes("Network Error") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
           errorMessage = "Error de conexión. Por favor, verifica tu conexión a internet e intenta nuevamente.";
-        } else if (msg.includes("Error") || msg.includes("error") || msg.includes("conexión") || msg.includes("servidor")) {
+        } else {
           errorMessage = msg;
         }
       }

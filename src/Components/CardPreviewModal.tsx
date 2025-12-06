@@ -29,6 +29,11 @@ type CardPreviewModalProps = {
   previousHasBingo?: boolean;
   nextHasBingo?: boolean;
   bingoPatternNumbers?: Set<string>;
+  // ISSUE-1: Props para controlar el estado del botón de bingo
+  hasClaimedBingoInRound?: boolean; // Si ya se intentó cantar bingo en esta ronda
+  isClaimingBingo?: boolean; // Si hay un claim en progreso
+  // ISSUE-2: Props para controlar si el cartón actual ya fue usado
+  isCurrentCardClaimed?: boolean; // Si este cartón específico ya fue usado
 };
 
 export default function CardPreviewModal({
@@ -48,7 +53,14 @@ export default function CardPreviewModal({
   previousHasBingo = false,
   nextHasBingo = false,
   bingoPatternNumbers = new Set<string>(),
+  // ISSUE-1: Props para controlar el estado del botón de bingo
+  hasClaimedBingoInRound = false,
+  isClaimingBingo = false,
+  // ISSUE-2: Props para controlar si el cartón actual ya fue usado
+  isCurrentCardClaimed = false,
 }: CardPreviewModalProps) {
+  // ISSUE-1 & ISSUE-2: Determinar si el botón de bingo debe estar deshabilitado
+  const isBingoButtonDisabled = hasClaimedBingoInRound || isClaimingBingo || isCurrentCardClaimed;
   return (
     <Dialog
       open={open}
@@ -675,60 +687,99 @@ export default function CardPreviewModal({
           </Typography>
         )}
       </DialogContent>
-      <DialogActions sx={{ p: 3, pt: 0, gap: 2, justifyContent: "center" }}>
+      <DialogActions sx={{ p: 3, pt: 0, gap: 2, justifyContent: "center", flexDirection: "column" }}>
+        {/* ISSUE-1 & ISSUE-2: Mensaje cuando el botón está deshabilitado */}
+        {hasBingo && (hasClaimedBingoInRound || isCurrentCardClaimed) && (
+          <Typography
+            sx={{
+              color: "#ff9800",
+              fontSize: "14px",
+              fontWeight: 600,
+              textAlign: "center",
+              backgroundColor: "rgba(255, 152, 0, 0.1)",
+              border: "1px solid rgba(255, 152, 0, 0.3)",
+              borderRadius: "8px",
+              px: 2,
+              py: 1,
+              width: "100%",
+            }}
+          >
+            {isCurrentCardClaimed 
+              ? "Este cartón ya fue usado para cantar bingo en esta ronda"
+              : "Ya realizaste tu intento de bingo en esta ronda"}
+          </Typography>
+        )}
+        <Box sx={{ display: "flex", gap: 2, width: "100%", justifyContent: "center" }}>
         {hasBingo && (
           <Button
             onClick={() => {
               console.log(`[CardPreviewModal] 🎯 Botón BINGO clickeado`);
               console.log(`[CardPreviewModal]    - hasBingo: ${hasBingo}`);
+              console.log(`[CardPreviewModal]    - isBingoButtonDisabled: ${isBingoButtonDisabled}`);
               console.log(`[CardPreviewModal]    - onBingo: ${typeof onBingo}`);
+              if (isBingoButtonDisabled) {
+                console.log(`[CardPreviewModal] ⚠️ Botón deshabilitado, no se ejecuta onBingo`);
+                return;
+              }
               if (onBingo) {
                 onBingo();
               } else {
                 console.error(`[CardPreviewModal] ❌ onBingo no está definido!`);
               }
             }}
+            disabled={isBingoButtonDisabled}
             className="gold-metallic"
             sx={{
               flex: 1,
               py: 1.75,
               borderRadius: "8px 8px 12px 12px",
               textTransform: "none",
-              background:
-                "linear-gradient(135deg, #d4af37 0%, #f4d03f 15%, #ffd700 30%, #f4d03f 45%, #d4af37 60%, #b8941f 75%, #d4af37 90%, #f4d03f 100%)",
+              background: isBingoButtonDisabled
+                ? "linear-gradient(135deg, #888 0%, #999 50%, #888 100%)"
+                : "linear-gradient(135deg, #d4af37 0%, #f4d03f 15%, #ffd700 30%, #f4d03f 45%, #d4af37 60%, #b8941f 75%, #d4af37 90%, #f4d03f 100%)",
               backgroundSize: "200% 200%",
-              animation: "goldShimmer 4s ease-in-out infinite",
-              color: "#1a1008",
+              animation: isBingoButtonDisabled ? "none" : "goldShimmer 4s ease-in-out infinite",
+              color: isBingoButtonDisabled ? "#555" : "#1a1008",
               fontWeight: 900,
               fontSize: "20px",
               letterSpacing: "1px",
-              boxShadow: `
-                0 8px 24px rgba(0, 0, 0, 0.6),
-                0 4px 12px rgba(212, 175, 55, 0.5),
-                inset 0 2px 4px rgba(255, 255, 255, 0.3),
-                inset 0 -4px 8px rgba(0, 0, 0, 0.4),
-                inset 0 0 20px rgba(255, 215, 0, 0.2)
-              `,
+              boxShadow: isBingoButtonDisabled
+                ? "0 4px 12px rgba(0, 0, 0, 0.3)"
+                : `
+                  0 8px 24px rgba(0, 0, 0, 0.6),
+                  0 4px 12px rgba(212, 175, 55, 0.5),
+                  inset 0 2px 4px rgba(255, 255, 255, 0.3),
+                  inset 0 -4px 8px rgba(0, 0, 0, 0.4),
+                  inset 0 0 20px rgba(255, 215, 0, 0.2)
+                `,
               border: "none",
-              borderTop: "2px solid rgba(255, 255, 255, 0.4)",
-              borderBottom: "3px solid rgba(0, 0, 0, 0.3)",
-              transform: "perspective(200px) rotateX(2deg)",
+              borderTop: isBingoButtonDisabled ? "none" : "2px solid rgba(255, 255, 255, 0.4)",
+              borderBottom: isBingoButtonDisabled ? "none" : "3px solid rgba(0, 0, 0, 0.3)",
+              transform: isBingoButtonDisabled ? "none" : "perspective(200px) rotateX(2deg)",
+              opacity: isBingoButtonDisabled ? 0.6 : 1,
+              cursor: isBingoButtonDisabled ? "not-allowed" : "pointer",
               "@keyframes goldShimmer": {
                 "0%, 100%": { backgroundPosition: "0% 50%" },
                 "50%": { backgroundPosition: "100% 50%" },
               },
-              "&:hover": {
-                transform: "perspective(200px) rotateX(2deg) translateY(-2px)",
-                boxShadow: `
-                  0 12px 32px rgba(0, 0, 0, 0.7),
-                  0 6px 16px rgba(212, 175, 55, 0.6),
-                  inset 0 2px 4px rgba(255, 255, 255, 0.4),
-                  inset 0 -4px 8px rgba(0, 0, 0, 0.5)
-                `,
+              "&:hover": isBingoButtonDisabled
+                ? {}
+                : {
+                    transform: "perspective(200px) rotateX(2deg) translateY(-2px)",
+                    boxShadow: `
+                      0 12px 32px rgba(0, 0, 0, 0.7),
+                      0 6px 16px rgba(212, 175, 55, 0.6),
+                      inset 0 2px 4px rgba(255, 255, 255, 0.4),
+                      inset 0 -4px 8px rgba(0, 0, 0, 0.5)
+                    `,
+                  },
+              "&:disabled": {
+                background: "linear-gradient(135deg, #888 0%, #999 50%, #888 100%)",
+                color: "#555",
               },
             }}
           >
-            BINGO
+            {isClaimingBingo ? "Enviando..." : "BINGO"}
           </Button>
         )}
         <Button
@@ -755,6 +806,7 @@ export default function CardPreviewModal({
         >
           Cerrar
         </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );

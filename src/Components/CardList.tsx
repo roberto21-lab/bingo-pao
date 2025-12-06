@@ -18,11 +18,14 @@ type CardListProps = {
   bingoPatternNumbersMap?: Map<number, Set<string>>;
   roomId?: string;
   isGameFinished?: boolean;
-  winningNumbersMap?: Map<number, Set<string>>; // Números ganadores por índice de cartón
+  // ISSUE-8: Cambiado a Map<string, Set<string>> usando card_id como clave
+  // para que miniaturas y modal usen exactamente la misma fuente de datos
+  winningNumbersMap?: Map<string, Set<string>>;
   showWinners?: boolean; // Si se están mostrando cartones ganadores
   winners?: RoomWinner[]; // Datos de los ganadores (ronda, patrón, etc.)
   showLoserAnimation?: boolean; // Si se debe mostrar animación de "mala suerte"
   currentUserId?: string; // ID del usuario en sesión para identificar sus cartones ganadores
+  hasClaimedBingoInRound?: boolean; // ISSUE-4: Si el usuario ya cantó bingo en esta ronda
 };
 
 function mapPatternToBingoType(patternName: string): "horizontal" | "vertical" | "smallCross" | "fullCard" {
@@ -55,6 +58,7 @@ export default function CardList({
   winners = [],
   showLoserAnimation = false,
   currentUserId,
+  hasClaimedBingoInRound = false, // ISSUE-4: Si el usuario ya cantó bingo
 }: CardListProps) {
   const navigate = useNavigate();
   const [confirmModalOpen, setConfirmModalOpen] = React.useState(false);
@@ -242,8 +246,13 @@ export default function CardList({
                     markedNumbers={cardMarked}
                     hasBingo={cardHasBingo}
                     bingoPatternNumbers={cardBingoPatternNumbers}
-                    winningNumbers={winningNumbersMap.get(index)}
-                    showLoserAnimation={showLoserAnimation && !cardHasBingo}
+                    // ISSUE-8: Usar card_id del ganador para obtener los números correctos
+                    // Esto asegura que la miniatura use los mismos datos que el modal
+                    winningNumbers={winner ? winningNumbersMap.get(winner.card_id) : (cardsData[index]?._id ? winningNumbersMap.get(cardsData[index]._id) : undefined)}
+                    // ISSUE-4: NO mostrar "Mala Suerte" si el usuario ya cantó bingo en esta ronda
+                    showLoserAnimation={showLoserAnimation && !cardHasBingo && !hasClaimedBingoInRound}
+                    // ISSUE-2: Pasar si la sala está finalizada para no mostrar números en rojo
+                    isFinishedRoom={isGameFinished && showWinners}
                   />
                   {!showWinners && <CardBadge hasBingo={cardHasBingo} markedCount={cardMarked.size} />}
                 </Box>

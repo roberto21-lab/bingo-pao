@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as React from "react";
 import { getCardsByRoomAndUser } from "../Services/cards.service";
-import { claimBingo, type RoomWinner } from "../Services/bingo.service";
+import { claimBingo, BingoAlreadyClaimedError, CardAlreadyClaimedError, type RoomWinner } from "../Services/bingo.service";
 import { numberToBingoFormat } from "../utils/bingoUtils";
 import { hasBingo } from "../utils/bingoLogic";
 import type { BingoGrid } from "../utils/bingo";
@@ -34,6 +34,27 @@ export function useBingoHandlers(
   const [winnerCardModalOpen, setWinnerCardModalOpen] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<RoomWinner | null>(null);
   const [patternModalOpen, setPatternModalOpen] = useState(false);
+  
+  // ISSUE-1: Estado para rastrear si el usuario ya intentó cantar bingo en la ronda actual
+  const [hasClaimedBingoInRound, setHasClaimedBingoInRound] = useState(false);
+  const [isClaimingBingo, setIsClaimingBingo] = useState(false); // Para evitar doble-click
+  
+  // ISSUE-2: Estado para rastrear qué cartones ya fueron usados para cantar bingo en esta ronda
+  // Set de card_id que ya fueron usados
+  const [claimedCardIds, setClaimedCardIds] = useState<Set<string>>(new Set());
+  
+  // Referencia al round anterior para detectar cambios de ronda
+  const previousRoundRef = useRef(currentRound);
+  
+  // ISSUE-1 & ISSUE-2: Resetear los estados cuando cambia la ronda
+  useEffect(() => {
+    if (currentRound !== previousRoundRef.current) {
+      console.log(`[useBingoHandlers] 🔄 Ronda cambió de ${previousRoundRef.current} a ${currentRound}, reseteando estados`);
+      setHasClaimedBingoInRound(false);
+      setClaimedCardIds(new Set()); // Resetear cartones usados para nueva ronda
+      previousRoundRef.current = currentRound;
+    }
+  }, [currentRound]);
 
   const handleCardClick = (index: number, roomFinished: boolean, winners: RoomWinner[] | undefined) => {
     // Si la sala está finalizada y se están mostrando ganadores, abrir modal del winner
@@ -85,6 +106,11 @@ export function useBingoHandlers(
     }
   };
 
+  // ISSUE-2: Helper para verificar si un cartón ya fue usado
+  const isCardClaimed = (cardId: string): boolean => {
+    return claimedCardIds.has(cardId);
+  };
+
   const handleBingo = async (
     _setMarkedNumbers: React.Dispatch<React.SetStateAction<Map<number, Set<string>>>>,
     _setRoundFinished: (value: boolean) => void,
@@ -93,6 +119,19 @@ export function useBingoHandlers(
     _setProgress: (value: number) => void,
     _handleCloseModal: () => void
   ) => {
+    // ISSUE-1: Verificar si ya se cantó bingo en esta ronda
+    if (hasClaimedBingoInRound) {
+      console.log(`[GameInProgress] ⚠️ handleBingo: Ya se intentó cantar bingo en esta ronda`);
+      alert("Ya realizaste tu intento de bingo en esta ronda. Solo puedes cantar bingo una vez por ronda.");
+      return;
+    }
+    
+    // ISSUE-1: Evitar doble-click
+    if (isClaimingBingo) {
+      console.log(`[GameInProgress] ⚠️ handleBingo: Ya hay un claim en progreso`);
+      return;
+    }
+    
     if (previewCardIndex === null || !roomId) {
       console.log(`[GameInProgress] ⚠️ handleBingo: previewCardIndex=${previewCardIndex}, roomId=${roomId}`);
       return;
@@ -104,6 +143,9 @@ export function useBingoHandlers(
       return;
     }
 
+    // ISSUE-1: Marcar que estamos procesando un claim
+    setIsClaimingBingo(true);
+
     try {
       console.log(`[GameInProgress] 🎯 Iniciando claim de bingo para Round ${currentRound}`);
       console.log(`[GameInProgress]    - Room ID: ${roomId}`);
@@ -114,6 +156,7 @@ export function useBingoHandlers(
       const card = playerCards[previewCardIndex];
       if (!card) {
         console.error(`[GameInProgress] ❌ handleBingo: No se encontró el cartón en el índice ${previewCardIndex}`);
+        setIsClaimingBingo(false);
         return;
       }
 
@@ -124,11 +167,20 @@ export function useBingoHandlers(
       const cardsData = await getCardsByRoomAndUser(roomId, currentUserId);
       if (previewCardIndex >= cardsData.length) {
         console.error(`[GameInProgress] ❌ handleBingo: previewCardIndex (${previewCardIndex}) >= cardsData.length (${cardsData.length})`);
+        setIsClaimingBingo(false);
         return;
       }
 
       const cardId = cardsData[previewCardIndex]._id;
       console.log(`[GameInProgress]    - Card ID: ${cardId}`);
+
+      // ISSUE-2: Verificar si este cartón ya fue usado en esta ronda
+      if (isCardClaimed(cardId)) {
+        console.log(`[GameInProgress] ⚠️ handleBingo: Este cartón ya fue usado en esta ronda`);
+        alert("Este cartón ya fue usado para cantar bingo en esta ronda.");
+        setIsClaimingBingo(false);
+        return;
+      }
 
       // Llamar al endpoint de validación de bingo
       console.log(`[GameInProgress] 📤 Enviando request de claim bingo al backend...`);
@@ -139,6 +191,12 @@ export function useBingoHandlers(
       });
       
       console.log(`[GameInProgress] ✅ Respuesta del backend:`, result);
+
+      // ISSUE-1: Marcar que ya se cantó bingo en esta ronda (exitosamente o no)
+      setHasClaimedBingoInRound(true);
+      
+      // ISSUE-2: Marcar este cartón como usado
+      setClaimedCardIds(prev => new Set([...prev, cardId]));
 
       // Si el bingo es válido, cerrar el modal del cartón y mostrar confetti
       if (result.success) {
@@ -168,11 +226,30 @@ export function useBingoHandlers(
       }
     } catch (error: unknown) {
       console.error(`[GameInProgress] ❌ Error al reclamar bingo:`, error);
-      const errorMessage =
-        error && typeof error === "object" && "message" in error
-          ? String(error.message)
-          : "Error al validar el bingo. Por favor, verifica que todos los números estén marcados correctamente.";
-      alert(errorMessage);
+      
+      // ISSUE-2: Manejar el error de cartón ya usado
+      if (error instanceof CardAlreadyClaimedError) {
+        console.log(`[GameInProgress] ⚠️ Cartón ya fue usado en esta ronda`);
+        if (error.cardId) {
+          setClaimedCardIds(prev => new Set([...prev, error.cardId!]));
+        }
+        alert(error.message);
+      }
+      // ISSUE-1: Manejar el error de bingo ya reclamado
+      else if (error instanceof BingoAlreadyClaimedError) {
+        console.log(`[GameInProgress] ⚠️ Bingo ya reclamado en esta ronda`);
+        setHasClaimedBingoInRound(true);
+        alert(error.message);
+      } else {
+        const errorMessage =
+          error && typeof error === "object" && "message" in error
+            ? String(error.message)
+            : "Error al validar el bingo. Por favor, verifica que todos los números estén marcados correctamente.";
+        alert(errorMessage);
+      }
+    } finally {
+      // ISSUE-1: Siempre resetear el flag de claiming
+      setIsClaimingBingo(false);
     }
   };
 
@@ -246,5 +323,13 @@ export function useBingoHandlers(
     checkBingo,
     isNumberCalled,
     isNumberMarked,
+    // ISSUE-1: Exportar estados para controlar el botón de bingo
+    hasClaimedBingoInRound,
+    setHasClaimedBingoInRound,
+    isClaimingBingo,
+    // ISSUE-2: Exportar estados para controlar cartones usados
+    claimedCardIds,
+    setClaimedCardIds,
+    isCardClaimed,
   };
 }

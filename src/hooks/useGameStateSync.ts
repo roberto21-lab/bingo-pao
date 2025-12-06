@@ -3,10 +3,18 @@ import * as React from "react";
 import { getCalledNumbers } from "../Services/calledNumbers.service";
 import { getRoomRounds } from "../Services/rounds.service";
 import { api } from "../Services/api";
+import { useGameContext } from "../contexts/GameContext";
+
+// P9-FIX: Constantes de configuración de polling optimizadas
+const ROUND_CHECK_INTERVAL = 45000; // 45 segundos - polling muy reducido
+const GAME_STATE_SYNC_INTERVAL = 60000; // 60 segundos - solo fallback
+const FRESH_DATA_THRESHOLD = 20000; // 20 segundos - no hacer polling si hay datos más recientes
+// const DESYNC_CHECK_INTERVAL = 30000; // 30 segundos - verificar desincronización (reservado para futuro uso)
 
 /**
  * Hook para sincronizar el estado del juego periódicamente desde la BD
- * Esto asegura que todos los usuarios vean exactamente lo mismo en tiempo real
+ * P9-FIX: Optimizado para reducir polling cuando WebSocket funciona correctamente
+ * Este polling es ahora solo un fallback en caso de que los sockets fallen
  */
 export function useGameStateSync(
   gameStarted: boolean,
@@ -24,16 +32,37 @@ export function useGameStateSync(
   setIsCallingNumber: (value: boolean) => void,
   setProgress: (value: number) => void,
   setRoom: React.Dispatch<React.SetStateAction<Record<string, unknown> | null>>,
-  roundFinished: boolean
+  roundFinished: boolean,
+  // P9-FIX: Parámetro para saber cuándo se recibió el último dato del WebSocket
+  lastWebSocketDataTimestamp?: number,
+  // P8-FIX: Callback para notificar desincronización
+  onDesyncDetected?: (serverCount: number, localCount: number) => void
 ) {
   const currentRoundRef = useRef(currentRound);
   const roomIdRef = useRef(roomId);
+  // P9-FIX: Ref para trackear cuándo se sincronizó por última vez
+  const lastSyncRef = useRef<number>(0);
+  // P9-FIX: Ref para evitar polling concurrente
+  const isPollingRef = useRef<boolean>(false);
+  // P8-FIX: Ref para trackear número de números llamados localmente
+  const localNumberCountRef = useRef<number>(0);
+  
+  // P6-FIX: Usar GameContext para actualizar sync state
+  const { updateSyncTimestamp, checkDesynchronization } = useGameContext();
 
   // Actualizar refs cuando cambian los valores
   useEffect(() => {
     currentRoundRef.current = currentRound;
     roomIdRef.current = roomId;
   }, [currentRound, roomId]);
+  
+  // P9-FIX: Actualizar lastSyncRef cuando llegan datos del WebSocket
+  useEffect(() => {
+    if (lastWebSocketDataTimestamp) {
+      lastSyncRef.current = lastWebSocketDataTimestamp;
+      updateSyncTimestamp('websocket');
+    }
+  }, [lastWebSocketDataTimestamp, updateSyncTimestamp]);
 
   // Verificar periódicamente el round actual (cada 15 segundos)
   useEffect(() => {
@@ -181,22 +210,28 @@ export function useGameStateSync(
       }
     };
 
-    // Verificar round actual cada 15 segundos (reducido de 5s)
+    // FASE 5: Verificar round actual cada 30 segundos (aumentado de 15s)
     // Los sockets deberían manejar la mayoría de las actualizaciones
     // Este polling es solo un fallback en caso de que los sockets fallen
-    const roundCheckInterval = setInterval(checkCurrentRound, 15000);
+    const roundCheckInterval = setInterval(checkCurrentRound, ROUND_CHECK_INTERVAL);
 
     return () => clearInterval(roundCheckInterval);
   }, [gameStarted, roomId, bingoClaimCountdown, setCurrentRound, setCalledNumbers, setCurrentNumber, setLastNumbers, setLastCalledTimestamp, setMarkedNumbers, setRoundFinished, setRoundEnded, setIsCallingNumber, setProgress, roundFinished]);
 
-  // CRÍTICO: Sincronizar TODO el estado del juego periódicamente desde la BD
-  // Esto asegura que todos los usuarios vean exactamente lo mismo en tiempo real
-  // OPTIMIZADO: Reducir frecuencia a 10 segundos y hacer más eficiente
+  // P9-FIX: Sincronizar TODO el estado del juego periódicamente desde la BD
+  // Este polling es ahora solo un fallback en caso de que los sockets fallen
   useEffect(() => {
     if (!gameStarted || !roomId) return;
 
     const syncGameState = async () => {
+      // P9-FIX: Evitar polling concurrente
+      if (isPollingRef.current) {
+        return;
+      }
+      
       try {
+        isPollingRef.current = true;
+        
         const currentRoomId = roomIdRef.current;
         const currentRoundValue = currentRoundRef.current;
         
@@ -204,16 +239,43 @@ export function useGameStateSync(
           return;
         }
         
-        // CRÍTICO: Ejecutar todas las sincronizaciones en paralelo para reducir delays
+        // P9-FIX: Evitar polling si hay datos recientes del WebSocket
+        const timeSinceLastSync = Date.now() - lastSyncRef.current;
+        if (timeSinceLastSync < FRESH_DATA_THRESHOLD) {
+          return;
+        }
+        
+        // P9-FIX: Ejecutar todas las sincronizaciones en paralelo
         const [calledNumbersData, roundsData, roomResponse] = await Promise.allSettled([
           getCalledNumbers(currentRoomId, currentRoundValue),
           getRoomRounds(currentRoomId),
           api.get(`/rooms/${currentRoomId}`),
         ]);
         
+        // P9-FIX: Actualizar timestamp de polling
+        updateSyncTimestamp('polling');
+        
         // 1. Sincronizar números llamados
         if (calledNumbersData.status === "fulfilled" && calledNumbersData.value.length > 0) {
           const data = calledNumbersData.value;
+          
+          // P8-FIX: Verificar desincronización
+          const serverCount = data.length;
+          const localCount = localNumberCountRef.current;
+          
+          if (serverCount !== localCount && Math.abs(serverCount - localCount) > 2) {
+            // Desincronización detectada
+            checkDesynchronization(serverCount, localCount);
+            
+            if (onDesyncDetected) {
+              onDesyncDetected(serverCount, localCount);
+            }
+            
+            console.warn(`P8-FIX: Desincronización detectada, resincronizando... (servidor: ${serverCount}, local: ${localCount})`);
+          }
+          
+          localNumberCountRef.current = data.length;
+          
           const lastThree = data.slice(-3).reverse().map((cn) => cn.number);
           setLastNumbers(lastThree);
           
@@ -265,15 +327,16 @@ export function useGameStateSync(
           });
         }
       } catch (error) {
-        console.error("[GameInProgress] Error al sincronizar estado del juego:", error);
+        console.error("[GameInProgress] P9-FIX: Error al sincronizar estado del juego:", error);
+      } finally {
+        isPollingRef.current = false;
       }
     };
 
-    // Sincronizar cada 10 segundos (reducido de 2s)
+    // P9-FIX: Sincronizar cada 60 segundos (aumentado de 30s)
     // Los sockets deberían manejar la mayoría de las actualizaciones en tiempo real
-    // Este polling es solo un fallback en caso de que los sockets fallen
-    const syncInterval = setInterval(syncGameState, 10000);
+    const syncInterval = setInterval(syncGameState, GAME_STATE_SYNC_INTERVAL);
 
     return () => clearInterval(syncInterval);
-  }, [gameStarted, roomId, setCalledNumbers, setCurrentNumber, setLastNumbers, setLastCalledTimestamp, setIsCallingNumber, setRoundEnded, setRoundFinished, setProgress, setRoom]);
+  }, [gameStarted, roomId, setCalledNumbers, setCurrentNumber, setLastNumbers, setLastCalledTimestamp, setIsCallingNumber, setRoundEnded, setRoundFinished, setProgress, setRoom, lastWebSocketDataTimestamp, updateSyncTimestamp, checkDesynchronization, onDesyncDetected]);
 }

@@ -12,7 +12,11 @@
     "deploy": "npm run build:prod && firebase deploy --only hosting",
     "deploy:qa": "npm run build:prod && firebase deploy --only hosting",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cypress:open": "cypress open --config-file cypress.config.cjs",
+    "cypress:run": "cypress run --config-file cypress.config.cjs",
+    "test:e2e": "cypress run --config-file cypress.config.cjs",
+    "test:e2e:ci": "start-server-and-test 'npm run dev' http://localhost:5173 'npm run cypress:run'"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -33,6 +37,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
+    "cypress": "^14.5.4",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.24",

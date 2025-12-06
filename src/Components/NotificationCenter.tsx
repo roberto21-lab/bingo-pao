@@ -63,15 +63,26 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ open, onClose }
   // Recargar notificaciones cuando se abre el panel
   // OPTIMIZACIÓN: Usar ref para evitar re-registros
   const fetchNotificationsRef = React.useRef(fetchNotifications);
+  const markAllAsReadRef = React.useRef(markAllNotificationsAsRead);
+  
   React.useEffect(() => {
     fetchNotificationsRef.current = fetchNotifications;
-  }, [fetchNotifications]);
+    markAllAsReadRef.current = markAllNotificationsAsRead;
+  }, [fetchNotifications, markAllNotificationsAsRead]);
 
   React.useEffect(() => {
     if (open) {
       fetchNotificationsRef.current();
+      // ISSUE-3: Marcar todas las notificaciones como leídas automáticamente al abrir el panel
+      // Usar un pequeño delay para que primero se carguen las notificaciones
+      const timer = setTimeout(() => {
+        markAllAsReadRef.current().catch((err) => {
+          console.error("Error al marcar todas como leídas automáticamente:", err);
+        });
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  }, [open]); // Removido fetchNotifications de dependencias
+  }, [open]);
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {

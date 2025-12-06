@@ -27,6 +27,7 @@ import {
   onRoomPrizeUpdated,
   onCardsEnrolled,
   onRoundCleanup,
+  onRoundSync,
 } from "../Services/socket.service";
 
 // const CALL_INTERVAL = 7000;
@@ -85,7 +86,8 @@ export function useWebSocketListeners(
   setWinners: React.Dispatch<React.SetStateAction<RoomWinner[]>>,
   setPlayerCards: React.Dispatch<React.SetStateAction<BingoGrid[]>>,
   setPlayerCardsData: React.Dispatch<React.SetStateAction<Array<{ _id: string; code: string }>>>,
-  setWinningNumbersMap: React.Dispatch<React.SetStateAction<Map<number, Set<string>>>>,
+  // ISSUE-8: Usa card_id como clave
+  setWinningNumbersMap: React.Dispatch<React.SetStateAction<Map<string, Set<string>>>>,
   setModalOpen: (value: boolean) => void,
   setPreviewCardIndex: (value: number | null) => void,
   setBingoValidationOpen: (value: boolean) => void,
@@ -93,9 +95,14 @@ export function useWebSocketListeners(
   setCurrentWinnerIndex: (value: number) => void,
   setShowConfetti: (value: boolean) => void,
   setShowLoserAnimation: (value: boolean) => void,
+  // ISSUE-FIX: Estado para saber si el usuario ya cantó bingo en esta ronda
+  hasClaimedBingoInRound: boolean,
   setRoomStartCountdown: (value: number | null) => void,
   setRoomStartCountdownFinish: (value: number | null) => void,
-  progressIntervalRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>
+  progressIntervalRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>,
+  // FASE 4: Para sincronización de progress bar con servidor
+  setServerTimeOffset: (value: number) => void,
+  setNextCallAt: (value: number | null) => void
 ) {
   // Refs para acceder a valores actuales sin causar re-registros
   const currentRoundRef = useRef(currentRound);
@@ -108,6 +115,10 @@ export function useWebSocketListeners(
   const lastCalledTimestampRef = useRef(lastCalledTimestamp);
   const timeoutCountdownRef = useRef(timeoutCountdown);
   const timeoutStartTimeRef = useRef(timeoutStartTime);
+  // FIX-1: Ref para lastNumbers - evita valor stale en callbacks WebSocket
+  const lastNumbersRef = useRef(lastNumbers);
+  // FIX-3: Ref para hasClaimedBingoInRound - evita "Mala Suerte" incorrecta
+  const hasClaimedBingoInRoundRef = useRef(hasClaimedBingoInRound);
 
   // Actualizar refs cuando cambian los valores
   useEffect(() => {
@@ -121,7 +132,74 @@ export function useWebSocketListeners(
     lastCalledTimestampRef.current = lastCalledTimestamp;
     timeoutCountdownRef.current = timeoutCountdown;
     timeoutStartTimeRef.current = timeoutStartTime;
-  }, [currentRound, roomId, roundFinished, bingoClaimCountdown, isCallingNumber, isGameStarting, roundTransitionCountdown, lastCalledTimestamp, timeoutCountdown, timeoutStartTime]);
+    // FIX-1 & FIX-3: Sincronizar refs adicionales
+    lastNumbersRef.current = lastNumbers;
+    hasClaimedBingoInRoundRef.current = hasClaimedBingoInRound;
+  }, [currentRound, roomId, roundFinished, bingoClaimCountdown, isCallingNumber, isGameStarting, roundTransitionCountdown, lastCalledTimestamp, timeoutCountdown, timeoutStartTime, lastNumbers, hasClaimedBingoInRound]);
+
+  // NUEVO: useEffect separado para eventos que necesitan funcionar ANTES de que empiece el juego
+  // Estos listeners se registran siempre que haya un roomId, independientemente de gameStarted
+  useEffect(() => {
+    if (!roomId) {
+      return;
+    }
+
+    console.log(`[GameInProgress] 🔌 Configurando listeners de pre-juego para room ${roomId}`);
+
+    let isMounted = true;
+
+    // Escuchar actualizaciones de premio en tiempo real (funciona antes de que empiece el juego)
+    const unsubscribePrizeUpdated = onRoomPrizeUpdated((data) => {
+      if (!isMounted) return;
+
+      if (data.room_id === roomId) {
+        console.log(
+          `[GameInProgress] 💰 Premio actualizado (pre-juego): Total pot: ${data.total_pot}, Prize pool: ${data.total_prize}, Usuarios: ${data.enrolled_users_count || 0}`
+        );
+        setTotalPot(data.total_prize);
+        
+        if (data.enrolled_users_count !== undefined) {
+          setEnrolledUsersCount(data.enrolled_users_count);
+          setRoom((prevRoom) => {
+            if (prevRoom && typeof prevRoom === "object") {
+              return {
+                ...prevRoom,
+                enrolled_users_count: data.enrolled_users_count,
+              };
+            }
+            return prevRoom;
+          });
+        }
+      }
+    });
+
+    // Escuchar eventos de cartones inscritos (funciona antes de que empiece el juego)
+    const unsubscribeCardsEnrolledPre = onCardsEnrolled((data) => {
+      if (!isMounted) return;
+
+      if (data.room_id === roomId && data.enrolled_users_count !== undefined) {
+        console.log(
+          `[GameInProgress] 🎴 Cartones inscritos (pre-juego): ${data.enrolled_count} cartones, Total usuarios: ${data.enrolled_users_count}`
+        );
+        setEnrolledUsersCount(data.enrolled_users_count);
+        setRoom((prevRoom) => {
+          if (prevRoom && typeof prevRoom === "object") {
+            return {
+              ...prevRoom,
+              enrolled_users_count: data.enrolled_users_count,
+            };
+          }
+          return prevRoom;
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribePrizeUpdated();
+      unsubscribeCardsEnrolledPre();
+    };
+  }, [roomId, setTotalPot, setEnrolledUsersCount, setRoom]);
 
   useEffect(() => {
     // Si el juego no ha comenzado o no hay roomId, no hacer nada
@@ -288,6 +366,17 @@ export function useWebSocketListeners(
       
       lastCalledTimestampRef.current = calledTimestamp;
       
+      // FASE 4: Procesar server_time y next_call_at para sincronización de progress bar
+      if (data.server_time) {
+        const clientNow = Date.now();
+        const offset = data.server_time - clientNow;
+        setServerTimeOffset(offset);
+      }
+      
+      if (data.next_call_at) {
+        setNextCallAt(data.next_call_at);
+      }
+      
       setCalledNumbers((prev) => {
         if (prev.has(data.number)) {
           return prev;
@@ -298,8 +387,8 @@ export function useWebSocketListeners(
       setCurrentNumber(data.number);
       setLastCalledTimestamp(calledTimestamp);
       
-      // Usar el estado actual de lastNumbers pasado como parámetro
-      const currentLast = lastNumbers || [];
+      // FIX-1: Usar ref para obtener valor actualizado (evita closure stale)
+      const currentLast = lastNumbersRef.current || [];
       const updated = [data.number, ...currentLast].slice(0, 3);
       setLastNumbers(updated);
 
@@ -348,9 +437,59 @@ export function useWebSocketListeners(
       }
 
       console.log(
-        `[GameInProgress] Nueva ronda iniciada: Round ${data.round_number} (round anterior: ${currentRoundValue})`
+        `[GameInProgress] 🆕 Nueva ronda iniciada: Round ${data.round_number} (round anterior: ${currentRoundValue})`
+      );
+      console.log(
+        `[GameInProgress] 🧹 Ejecutando RESET COMPLETO de UI para nueva ronda...`
       );
 
+      // ========================================
+      // RESET COMPLETO DE UI - NUEVA RONDA
+      // ========================================
+      
+      // 1. RESET de números y estado de juego (INMEDIATO)
+      setCalledNumbers(new Set());
+      setCurrentNumber("");
+      setLastNumbers([]);
+      setLastCalledTimestamp(null);
+      setMarkedNumbers(new Map());
+      
+      // 2. RESET de estados de round
+      setRoundFinished(false);
+      setRoundEnded(false);
+      setIsCallingNumber(false);
+      setProgress(0);
+      setCurrentRound(data.round_number);
+      
+      // 3. RESET de todos los countdowns
+      setRoundTransitionCountdown(null);
+      setNextRoundNumber(null);
+      setRoundTransitionCountdownFinish(null);
+      setRoundStartCountdownFinish(null);
+      setTimeoutCountdown(null);
+      setTimeoutStartTime(null);
+      setBingoClaimCountdown(null);
+      setBingoClaimCountdownFinish(null);
+      setRoomStartCountdown(null);
+      setRoomStartCountdownFinish(null);
+      
+      // 4. RESET de modales y animaciones (CRÍTICO para el issue)
+      setBingoValidationOpen(false);
+      setCurrentRoundWinners([]);
+      setCurrentWinnerIndex(0);
+      setShowConfetti(false);
+      setShowLoserAnimation(false);
+      setModalOpen(false);
+      setPreviewCardIndex(null);
+      
+      // 5. RESET del estado de game starting
+      setIsGameStarting(false);
+      
+      console.log(
+        `[GameInProgress] ✅ Reset completo ejecutado para Round ${data.round_number}`
+      );
+
+      // Cargar datos de la nueva ronda
       try {
         const updatedRoundsData = await getRoomRounds(roomIdRef.current);
         const sortedUpdatedRounds = [...updatedRoundsData].sort(
@@ -407,33 +546,7 @@ export function useWebSocketListeners(
         );
       }
 
-      setRoundTransitionCountdown(null);
-      setNextRoundNumber(null);
-      setRoundTransitionCountdownFinish(null);
-      setRoundStartCountdownFinish(null);
-
-      setCurrentRound(data.round_number);
-
-      setCalledNumbers(new Set());
-      setCurrentNumber("");
-      setLastNumbers([]);
-      setLastCalledTimestamp(null);
-
-      setMarkedNumbers(new Map());
-
-      setRoundFinished(false);
-      setRoundEnded(false);
-      setIsCallingNumber(false);
-      setProgress(0);
-      setTimeoutCountdown(null);
-      setTimeoutStartTime(null);
-      setBingoClaimCountdown(null);
-      setBingoClaimCountdownFinish(null);
-      setShowConfetti(false);
-      setBingoValidationOpen(false);
-      setRoomStartCountdown(null);
-      setRoomStartCountdownFinish(null);
-
+      // Cargar números llamados de la nueva ronda (si ya hay algunos)
       getCalledNumbers(roomIdRef.current, data.round_number)
         .then((calledNumbersData) => {
           if (!isMounted) return;
@@ -508,6 +621,7 @@ export function useWebSocketListeners(
           setModalOpen(false);
           setPreviewCardIndex(null);
 
+          // ISSUE-FIX: Verificar si el usuario tiene bingo o si ya cantó bingo en esta ronda
           let userHasBingo = false;
           for (let i = 0; i < playerCards.length; i++) {
             const card = playerCards[i];
@@ -518,11 +632,20 @@ export function useWebSocketListeners(
             }
           }
 
-          if (!userHasBingo) {
+          // FIX-3: Solo mostrar "Mala Suerte" si el usuario:
+          // 1. NO tiene bingo en sus cartones
+          // 2. NO ha cantado bingo en esta ronda
+          // Si el usuario ya cantó bingo, no debe ver "Mala Suerte" aunque otro gane
+          // Usamos ref para obtener valor actualizado (evita closure stale)
+          const hasClaimedCurrentRound = hasClaimedBingoInRoundRef.current;
+          if (!userHasBingo && !hasClaimedCurrentRound) {
             setShowLoserAnimation(true);
+            console.log(`[GameInProgress] 😢 Mostrando animación "Mala Suerte" - usuario no tiene bingo ni cantó bingo`);
             setTimeout(() => {
               setShowLoserAnimation(false);
             }, 3000);
+          } else if (hasClaimedCurrentRound) {
+            console.log(`[GameInProgress] ✅ Usuario ya cantó bingo en esta ronda, no se muestra "Mala Suerte"`);
           }
 
           try {
@@ -569,6 +692,16 @@ export function useWebSocketListeners(
 
                 if (cardResponse.data) {
                   const cardData = cardResponse.data;
+                  
+                  // FIX-2: Validar que numbers_json existe y es un array antes de convertir
+                  if (!cardData.numbers_json || !Array.isArray(cardData.numbers_json)) {
+                    console.error(
+                      `[GameInProgress] ⚠️ Cartón ${winner.card_id} no tiene numbers_json válido:`,
+                      cardData.numbers_json
+                    );
+                    continue; // Saltar este cartón y continuar con el siguiente
+                  }
+                  
                   const cardNumbers = convertCardNumbers(cardData.numbers_json);
                   const cardMarked = new Set<string>();
 
@@ -669,6 +802,15 @@ export function useWebSocketListeners(
           );
           setBingoClaimCountdown(null);
           setBingoClaimCountdownFinish(null);
+          
+          // FIX-4: Safety net - cerrar modal si aún está abierto cuando countdown termina
+          // Esto previene que el modal quede abierto si round-cleanup no llega
+          console.log(
+            `[GameInProgress] 🧹 Safety net: Cerrando modal de bingo al finalizar ventana de 45s`
+          );
+          setBingoValidationOpen(false);
+          setShowConfetti(false);
+          setShowLoserAnimation(false);
         }
       }
     });
@@ -743,25 +885,167 @@ export function useWebSocketListeners(
 
       if (data.room_id === roomIdRef.current) {
         console.log(
-          `[GameInProgress] Limpieza entre rondas: Round ${data.previous_round_number} → Round ${data.next_round_number}`
+          `[GameInProgress] 🧹 Preparando transición: Round ${data.previous_round_number} → Round ${data.next_round_number}`
         );
 
-        if (data.previous_round_number === currentRoundRef.current) {
-          setCalledNumbers(new Set());
-          setCurrentNumber("");
-          setLastNumbers([]);
-          setProgress(0);
-          setIsCallingNumber(false);
-          setRoundFinished(false);
-          setRoundEnded(false);
-          console.log(
-            `[GameInProgress] ✅ Números y estados limpiados para transición a Round ${data.next_round_number}`
-          );
-        }
+        // ========================================
+        // ISSUE-FIX: Limpiar marcas pero mantener números visibles
+        // Los números llamados se mantienen visibles hasta round-started
+        // Pero las MARCAS se limpian para evitar bingo con datos viejos
+        // ========================================
+        
+        // 1. MANTENER números visibles para que el usuario vea la ronda anterior
+        // setCalledNumbers(new Set()); // MANTENER COMENTADO - números visibles
+        // setCurrentNumber(""); // MANTENER COMENTADO
+        // setLastNumbers([]); // MANTENER COMENTADO
+        // setLastCalledTimestamp(null); // MANTENER COMENTADO
+        
+        // 2. ISSUE-1 FIX: SÍ limpiar markedNumbers para evitar cantar bingo con datos viejos
+        // Esto previene la condición de carrera donde el usuario abre un cartón
+        // después de round-cleanup pero antes de round-started
+        setMarkedNumbers(new Map());
+        
+        setProgress(0);
+        
+        // 2. RESET de estados de round
+        setIsCallingNumber(false);
+        setRoundFinished(false);
+        setRoundEnded(false);
+        
+        // 3. RESET de countdowns
+        setTimeoutCountdown(null);
+        setTimeoutStartTime(null);
+        setBingoClaimCountdown(null);
+        setBingoClaimCountdownFinish(null);
+        
+        // 4. RESET de modales y animaciones (CRÍTICO)
+        setBingoValidationOpen(false);
+        setCurrentRoundWinners([]);
+        setCurrentWinnerIndex(0);
+        setShowConfetti(false);
+        setShowLoserAnimation(false);
+        setModalOpen(false);
+        setPreviewCardIndex(null);
+        
+        console.log(
+          `[GameInProgress] ✅ Preparación de transición completada. Números PERMANECEN visibles hasta round-started.`
+        );
 
+        // Actualizar al siguiente round
         if (data.next_round_number > currentRoundRef.current) {
           setCurrentRound(data.next_round_number);
         }
+      }
+    });
+
+    // ISSUE-3 + FASE 5: Escuchar evento de sincronización completa de ronda
+    // Este evento se recibe cuando una nueva ronda está lista y también
+    // cada 10 números para recalibrar el progress bar
+    const unsubscribeRoundSync = onRoundSync((data) => {
+      if (!isMounted) return;
+
+      if (data.room_id !== roomIdRef.current) {
+        return;
+      }
+
+      // FASE 5: Procesar server_time y next_call_at para sincronización de progress bar
+      if (data.server_time) {
+        const clientNow = Date.now();
+        const offset = data.server_time - clientNow;
+        setServerTimeOffset(offset);
+      }
+      
+      if (data.next_call_at) {
+        setNextCallAt(data.next_call_at);
+      }
+
+      console.log(
+        `[GameInProgress] 🔄 Sincronización de ronda recibida: Round ${data.round_number}, status: ${data.status}, called_count: ${data.called_count}`
+      );
+
+      // Detectar si es una nueva ronda (cambio de round)
+      const isNewRound = data.round_number !== currentRoundRef.current;
+      
+      // Actualizar el round actual si es diferente
+      if (isNewRound) {
+        console.log(
+          `[GameInProgress] 🆕 Detectada nueva ronda en round-sync: ${currentRoundRef.current} → ${data.round_number}`
+        );
+        setCurrentRound(data.round_number);
+      }
+
+      // Si el round está en progreso, preparar la UI
+      if (data.status === "in_progress") {
+        // ========================================
+        // RESET COMPLETO AL SINCRONIZAR NUEVA RONDA
+        // ========================================
+        
+        // 1. RESET de números y estado de juego (siempre si es nueva ronda)
+        if (isNewRound || data.called_count === 0) {
+          setCalledNumbers(new Set());
+          setCurrentNumber("");
+          setLastNumbers([]);
+          setLastCalledTimestamp(null);
+          setMarkedNumbers(new Map());
+        }
+        setProgress(0);
+        
+        // 2. Limpiar countdowns
+        setRoundTransitionCountdown(null);
+        setRoundTransitionCountdownFinish(null);
+        setRoundStartCountdownFinish(null);
+        setNextRoundNumber(null);
+        setBingoClaimCountdown(null);
+        setBingoClaimCountdownFinish(null);
+        setTimeoutCountdown(null);
+        setTimeoutStartTime(null);
+        
+        // 3. Actualizar estados de juego
+        setRoundFinished(false);
+        setRoundEnded(false);
+        setIsGameStarting(false);
+        
+        // 4. RESET de modales y animaciones (CRÍTICO - siempre en nueva ronda)
+        if (isNewRound) {
+          setBingoValidationOpen(false);
+          setCurrentRoundWinners([]);
+          setCurrentWinnerIndex(0);
+          setShowConfetti(false);
+          setShowLoserAnimation(false);
+          setModalOpen(false);
+          setPreviewCardIndex(null);
+          console.log(
+            `[GameInProgress] 🧹 Reset completo de UI ejecutado en round-sync`
+          );
+        }
+        
+        // Si hay números llamados, sincronizarlos
+        if (data.called_numbers && data.called_numbers.length > 0) {
+          const syncedNumbers = new Set(
+            data.called_numbers.map((cn) => cn.number)
+          );
+          setCalledNumbers(syncedNumbers);
+          
+          const lastCalled = data.called_numbers[data.called_numbers.length - 1];
+          setCurrentNumber(lastCalled.number);
+          
+          if (lastCalled.called_at) {
+            const timestamp = new Date(lastCalled.called_at).getTime();
+            setLastCalledTimestamp(timestamp);
+          }
+          
+          const lastThree = data.called_numbers
+            .slice(-3)
+            .reverse()
+            .map((cn) => cn.number);
+          setLastNumbers(lastThree);
+          
+          setIsCallingNumber(true);
+        }
+        
+        console.log(
+          `[GameInProgress] ✅ Sincronización completada para Round ${data.round_number}`
+        );
       }
     });
 
@@ -824,51 +1108,8 @@ export function useWebSocketListeners(
       }
     });
 
-    // Escuchar actualizaciones de premio en tiempo real
-    const unsubscribeRoomPrizeUpdated = onRoomPrizeUpdated((data) => {
-      if (!isMounted) return;
-
-      if (data.room_id === roomId) {
-        console.log(
-          `[GameInProgress] Premio actualizado: Total pot: ${data.total_pot}, Prize pool: ${data.total_prize}, Usuarios inscritos: ${data.enrolled_users_count || 0}`
-        );
-        setTotalPot(data.total_prize);
-        
-        if (data.enrolled_users_count !== undefined) {
-          setEnrolledUsersCount(data.enrolled_users_count);
-          setRoom((prevRoom) => {
-            if (prevRoom && typeof prevRoom === "object") {
-              return {
-                ...prevRoom,
-                enrolled_users_count: data.enrolled_users_count,
-              };
-            }
-            return prevRoom;
-          });
-        }
-      }
-    });
-
-    // Escuchar eventos de cartones inscritos
-    const unsubscribeCardsEnrolled = onCardsEnrolled((data) => {
-      if (!isMounted) return;
-
-      if (data.room_id === roomId && data.enrolled_users_count !== undefined) {
-        console.log(
-          `[GameInProgress] Cartones inscritos: ${data.enrolled_count} cartones por usuario ${data.user_id}, Total usuarios: ${data.enrolled_users_count}`
-        );
-        setEnrolledUsersCount(data.enrolled_users_count);
-        setRoom((prevRoom) => {
-          if (prevRoom && typeof prevRoom === "object") {
-            return {
-              ...prevRoom,
-              enrolled_users_count: data.enrolled_users_count,
-            };
-          }
-          return prevRoom;
-        });
-      }
-    });
+    // NOTA: Los listeners de room-prize-updated y cards-enrolled se manejan 
+    // en el useEffect de pre-juego para que funcionen antes y después de que empiece el juego
 
     // Escuchar eventos de countdown de inicio de sala
     const unsubscribeRoomStartCountdown = onRoomStartCountdown((data: any) => {
@@ -1050,13 +1291,14 @@ export function useWebSocketListeners(
 
           const winnerCards: BingoGrid[] = [];
           const winnerCardsData: Array<{ _id: string; code: string }> = [];
-          const winningNumbers = new Map<number, Set<string>>();
+          // ISSUE-8: Usar card_id como clave para que miniaturas y modal usen la misma fuente de datos
+          const winningNumbers = new Map<string, Set<string>>();
 
           const sortedWinners = [...winnersData].sort(
             (a, b) => a.round_number - b.round_number
           );
 
-          sortedWinners.forEach((winner, index) => {
+          sortedWinners.forEach((winner) => {
             console.log(
               `[GameInProgress] Procesando ganador - Ronda ${winner.round_number}: Cartón ${winner.card_code} (ID: ${winner.card_id})`
             );
@@ -1065,7 +1307,8 @@ export function useWebSocketListeners(
               _id: winner.card_id,
               code: winner.card_code,
             });
-            winningNumbers.set(index, new Set(winner.bingo_numbers));
+            // ISSUE-8: Usar card_id como clave (misma fuente que bingo_numbers del modal)
+            winningNumbers.set(winner.card_id, new Set(winner.bingo_numbers));
           });
 
           console.log(
@@ -1135,8 +1378,7 @@ export function useWebSocketListeners(
 
       unsubscribeNumberCalled();
       unsubscribeRoomStateSync();
-      unsubscribeRoomPrizeUpdated();
-      unsubscribeCardsEnrolled();
+      // Los listeners de room-prize-updated y cards-enrolled se manejan en el useEffect de pre-juego
       unsubscribeTimeoutCountdown();
       unsubscribeBingoClaimed();
       unsubscribeBingoClaimCountdown();
@@ -1149,6 +1391,7 @@ export function useWebSocketListeners(
       unsubscribeRoomStartCountdown();
       unsubscribeRoomPending();
       unsubscribeRoundCleanup();
+      unsubscribeRoundSync();
       unsubscribeRoomStatusUpdated();
       unsubscribeRoomFinished();
     };
