@@ -505,6 +505,10 @@ function ProfileContent() {
     }
   };
 
+  const goToContactUs = () => {
+    navigate("/contact-us");
+  };
+
   // Ahora sí, los returns condicionales DESPUÉS de todos los hooks y funciones
   if (loading) {
     return (
@@ -1030,6 +1034,73 @@ function ProfileContent() {
                 >
                   Retirar Fondos
                 </Button>
+              </Stack>
+
+
+                 <Stack direction="row" spacing={2}>
+                <Button
+                  fullWidth
+                  onClick={goToContactUs}
+                  sx={{
+                    backfaceVisibility: "hidden",
+                    position: "relative",
+                    cursor: "pointer",
+                    display: "inline-block",
+                    whiteSpace: "nowrap",
+                    color: "#fff",
+                    fontWeight: 900,
+                    fontSize: "14px",
+                    py: 1.5,
+                    borderRadius: "8px",
+                    textTransform: "none",
+                    textShadow:
+                      "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
+                    border: "1px solid #d4af37",
+                    backgroundImage: `
+                        repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .12) 3.75%),
+                        repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .04) 2.25%),
+                        repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .18) 1.2%),
+                        linear-gradient(180deg, #d4af37 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #f4d03f 53%, #ffd700 75%, #d4af37 100%)
+                      `,
+                    boxShadow: `
+                        inset 0px 1px 0px rgba(255,255,255,0.9),
+                        inset 0px -1px 0px rgba(0,0,0,0.2),
+                        0px 1px 3px rgba(0,0,0,0.4),
+                        0px 4px 12px rgba(212, 175, 55, 0.4),
+                        0px 0px 20px rgba(255, 215, 0, 0.2)
+                      `,
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      backgroundImage: `
+                          repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .15) 3.75%),
+                          repeating-linear-gradient(left, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0) 2%, rgba(212, 175, 55, .05) 2.25%),
+                          repeating-linear-gradient(left, rgba(255, 223, 0, 0) 0%, rgba(255, 223, 0, 0) .6%, rgba(255, 223, 0, .2) 1.2%),
+                          linear-gradient(180deg, #f4d03f 0%, #ffd700 25%, #ffed4e 38%, #ffd700 47%, #ffed4e 53%, #ffd700 75%, #f4d03f 100%)
+                        `,
+                      boxShadow: `
+                          inset 0px 1px 0px rgba(255,255,255,1),
+                          inset 0px -1px 0px rgba(0,0,0,0.2),
+                          0px 2px 6px rgba(0,0,0,0.5),
+                          0px 6px 20px rgba(212, 175, 55, 0.5),
+                          0px 0px 30px rgba(255, 215, 0, 0.3)
+                        `,
+                      transform: "translateY(-1px)",
+                    },
+                    "&:active": {
+                      transform: "translateY(2px)",
+                      boxShadow: `
+                          inset 0px 1px 0px rgba(255,255,255,0.7),
+                          inset 0px -1px 0px rgba(0,0,0,0.3),
+                          0px 1px 2px rgba(0,0,0,0.4),
+                          0px 2px 8px rgba(212, 175, 55, 0.3),
+                          0px 0px 15px rgba(255, 215, 0, 0.15)
+                        `,
+                    },
+                  }}
+                >
+                  Contactanos
+                </Button>
+              
               </Stack>
 
               <Button

@@ -1,19 +1,18 @@
 // src/Pages/RecoverPasswordContact.tsx
 
-import * as React from "react";
+import HomeIcon from "@mui/icons-material/Home";
 import {
   Box,
   Button,
   Container,
   Divider,
-  Link,
   Paper,
   Stack,
   TextField,
-  Typography,
+  Typography
 } from "@mui/material";
-import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
-import HomeIcon from "@mui/icons-material/Home";
+import * as React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 // IMPORTA TU LOGO Y STYLES IGUAL QUE EN EL LOGIN
 // import { BingoLogo } from "../components/BingoLogo"; // ajusta la ruta

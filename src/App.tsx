@@ -46,7 +46,7 @@ function AppContent() {
         <Route path="/404" element={<NotFound />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/recover-password-contact" element={<RecoverPasswordContact />} />
+        <Route path="/contact-us" element={<RecoverPasswordContact />} />
         <Route path="/recover-password" element={<RecoverPassword />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>

@@ -498,6 +498,20 @@ export default function Login() {
                 Recuperar
               </Link>
             </Typography>
+               <Typography
+              textAlign="center"
+              sx={{ color: 'rgba(255,255,255,0.75)' }}
+            >
+              Contactanos {' '}
+              <Link
+                component={RouterLink}
+                to="/contact-us"
+                underline="hover"
+                sx={{ color: '#f1ca66' }}
+              >
+                ir a Contacto
+              </Link>
+            </Typography>
           </Stack>
         </Paper>
       </Container>
