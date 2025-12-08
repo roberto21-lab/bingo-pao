@@ -170,14 +170,20 @@ const RecoverPasswordContact: React.FC = () => {
       });
 
       setSuccessMessage(
-        "¡Solicitud enviada! El equipo revisará tu caso y te contactará para ayudarte a recuperar tu contraseña."
+        "¡Solicitud enviada! El equipo revisará tu caso y te contactará para ayudarte."
       );
 
-      setValues((prev) => ({
-        ...prev,
-        title: "Recuperar contraseña",
-        description: "",
-      }));
+      setTimeout(() => {
+        setValues((prev) => ({
+          ...prev,
+          title: "",
+          description: "",
+        }));
+        navigate("/");
+      }, 3000);
+
+
+
     } catch (err: any) {
       console.error("❌ Error enviando formulario:", err);
       setServerError(err?.message || "Error al enviar la solicitud");
@@ -262,7 +268,7 @@ const RecoverPasswordContact: React.FC = () => {
           textShadow: "0 0 10px rgba(0,0,0,0.8)",
         }}
       >
-       Contáctanos
+        Contáctanos
       </Typography>
 
       <Typography
@@ -482,7 +488,7 @@ const RecoverPasswordContact: React.FC = () => {
 
             <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
 
-        
+
           </Stack>
         </Paper>
       </Container>
