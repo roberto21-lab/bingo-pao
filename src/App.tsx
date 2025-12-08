@@ -17,6 +17,7 @@ import Login from "./Pages/Login";
 import ProtectedRoute from "./Components/ProtectedRoute";
 import { GameProvider } from "./contexts/GameContext";
 import RecoverPassword from "./Pages/RecoverPassword";
+import RecoverPasswordContact from "./Pages/RecoverPasswordContact";
 
 function NotFound() {
   return (
@@ -45,6 +46,7 @@ function AppContent() {
         <Route path="/404" element={<NotFound />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/recover-password-contact" element={<RecoverPasswordContact />} />
         <Route path="/recover-password" element={<RecoverPassword />} />
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>

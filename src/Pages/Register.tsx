@@ -197,9 +197,9 @@ export default function RegisterPage() {
             if (values.document_type_id && values.document_number.trim()) {
                 payload.document_type_id = values.document_type_id;
                 payload.document_number = values.document_number.trim();
-                if (values.phone.trim()) {
-                    payload.phone = values.phone.trim();
-                }
+                // if (values.phone.trim()) {
+                //     payload.phone = values.phone.trim();
+                // }
                 if (values.address.trim()) {
                     payload.address = values.address.trim();
                 }
@@ -500,7 +500,7 @@ export default function RegisterPage() {
                             placeholder="Ej: 12345678"
                         />
 
-                        <TextField
+                        {/* <TextField
                             name="phone"
                             label="Teléfono (opcional)"
                             value={values.phone}
@@ -510,7 +510,7 @@ export default function RegisterPage() {
                             helperText={errors.phone || ' '}
                             sx={textFieldSx}
                             placeholder="Ej: 04121234567"
-                        />
+                        /> */}
 
                         <TextField
                             name="address"

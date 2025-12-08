@@ -1,25 +1,28 @@
-import Visibility from '@mui/icons-material/Visibility';
-import VisibilityOff from '@mui/icons-material/VisibilityOff';
-import HomeIcon from '@mui/icons-material/Home';
+// src/Pages/RecoverPasswordContact.tsx
+
+import * as React from "react";
 import {
   Box,
   Button,
   Container,
   Divider,
-  IconButton,
-  InputAdornment,
   Link,
   Paper,
   Stack,
   TextField,
   Typography,
-} from '@mui/material';
-import * as React from 'react';
-import BingoLogo from '../Components/BingoLogo';
-import { loginService } from '../Services/auth.service';
-import { useNavigate, useSearchParams, Link as RouterLink } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+} from "@mui/material";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
+import HomeIcon from "@mui/icons-material/Home";
 
+// IMPORTA TU LOGO Y STYLES IGUAL QUE EN EL LOGIN
+// import { BingoLogo } from "../components/BingoLogo"; // ajusta la ruta
+// import { textFieldSx } from "../theme/textFieldSx"; // si lo tienes en un archivo aparte
+
+// import { createContactFormService } from "../services/contactFormService"; // o el servicio que te puse arriba
+import BingoLogo from "../Components/BingoLogo";
+import { createContactFormService } from "../Services/contactForm";
+import { useAuth } from "../hooks/useAuth";
 const textFieldSx = {
   '& .MuiOutlinedInput-root': {
     bgcolor: 'rgba(31, 19, 9, 0.6)',
@@ -81,158 +84,172 @@ const textFieldSx = {
   },
 };
 
-export default function Login() {
-  const [values, setValues] = React.useState({
-    email: '',
-    password: '',
+
+type FormValues = {
+  email: string;
+  title: string;
+  description: string;
+};
+
+type FormErrors = Partial<Record<keyof FormValues, string>>;
+
+const RecoverPasswordContact: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [userId, setUserId] = React.useState<string | null>(null);
+  const { user } = useAuth();
+  console.log("🚀 ~ RecoverPasswordContact ~ user:", user)
+
+  const [values, setValues] = React.useState<FormValues>({
+    email: "",
+    title: "Recuperar contraseña",
+    description: "",
   });
 
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  React.useEffect(() => {
+    if (user) {
+      setValues((prev) => ({ ...prev, email: user.email }));
+      setUserId(user.id);
+    }
+  }, [user]);
 
-  const [showPw, setShowPw] = React.useState(false);
+  const [errors, setErrors] = React.useState<FormErrors>({});
   const [loading, setLoading] = React.useState(false);
-  const [errors, setErrors] = React.useState<Record<string, string | false>>(
-    {}
-  );
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
 
+  // Prefill del email desde la URL: /recover-password?email=...
   React.useEffect(() => {
-    const registered = searchParams.get('registered');
-    if (registered === 'true') {
-      setSuccessMessage('¡Cuenta creada exitosamente! Por favor inicia sesión.');
-      const newSearchParams = new URLSearchParams(searchParams);
-      newSearchParams.delete('registered');
-      navigate(`/login?${newSearchParams.toString()}`, { replace: true });
+    const params = new URLSearchParams(location.search);
+    const emailFromQuery = params.get("email");
+    if (emailFromQuery) {
+      setValues((prev) => ({ ...prev, email: emailFromQuery }));
     }
-  }, [searchParams, navigate]);
+  }, [location.search]);
 
-  React.useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      const redirect = searchParams.get('redirect');
-      if (redirect) {
-        navigate(redirect, { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
-    }
-  }, [isAuthenticated, authLoading, navigate, searchParams]);
-
-  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    setValues((s) => ({ ...s, [name]: value }));
+    setValues((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: undefined }));
+    setServerError(null);
+    setSuccessMessage(null);
   };
 
-  const validateEmail = (email: string) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+  const validate = (): boolean => {
+    const newErrors: FormErrors = {};
 
-  const validate = () => {
-    const errs: Record<string, string | false> = {};
-    if (!values.email.trim()) errs.email = 'Correo requerido';
-    else if (!validateEmail(values.email)) errs.email = 'Correo inválido';
+    if (!values.email) {
+      newErrors.email = "El correo es obligatorio";
+    } else if (!/^\S+@\S+\.\S+$/.test(values.email)) {
+      newErrors.email = "Correo inválido";
+    }
 
-    if (!values.password) errs.password = 'Contraseña requerida';
-    else if (values.password.length < 8)
-      errs.password = 'Mínimo 8 caracteres';
+    if (!values.title.trim()) {
+      newErrors.title = "El título es obligatorio";
+    }
 
-    setErrors(errs);
-    return Object.values(errs).every((v) => !v);
+    if (!values.description.trim()) {
+      newErrors.description = "La descripción es obligatoria";
+    } else if (values.description.trim().length < 10) {
+      newErrors.description = "Describe un poco mejor tu problema (mín. 10 caracteres)";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     setServerError(null);
+    setSuccessMessage(null);
 
     if (!validate()) return;
 
     try {
       setLoading(true);
 
-      const { user, token } = await loginService(values.email, values.password);
+      await createContactFormService({
+        email: values.email,
+        title: values.title,
+        description: values.description,
+        user_id: userId || undefined,
+      });
 
-      console.log('Usuario logueado:', user, token);
+      setSuccessMessage(
+        "¡Solicitud enviada! El equipo revisará tu caso y te contactará para ayudarte a recuperar tu contraseña."
+      );
 
-      sessionStorage.setItem("justLoggedIn", "true");
-
-      const redirect = searchParams.get('redirect');
-      if (redirect) {
-        navigate(redirect, { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
-
+      // Si quieres limpiar solo descripción y título:
+      setValues((prev) => ({
+        ...prev,
+        title: "Recuperar contraseña",
+        description: "",
+      }));
     } catch (err: any) {
-      console.error('Error en login:', err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        'Error al iniciar sesión';
-      setServerError(msg);
+      console.error("❌ Error enviando formulario:", err);
+      setServerError(err?.message || "Error al enviar la solicitud");
     } finally {
       setLoading(false);
     }
   };
-  if (authLoading || isAuthenticated) {
-    return null; 
-  }
 
   return (
     <Box
       sx={{
-        minHeight: '100vh',
-        background: 'transparent',
-        color: '#f5e6d3',
-        paddingBottom: '80px',
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
+        minHeight: "100vh",
+        background: "transparent",
+        color: "#f5e6d3",
+        paddingBottom: "80px",
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         py: 4,
         px: 2,
       }}
     >
+      {/* Botón volver al inicio */}
       <Box
         sx={{
-          position: 'absolute',
+          position: "absolute",
           top: 16,
           left: 16,
           zIndex: 1,
         }}
       >
         <Button
-          onClick={() => navigate('/')}
+          onClick={() => navigate("/")}
           startIcon={<HomeIcon />}
           variant="text"
           sx={{
-            color: '#fcead0',
+            color: "#fcead0",
             fontWeight: 600,
-            fontSize: '14px',
-            textTransform: 'none',
-            borderRadius: '8px',
+            fontSize: "14px",
+            textTransform: "none",
+            borderRadius: "8px",
             px: 2,
             py: 1,
-            bgcolor: 'transparent',
-            background: 'none',
-            backgroundImage: 'none',
-            border: 'none',
-            boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.2)',
-            transition: 'all 0.3s ease',
-            '&:hover': {
-              bgcolor: 'transparent',
-              background: 'none',
-              backgroundImage: 'none',
-              boxShadow: 'inset 0 2px 6px rgba(0, 0, 0, 0.3)',
-              transform: 'translateY(-1px)',
-              '& .MuiButton-startIcon': {
-                color: '#d4af37',
+            bgcolor: "transparent",
+            background: "none",
+            backgroundImage: "none",
+            border: "none",
+            boxShadow: "inset 0 2px 4px rgba(0, 0, 0, 0.2)",
+            transition: "all 0.3s ease",
+            "&:hover": {
+              bgcolor: "transparent",
+              background: "none",
+              backgroundImage: "none",
+              boxShadow: "inset 0 2px 6px rgba(0, 0, 0, 0.3)",
+              transform: "translateY(-1px)",
+              "& .MuiButton-startIcon": {
+                color: "#d4af37",
               },
             },
-            '& .MuiButton-startIcon': {
-              color: '#fcead0',
-              transition: 'color 0.3s ease',
+            "& .MuiButton-startIcon": {
+              color: "#fcead0",
+              transition: "color 0.3s ease",
             },
           }}
         >
@@ -240,29 +257,32 @@ export default function Login() {
         </Button>
       </Box>
 
-      <Box sx={{ textAlign: 'center', mb: 3 }}>
+      {/* Logo */}
+      <Box sx={{ textAlign: "center", mb: 3 }}>
         <BingoLogo size={150} />
       </Box>
 
+      {/* Título */}
       <Typography
         sx={{
           fontSize: { xs: 24, sm: 28 },
           fontWeight: 800,
-          color: '#fcead0',
+          color: "#fcead0",
           mb: 1,
-          textShadow: '0 0 10px rgba(0,0,0,0.8)',
+          textShadow: "0 0 10px rgba(0,0,0,0.8)",
         }}
       >
-        Iniciar sesión
+       Contáctanos
       </Typography>
+
       <Typography
         sx={{
           fontSize: 14,
-          color: 'rgba(255,255,255,0.65)',
+          color: "rgba(255,255,255,0.65)",
           mb: 3,
         }}
       >
-        Entra para unirte a las salas de Bingo PAO
+        Déjanos tus datos y una breve descripción del problema para ayudarte un admin de Bingo PAO revisará tu solicitud.
       </Typography>
 
       <Container maxWidth="sm">
@@ -323,7 +343,8 @@ export default function Login() {
               left: 0,
               right: 0,
               height: "2px",
-              background: "linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent)",
+              background:
+                "linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.5), transparent)",
               zIndex: 1,
             },
           }}
@@ -333,28 +354,29 @@ export default function Login() {
               <Typography
                 textAlign="center"
                 sx={{
-                  color: '#4caf50',
-                  bgcolor: 'rgba(76, 175, 80, 0.15)',
-                  border: '1px solid rgba(76, 175, 80, 0.3)',
-                  borderRadius: '8px',
+                  color: "#4caf50",
+                  bgcolor: "rgba(76, 175, 80, 0.15)",
+                  border: "1px solid rgba(76, 175, 80, 0.3)",
+                  borderRadius: "8px",
                   p: 1.5,
-                  fontSize: '0.875rem',
+                  fontSize: "0.875rem",
                   fontWeight: 500,
                 }}
               >
                 {successMessage}
               </Typography>
             )}
+
             {serverError && (
               <Typography
                 textAlign="center"
                 sx={{
-                  color: '#f44336',
-                  bgcolor: 'rgba(244, 67, 54, 0.15)',
-                  border: '1px solid rgba(244, 67, 54, 0.3)',
-                  borderRadius: '8px',
+                  color: "#f44336",
+                  bgcolor: "rgba(244, 67, 54, 0.15)",
+                  border: "1px solid rgba(244, 67, 54, 0.3)",
+                  borderRadius: "8px",
                   p: 1.5,
-                  fontSize: '0.875rem',
+                  fontSize: "0.875rem",
                   fontWeight: 500,
                 }}
               >
@@ -367,37 +389,38 @@ export default function Login() {
               label="Correo electrónico"
               type="email"
               value={values.email}
-              onChange={onChange}
+              onChange={handleChange}
               fullWidth
               autoComplete="email"
               error={!!errors.email}
-              helperText={errors.email || ' '}
+              helperText={errors.email || " "}
               sx={textFieldSx}
             />
 
             <TextField
-              name="password"
-              label="Contraseña"
-              type={showPw ? 'text' : 'password'}
-              value={values.password}
-              onChange={onChange}
+              name="title"
+              label="Título"
+              value={values.title}
+              onChange={handleChange}
               fullWidth
-              autoComplete="current-password"
-              error={!!errors.password}
-              helperText={errors.password || 'Mínimo 8 caracteres'}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      edge="end"
-                      sx={{ color: '#c0a15a' }}
-                      onClick={() => setShowPw((v) => !v)}
-                    >
-                      {showPw ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
+              error={!!errors.title}
+              helperText={errors.title || "Ej: No puedo entrar a mi cuenta"}
+              sx={textFieldSx}
+            />
+
+            <TextField
+              name="description"
+              label="Describe tu problema"
+              value={values.description}
+              onChange={handleChange}
+              fullWidth
+              multiline
+              minRows={3}
+              error={!!errors.description}
+              helperText={
+                errors.description ||
+                "Cuéntanos qué sucede para ayudarte lo más rápido posible"
+              }
               sx={textFieldSx}
             />
 
@@ -417,7 +440,8 @@ export default function Login() {
                 py: 1.5,
                 borderRadius: "8px",
                 textTransform: "none",
-                textShadow: "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
+                textShadow:
+                  "0px -1px 0px rgba(0,0,0,0.5), 0px 1px 2px rgba(255, 215, 0, 0.3)",
                 border: "1px solid #d4af37",
                 backgroundImage: `
                   repeating-linear-gradient(left, rgba(255, 215, 0, 0) 0%, rgba(255, 215, 0, 0) 3%, rgba(255, 215, 0, .12) 3.75%),
@@ -462,45 +486,17 @@ export default function Login() {
                 },
               }}
             >
-              {loading ? 'Ingresando...' : 'Entrar'}
+              {loading ? "Enviando..." : "Enviar solicitud"}
             </Button>
 
-            <Divider
-              sx={{
-                borderColor: 'rgba(255,255,255,0.08)',
-              }}
-            />
+            <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
 
-            <Typography
-              textAlign="center"
-              sx={{ color: 'rgba(255,255,255,0.75)' }}
-            >
-              ¿No tienes cuenta?{' '}
-              <Link href="/register" underline="hover" sx={{ color: '#f1ca66' }}>
-                Regístrate
-              </Link>
-            </Typography>
-            <Typography
-              textAlign="center"
-              sx={{ color: 'rgba(255,255,255,0.75)' }}
-            >
-              ¿olvidaste tu contraseña?{' '}
-              <Link
-                component={RouterLink}
-                to={
-                  values.email
-                    ? `/recover-password?email=${encodeURIComponent(values.email)}`
-                    : '/recover-password'
-                }
-                underline="hover"
-                sx={{ color: '#f1ca66' }}
-              >
-                Recuperar
-              </Link>
-            </Typography>
+        
           </Stack>
         </Paper>
       </Container>
     </Box>
   );
-}
+};
+
+export default RecoverPasswordContact;
