@@ -14,11 +14,6 @@ import {
 import * as React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-// IMPORTA TU LOGO Y STYLES IGUAL QUE EN EL LOGIN
-// import { BingoLogo } from "../components/BingoLogo"; // ajusta la ruta
-// import { textFieldSx } from "../theme/textFieldSx"; // si lo tienes en un archivo aparte
-
-// import { createContactFormService } from "../services/contactFormService"; // o el servicio que te puse arriba
 import BingoLogo from "../Components/BingoLogo";
 import { createContactFormService } from "../Services/contactForm";
 import { useAuth } from "../hooks/useAuth";
@@ -97,11 +92,10 @@ const RecoverPasswordContact: React.FC = () => {
   const location = useLocation();
   const [userId, setUserId] = React.useState<string | null>(null);
   const { user } = useAuth();
-  console.log("🚀 ~ RecoverPasswordContact ~ user:", user)
 
   const [values, setValues] = React.useState<FormValues>({
     email: "",
-    title: "Recuperar contraseña",
+    title: "",
     description: "",
   });
 
@@ -117,7 +111,6 @@ const RecoverPasswordContact: React.FC = () => {
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
 
-  // Prefill del email desde la URL: /recover-password?email=...
   React.useEffect(() => {
     const params = new URLSearchParams(location.search);
     const emailFromQuery = params.get("email");
@@ -180,7 +173,6 @@ const RecoverPasswordContact: React.FC = () => {
         "¡Solicitud enviada! El equipo revisará tu caso y te contactará para ayudarte a recuperar tu contraseña."
       );
 
-      // Si quieres limpiar solo descripción y título:
       setValues((prev) => ({
         ...prev,
         title: "Recuperar contraseña",
@@ -209,7 +201,6 @@ const RecoverPasswordContact: React.FC = () => {
         px: 2,
       }}
     >
-      {/* Botón volver al inicio */}
       <Box
         sx={{
           position: "absolute",
@@ -278,6 +269,7 @@ const RecoverPasswordContact: React.FC = () => {
         sx={{
           fontSize: 14,
           color: "rgba(255,255,255,0.65)",
+          padding: "0 16px",
           mb: 3,
         }}
       >

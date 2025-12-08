@@ -30,7 +30,7 @@ function NotFound() {
 
 function AppContent() {
   const location = useLocation();
-  const hideTabBar = location.pathname === "/login" || location.pathname === "/register";
+  const hideTabBar = location.pathname === "/login" || location.pathname === "/register" || location.pathname === "/contact-us";
 
   return (
     <>
