@@ -10,7 +10,7 @@
     "build:prod": "tsc -b && vite build --mode production",
     "build:qa": "tsc -b && vite build --mode qa",
     "deploy": "npm run build:prod && firebase deploy --only hosting",
-    "deploy:qa": "npm run build:prod && firebase deploy --only hosting",
+    "deploy:qa": "npm run build:qa && firebase deploy --only hosting",
     "lint": "eslint .",
     "preview": "vite preview",
     "cypress:open": "cypress open --config-file cypress.config.cjs",

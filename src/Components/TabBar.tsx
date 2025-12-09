@@ -192,7 +192,8 @@ const TabBar: React.FC = () => {
         WebkitBackdropFilter: "blur(20px) saturate(180%)",
         borderTop: "2px solid rgba(212, 175, 55, 0.3)",
         boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(212, 175, 55, 0.2)",
-        padding: "12px 16px",
+        // Padding responsive
+        padding: { xs: "8px 8px", sm: "12px 16px" },
         zIndex: 1000,
       }}
     >
@@ -203,11 +204,12 @@ const TabBar: React.FC = () => {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: "4px",
+          gap: { xs: "2px", sm: "4px" },
           cursor: "pointer",
-          padding: "8px 16px",
+          // Padding responsive
+          padding: { xs: "6px 8px", sm: "8px 16px" },
           transition: "all 0.2s",
-          flex: 1,
+          minWidth: { xs: "60px", sm: "80px" },
           "&:hover": {
             opacity: 0.8,
           },
@@ -220,6 +222,10 @@ const TabBar: React.FC = () => {
             alignItems: "center",
             justifyContent: "center",
             transition: "color 0.2s",
+            // Icono responsive
+            "& svg": {
+              fontSize: { xs: "20px", sm: "24px" },
+            },
           }}
         >
           <HomeIcon />
@@ -228,7 +234,8 @@ const TabBar: React.FC = () => {
           variant="caption"
           sx={{
             color: isActive("/") ? "#d4af37" : "#f5e6d3",
-            fontSize: "12px",
+            // Texto responsive
+            fontSize: { xs: "10px", sm: "12px" },
             fontWeight: isActive("/") ? 600 : 400,
             transition: "color 0.2s",
           }}
@@ -237,23 +244,27 @@ const TabBar: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Join Button - Lingote de Oro */}
+      {/* Join Button - Lingote de Oro - RESPONSIVE */}
       <Button
         onClick={handleJoin}
         disabled={isInGameView || isInRoomDetail}
         disableRipple
         disableElevation
         sx={{
-          minWidth: "140px",
-          height: "64px",
+          // Tamaño responsive del botón
+          minWidth: { xs: "100px", sm: "120px", md: "140px" },
+          width: { xs: "auto", sm: "auto" },
+          height: { xs: "48px", sm: "56px", md: "64px" },
+          px: { xs: 1.5, sm: 2, md: 3 },
           color: "#1a0f0a !important",
           fontWeight: 800,
-          fontSize: "17px",
-          letterSpacing: "0.5px",
+          // Texto responsive
+          fontSize: { xs: "13px", sm: "15px", md: "17px" },
+          letterSpacing: { xs: "0.3px", sm: "0.5px" },
           textTransform: "none",
           position: "relative",
           // Forma de lingote (trapecio con bordes redondeados)
-          borderRadius: "6px 6px 10px 10px",
+          borderRadius: { xs: "4px 4px 8px 8px", sm: "6px 6px 10px 10px" },
           // Efecto de trapecio usando transform skew sutil
           transform: "perspective(200px) rotateX(2deg)",
           transformStyle: "preserve-3d",
@@ -313,7 +324,9 @@ const TabBar: React.FC = () => {
             zIndex: 1,
           },
           transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-          mx: 2,
+          // Margen responsive
+          mx: { xs: 1, sm: 1.5, md: 2 },
+          flexShrink: 0,
           "&:disabled": {
             opacity: 0.6,
             cursor: "not-allowed",
@@ -418,7 +431,7 @@ const TabBar: React.FC = () => {
       </Button>
 
 
-      {/* Mi Cuenta Tab o Login Tab */}
+      {/* Mi Cuenta Tab o Login Tab - RESPONSIVE */}
       <Box>
       <Box
           onClick={handleAccountClick}
@@ -426,11 +439,12 @@ const TabBar: React.FC = () => {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: "4px",
+          gap: { xs: "2px", sm: "4px" },
           cursor: "pointer",
-          padding: "8px 16px",
+          // Padding responsive
+          padding: { xs: "6px 8px", sm: "8px 16px" },
           transition: "all 0.2s",
-          flex: 1,
+          minWidth: { xs: "60px", sm: "80px" },
           "&:hover": {
             opacity: 0.8,
           },
@@ -443,6 +457,10 @@ const TabBar: React.FC = () => {
             alignItems: "center",
             justifyContent: "center",
             transition: "color 0.2s",
+            // Icono responsive
+            "& svg": {
+              fontSize: { xs: "20px", sm: "24px" },
+            },
           }}
         >
             {isAuthenticated ? <AccountCircleIcon /> : <PowerSettingsNewIcon />}
@@ -451,12 +469,24 @@ const TabBar: React.FC = () => {
           variant="caption"
           sx={{
               color: isActive("/profile") || isActive("/wallet") || isActive("/login") ? "#d4af37" : "#f5e6d3",
-            fontSize: "12px",
-              fontWeight: isActive("/profile") || isActive("/wallet") || isActive("/login") ? 600 : 400,
+            // Texto responsive
+            fontSize: { xs: "10px", sm: "12px" },
+            fontWeight: isActive("/profile") || isActive("/wallet") || isActive("/login") ? 600 : 400,
             transition: "color 0.2s",
+            // Texto adaptativo para pantallas pequeñas
+            whiteSpace: "nowrap",
           }}
         >
-            {isAuthenticated ? "Mi Cuenta" : "Iniciar sesión"}
+            {isAuthenticated ? (
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Mi Cuenta</Box>
+            ) : (
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Iniciar sesión</Box>
+            )}
+            {isAuthenticated ? (
+              <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Cuenta</Box>
+            ) : (
+              <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Ingresar</Box>
+            )}
           </Typography>
         </Box>
 

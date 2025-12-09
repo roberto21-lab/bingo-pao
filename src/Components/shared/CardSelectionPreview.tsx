@@ -319,8 +319,24 @@ export const CardSelectionPreview: React.FC<CardSelectionPreviewProps> = ({
             )}
           </Box>
         </Box>
+
+        {/* Pregunta de selección */}
+        {!isSelected && (
+          <Typography
+            sx={{
+              fontSize: "18px",
+              fontWeight: 700,
+              color: "#d4af37",
+              textAlign: "center",
+              textShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
+              fontFamily: "'Montserrat', sans-serif",
+            }}
+          >
+            ¿Deseas elegir este cartón?
+          </Typography>
+        )}
       </DialogContent>
-      <DialogActions sx={{ p: 4, pt: 0, gap: 2, justifyContent: "center", position: "relative", zIndex: 1 }}>
+      <DialogActions sx={{ p: 4, pt: 2, gap: 2, justifyContent: "center", position: "relative", zIndex: 1 }}>
         {isSelected ? (
           <>
             <MetallicButton variant="gray" onClick={onReject} sx={{ flex: 1 }}>
@@ -333,10 +349,10 @@ export const CardSelectionPreview: React.FC<CardSelectionPreviewProps> = ({
         ) : (
           <>
             <MetallicButton variant="gray" onClick={onReject} sx={{ flex: 1 }}>
-              Rechazar
+              NO
             </MetallicButton>
             <MetallicButton variant="gold" onClick={onAccept} sx={{ flex: 1 }}>
-              Aceptar
+              SÍ
             </MetallicButton>
           </>
         )}

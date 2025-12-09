@@ -174,7 +174,11 @@ export const roomDetailStyles = {
   titleContainer: {
     position: "relative",
     display: "flex",
-    alignItems: "flex-start",
+    // Responsive: columna en móvil, fila en pantallas más grandes
+    flexDirection: { xs: "column", sm: "row" },
+    alignItems: { xs: "flex-start", sm: "flex-start" },
+    justifyContent: { xs: "flex-start", sm: "space-between" },
+    gap: { xs: 1.5, sm: 0 },
   } as SxProps<Theme>,
 
   titleBox: {
@@ -185,7 +189,7 @@ export const roomDetailStyles = {
   } as SxProps<Theme>,
 
   titleText: {
-    fontSize: "24px",
+    fontSize: { xs: "20px", sm: "24px" },
     fontWeight: 900,
     background: "linear-gradient(135deg, #d4af37, #f4d03f, #d4af37)",
     backgroundClip: "text",
@@ -198,7 +202,7 @@ export const roomDetailStyles = {
   } as SxProps<Theme>,
 
   subtitleText: {
-    fontSize: "20px",
+    fontSize: { xs: "18px", sm: "20px" },
     fontWeight: 900,
     background: "linear-gradient(135deg, #d4af37, #f4d03f, #d4af37)",
     backgroundClip: "text",
@@ -238,18 +242,16 @@ export const roomDetailStyles = {
   } as SxProps<Theme>,
 
   cardsGrid: {
-    display: "flex",
-    flexWrap: "wrap",
+    display: "grid",
+    // auto-fit: crea tantas columnas como quepan
+    // minmax(120px, 1fr): mínimo 120px por cartón, máximo 1fr
+    // Esto garantiza: 2 columnas en ~280px, 3 en ~400px, 4 en ~520px, etc.
+    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
     overflowY: "auto",
-    maxHeight: "300px",
+    overflowX: "hidden",
+    maxHeight: "500px",
     gap: 2,
     py: 2,
-    "& > *": {
-      flex: "0 0 calc((100% - 32px) / 3)",
-      maxWidth: "calc((100% - 32px) / 3)",
-      width: "calc((100% - 32px) / 3)",
-      margin: "8px 0",
-    },
   } as SxProps<Theme>,
 
   buttonContainer: {

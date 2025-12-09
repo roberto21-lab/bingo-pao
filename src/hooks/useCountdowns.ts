@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 /**
  * Hook para manejar todos los countdowns del juego
+ * SYNC-FIX: Todos los countdowns usan serverTimeOffset para sincronización
  * - Countdown de inicio de sala
  * - Countdown de transición entre rounds
  * - Countdown de inicio de round
@@ -27,11 +28,18 @@ export function useCountdowns(
   const [nextRoundNumber, setNextRoundNumber] = useState<number | null>(null);
   const [timeUntilStart, setTimeUntilStart] = useState<number | null>(null);
 
-  // Refs para timestamps
+  // Refs para timestamps - SYNC-FIX: usar refs para evitar stale closures
   const roomStartCountdownFinishRef = useRef(roomStartCountdownFinish);
   const roundStartCountdownFinishRef = useRef(roundStartCountdownFinish);
   const roundTransitionCountdownFinishRef = useRef(roundTransitionCountdownFinish);
   const bingoClaimCountdownFinishRef = useRef(bingoClaimCountdownFinish);
+  // SYNC-FIX: Ref para serverTimeOffset para sincronización precisa
+  const serverTimeOffsetRef = useRef(serverTimeOffset);
+
+  // Refs para valores actuales de countdown (evita re-renders innecesarios)
+  const currentRoomStartCountdownRef = useRef(roomStartCountdown);
+  const currentRoundTransitionCountdownRef = useRef(roundTransitionCountdown);
+  const currentBingoClaimCountdownRef = useRef(bingoClaimCountdown);
 
   // Actualizar refs cuando cambian los valores
   useEffect(() => {
@@ -49,6 +57,29 @@ export function useCountdowns(
   useEffect(() => {
     bingoClaimCountdownFinishRef.current = bingoClaimCountdownFinish;
   }, [bingoClaimCountdownFinish]);
+
+  // SYNC-FIX: Actualizar ref de serverTimeOffset
+  useEffect(() => {
+    serverTimeOffsetRef.current = serverTimeOffset;
+  }, [serverTimeOffset]);
+
+  // SYNC-FIX: Actualizar refs de valores actuales
+  useEffect(() => {
+    currentRoomStartCountdownRef.current = roomStartCountdown;
+  }, [roomStartCountdown]);
+
+  useEffect(() => {
+    currentRoundTransitionCountdownRef.current = roundTransitionCountdown;
+  }, [roundTransitionCountdown]);
+
+  useEffect(() => {
+    currentBingoClaimCountdownRef.current = bingoClaimCountdown;
+  }, [bingoClaimCountdown]);
+
+  // SYNC-FIX: Función helper para obtener tiempo ajustado del servidor
+  const getServerAdjustedTime = useCallback(() => {
+    return Date.now() + serverTimeOffsetRef.current;
+  }, []);
 
   // Countdown de inicio de sala (solo para la primera ronda, antes de que comience el juego)
   useEffect(() => {
@@ -111,52 +142,63 @@ export function useCountdowns(
     serverTimeOffset,
   ]);
 
-  // Actualizar countdowns basados en timestamps del servidor
+  // SYNC-FIX: Actualizar countdowns basados en timestamps del servidor
+  // Usa serverTimeOffset para que todos los clientes vean el mismo tiempo
   useEffect(() => {
     if (!gameStarted || !roomId) return;
 
     const updateCountdowns = () => {
-      const now = Date.now();
+      // SYNC-FIX: Usar tiempo ajustado del servidor para sincronización entre clientes
+      const serverNow = getServerAdjustedTime();
 
       // Actualizar countdown de inicio de sala
       const roomFinish = roomStartCountdownFinishRef.current;
       if (roomFinish) {
-        const remaining = Math.max(0, Math.floor((roomFinish - now) / 1000));
+        const remaining = Math.max(0, Math.floor((roomFinish - serverNow) / 1000));
+        // SYNC-FIX: Solo actualizar si el valor cambió (evita intermitencia)
         if (remaining > 0) {
-          setRoomStartCountdown(remaining);
+          if (currentRoomStartCountdownRef.current !== remaining) {
+            setRoomStartCountdown(remaining);
+          }
         } else {
-          setRoomStartCountdown(null);
-          setRoomStartCountdownFinish(null);
+          if (currentRoomStartCountdownRef.current !== null) {
+            setRoomStartCountdown(null);
+            setRoomStartCountdownFinish(null);
+          }
         }
       }
 
       // Actualizar countdown de inicio de round (tiene prioridad sobre transición si ambos están activos)
       const roundFinish = roundStartCountdownFinishRef.current;
       if (roundFinish) {
-        const remaining = Math.max(0, Math.floor((roundFinish - now) / 1000));
+        const remaining = Math.max(0, Math.floor((roundFinish - serverNow) / 1000));
         if (remaining > 0) {
-          // Solo actualizar si el valor cambió (evitar re-renders innecesarios)
-          setRoundTransitionCountdown((prev) => {
-            if (prev !== remaining) {
-              return remaining;
-            }
-            return prev;
-          });
+          // SYNC-FIX: Solo actualizar si el valor cambió (evita intermitencia)
+          if (currentRoundTransitionCountdownRef.current !== remaining) {
+            setRoundTransitionCountdown(remaining);
+          }
         } else {
           // El countdown terminó
-          setRoundTransitionCountdown(null);
-          setRoundStartCountdownFinish(null);
+          if (currentRoundTransitionCountdownRef.current !== null) {
+            setRoundTransitionCountdown(null);
+            setRoundStartCountdownFinish(null);
+          }
         }
       } else {
         // Actualizar countdown de transición entre rounds (solo si no hay countdown de inicio de round)
         const transitionFinish = roundTransitionCountdownFinishRef.current;
         if (transitionFinish) {
-          const remaining = Math.max(0, Math.floor((transitionFinish - now) / 1000));
+          const remaining = Math.max(0, Math.floor((transitionFinish - serverNow) / 1000));
           if (remaining > 0) {
-            setRoundTransitionCountdown(remaining);
+            // SYNC-FIX: Solo actualizar si el valor cambió (evita intermitencia)
+            if (currentRoundTransitionCountdownRef.current !== remaining) {
+              setRoundTransitionCountdown(remaining);
+            }
           } else {
-            setRoundTransitionCountdown(null);
-            setRoundTransitionCountdownFinish(null);
+            if (currentRoundTransitionCountdownRef.current !== null) {
+              setRoundTransitionCountdown(null);
+              setRoundTransitionCountdownFinish(null);
+            }
           }
         }
       }
@@ -164,22 +206,27 @@ export function useCountdowns(
       // Actualizar countdown de ventana de bingo
       const bingoFinish = bingoClaimCountdownFinishRef.current;
       if (bingoFinish) {
-        const remaining = Math.max(0, Math.floor((bingoFinish - now) / 1000));
+        const remaining = Math.max(0, Math.floor((bingoFinish - serverNow) / 1000));
         if (remaining > 0) {
-          setBingoClaimCountdown(remaining);
+          // SYNC-FIX: Solo actualizar si el valor cambió (evita intermitencia)
+          if (currentBingoClaimCountdownRef.current !== remaining) {
+            setBingoClaimCountdown(remaining);
+          }
         } else {
-          setBingoClaimCountdown(null);
-          setBingoClaimCountdownFinish(null);
+          if (currentBingoClaimCountdownRef.current !== null) {
+            setBingoClaimCountdown(null);
+            setBingoClaimCountdownFinish(null);
+          }
         }
       }
     };
 
-    // Actualizar cada segundo
+    // SYNC-FIX: Actualizar cada segundo con precisión
     const interval = setInterval(updateCountdowns, 1000);
     updateCountdowns(); // Ejecutar inmediatamente
 
     return () => clearInterval(interval);
-  }, [gameStarted, roomId]);
+  }, [gameStarted, roomId, getServerAdjustedTime]);
 
   return {
     roomStartCountdown,

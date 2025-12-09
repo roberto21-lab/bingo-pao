@@ -29,7 +29,7 @@ import {
   joinRoom,
   leaveRoom,
 } from "../Services/socket.service";
-import { StatusBadge } from "../Components/shared/StatusBadge";
+import { useRoomContext } from "../contexts/RoomContext";
 import { SearchBar } from "../Components/shared/SearchBar";
 import { GlassDialog } from "../Components/shared/GlassDialog";
 import { CardSelectionPreview } from "../Components/shared/CardSelectionPreview";
@@ -47,6 +47,7 @@ export default function RoomDetail() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { setRoomStatus, setRoomTitle, clearRoomState } = useRoomContext();
   const [room, setRoom] = React.useState<RoomDetailData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -143,6 +144,21 @@ export default function RoomDetail() {
     fetchRoom();
   }, [roomId]);
 
+  // Actualizar el contexto cuando la sala se carga o cambia
+  React.useEffect(() => {
+    if (room) {
+      setRoomStatus(room.status);
+      setRoomTitle(room.title);
+    }
+  }, [room, setRoomStatus, setRoomTitle]);
+
+  // Limpiar el contexto cuando el componente se desmonta
+  React.useEffect(() => {
+    return () => {
+      clearRoomState();
+    };
+  }, [clearRoomState]);
+
   React.useEffect(() => {
     if (!roomId) return;
 
@@ -170,6 +186,9 @@ export default function RoomDetail() {
               mappedStatus = "waiting";
           }
 
+          // También actualizar el contexto global
+          setRoomStatus(mappedStatus);
+
           return {
             ...prevRoom,
             status: mappedStatus,
@@ -181,7 +200,7 @@ export default function RoomDetail() {
     return () => {
       unsubscribeStatusUpdated();
     };
-  }, [roomId]);
+  }, [roomId, setRoomStatus]);
 
   React.useEffect(() => {
     if (!roomId) return;
@@ -260,22 +279,6 @@ export default function RoomDetail() {
     };
   }, [roomId]);
 
-  React.useEffect(() => {
-    if (!roomId) return;
-
-    const unsubscribeCardsEnrolled = onCardsEnrolled(async (data) => {
-      if (data.room_id === roomId) {
-        setAvailableCardsFromDB((prevCards) => {
-          const enrolledIdsSet = new Set(data.enrolled_card_ids);
-          return prevCards.filter((card) => !enrolledIdsSet.has(card._id));
-        });
-      }
-    });
-
-    return () => {
-      unsubscribeCardsEnrolled();
-    };
-  }, [roomId]);
 
   React.useEffect(() => {
     const fetchWallet = async () => {
@@ -411,6 +414,149 @@ export default function RoomDetail() {
   const [selectedCards, setSelectedCards] = React.useState<Set<number>>(
     new Set()
   );
+
+  // Constante para el mínimo de cartones a mostrar
+  const MIN_CARDS_TO_DISPLAY = 40;
+  const RELOAD_DEBOUNCE_MS = 500;
+
+  // Refs para acceder al estado actual en el listener de WebSocket
+  const selectedCardsRef = React.useRef(selectedCards);
+  const cardIdMapRef = React.useRef(cardIdMap);
+  const codeMapRef = React.useRef(codeMap);
+  const searchTermRef = React.useRef(searchTerm);
+  const reloadDebounceRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Mantener las refs actualizadas
+  React.useEffect(() => {
+    selectedCardsRef.current = selectedCards;
+  }, [selectedCards]);
+
+  React.useEffect(() => {
+    cardIdMapRef.current = cardIdMap;
+  }, [cardIdMap]);
+
+  React.useEffect(() => {
+    codeMapRef.current = codeMap;
+  }, [codeMap]);
+
+  React.useEffect(() => {
+    searchTermRef.current = searchTerm;
+  }, [searchTerm]);
+
+  // Función para recargar cartones disponibles (con debounce)
+  const reloadAvailableCards = React.useCallback(async () => {
+    if (!roomId) return;
+    
+    // Solo recargar si NO hay búsqueda activa
+    const currentSearchTerm = searchTermRef.current;
+    if (currentSearchTerm && currentSearchTerm.trim().length > 0) {
+      // Si hay búsqueda activa, no recargar automáticamente
+      // El usuario verá menos cartones hasta que quite la búsqueda
+      return;
+    }
+
+    try {
+      const newCards = await getAvailableCards(roomId);
+      const formattedCards = newCards.map((card) => ({
+        ...card,
+        numbers_json: card.numbers_json.map((row) =>
+          row.map((num) => (num === "FREE" ? 0 : num))
+        ) as number[][],
+      }));
+      
+      setAvailableCardsFromDB(formattedCards);
+    } catch (error) {
+      console.error("Error al recargar cartones disponibles:", error);
+    }
+  }, [roomId]);
+
+  // Escuchar cuando otros usuarios inscriben cartones
+  React.useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribeCardsEnrolled = onCardsEnrolled(async (data) => {
+      if (data.room_id === roomId) {
+        const enrolledIdsSet = new Set(data.enrolled_card_ids);
+        
+        // FIX: Obtener el ID del usuario actual
+        const currentUserId = user?.id;
+        
+        // FIX: Si el evento fue generado por el propio usuario, solo actualizar la lista
+        // No mostrar mensaje de error porque el usuario ya recibió feedback del API
+        const isOwnEnrollment = data.user_id === currentUserId;
+        
+        if (!isOwnEnrollment) {
+          // Solo verificar conflictos si otro usuario inscribió los cartones
+          const currentSelectedCards = selectedCardsRef.current;
+          const currentCardIdMap = cardIdMapRef.current;
+          const currentCodeMap = codeMapRef.current;
+          
+          const conflictingCards: string[] = [];
+          const indicesToRemove: number[] = [];
+          
+          currentSelectedCards.forEach((index) => {
+            const cardId = currentCardIdMap.get(index);
+            if (cardId && enrolledIdsSet.has(cardId)) {
+              const cardCode = currentCodeMap.get(index) || cardId;
+              conflictingCards.push(cardCode);
+              indicesToRemove.push(index);
+            }
+          });
+          
+          // Si hay cartones en conflicto, notificar al usuario y deseleccionarlos
+          if (conflictingCards.length > 0) {
+            // Deseleccionar los cartones que ya no están disponibles
+            setSelectedCards((prev) => {
+              const next = new Set(prev);
+              indicesToRemove.forEach((index) => next.delete(index));
+              return next;
+            });
+            
+            // Mostrar mensaje de error solo si fue otro usuario
+            const message = conflictingCards.length === 1
+              ? `El cartón ${conflictingCards[0]} fue inscrito por otro jugador y ha sido removido de tu selección.`
+              : `Los cartones ${conflictingCards.join(", ")} fueron inscritos por otros jugadores y han sido removidos de tu selección.`;
+            
+            setErrorToastMessage(message);
+            setShowErrorToast(true);
+          }
+        }
+        
+        // Actualizar la lista de cartones disponibles y verificar si necesita recargar
+        setAvailableCardsFromDB((prevCards) => {
+          const filteredCards = prevCards.filter((card) => !enrolledIdsSet.has(card._id));
+          
+          // Si quedan menos del mínimo y NO hay búsqueda activa, programar recarga
+          const currentSearchTerm = searchTermRef.current;
+          const hasNoSearch = !currentSearchTerm || currentSearchTerm.trim().length === 0;
+          
+          if (filteredCards.length < MIN_CARDS_TO_DISPLAY && hasNoSearch) {
+            // Cancelar recarga anterior si existe (debounce)
+            if (reloadDebounceRef.current) {
+              clearTimeout(reloadDebounceRef.current);
+            }
+            
+            // Programar nueva recarga con debounce
+            reloadDebounceRef.current = setTimeout(() => {
+              reloadAvailableCards();
+              reloadDebounceRef.current = null;
+            }, RELOAD_DEBOUNCE_MS);
+          }
+          
+          return filteredCards;
+        });
+      }
+    });
+
+    // Cleanup: cancelar debounce pendiente
+    return () => {
+      unsubscribeCardsEnrolled();
+      if (reloadDebounceRef.current) {
+        clearTimeout(reloadDebounceRef.current);
+      }
+    };
+  }, [roomId, user?.id, reloadAvailableCards]);
+
   const [modalOpen, setModalOpen] = React.useState(false);
   const [previewCardIndex, setPreviewCardIndex] = React.useState<number | null>(
     null
@@ -681,15 +827,6 @@ export default function RoomDetail() {
                 Tus Cartones
               </Typography>
             </Box>
-
-            {room && (
-              <StatusBadge
-                status={room.status as RoomStatus}
-                position="absolute"
-                top={0}
-                right={0}
-              />
-            )}
           </Box>
 
           <Box>

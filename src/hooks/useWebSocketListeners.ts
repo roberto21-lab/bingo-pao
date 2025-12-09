@@ -102,7 +102,9 @@ export function useWebSocketListeners(
   progressIntervalRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>,
   // FASE 4: Para sincronización de progress bar con servidor
   setServerTimeOffset: (value: number) => void,
-  setNextCallAt: (value: number | null) => void
+  setNextCallAt: (value: number | null) => void,
+  // FIX-SYNC: Para bloquear interacción durante transición de rondas
+  setIsTransitioning: (value: boolean) => void
 ) {
   // Refs para acceder a valores actuales sin causar re-registros
   const currentRoundRef = useRef(currentRound);
@@ -119,6 +121,9 @@ export function useWebSocketListeners(
   const lastNumbersRef = useRef(lastNumbers);
   // FIX-3: Ref para hasClaimedBingoInRound - evita "Mala Suerte" incorrecta
   const hasClaimedBingoInRoundRef = useRef(hasClaimedBingoInRound);
+  // FIX-ROUND-RESET: Ref para trackear la última ronda para la cual procesamos números
+  // Esto ayuda a detectar cuando necesitamos limpiar cartones al cambiar de ronda
+  const lastProcessedRoundRef = useRef(currentRound);
 
   // Actualizar refs cuando cambian los valores
   useEffect(() => {
@@ -354,7 +359,60 @@ export function useWebSocketListeners(
         return;
       }
 
-      if (data.round_number !== currentRoundRef.current || data.room_id !== roomIdRef.current) {
+      if (data.room_id !== roomIdRef.current) {
+        return;
+      }
+
+      // FIX-ROUND-RESET: Detectar si es un número de una ronda diferente
+      // Si el número es de una ronda diferente a la que estábamos procesando,
+      // necesitamos limpiar los cartones ANTES de procesar el número
+      const isNewRoundNumber = data.round_number !== lastProcessedRoundRef.current;
+      
+      if (isNewRoundNumber) {
+        console.log(
+          `[GameInProgress] 🔄 FIX-ROUND-RESET: Detectado número de nueva ronda (${lastProcessedRoundRef.current} → ${data.round_number}). Limpiando cartones automáticamente...`
+        );
+        
+        // Limpiar TODO antes de procesar el número de la nueva ronda
+        setCalledNumbers(new Set());
+        setCurrentNumber("");
+        setLastNumbers([]);
+        setLastCalledTimestamp(null);
+        setMarkedNumbers(new Map());
+        setProgress(0);
+        
+        // Resetear estados de ronda
+        setRoundFinished(false);
+        setRoundEnded(false);
+        
+        // Limpiar countdowns de la ronda anterior
+        setRoundTransitionCountdown(null);
+        setRoundTransitionCountdownFinish(null);
+        setRoundStartCountdownFinish(null);
+        setBingoClaimCountdown(null);
+        setBingoClaimCountdownFinish(null);
+        setTimeoutCountdown(null);
+        setTimeoutStartTime(null);
+        
+        // Cerrar modales
+        setBingoValidationOpen(false);
+        setCurrentRoundWinners([]);
+        setShowConfetti(false);
+        setShowLoserAnimation(false);
+        setModalOpen(false);
+        setPreviewCardIndex(null);
+        
+        // Actualizar la ronda actual y la última procesada
+        setCurrentRound(data.round_number);
+        lastProcessedRoundRef.current = data.round_number;
+        
+        console.log(
+          `[GameInProgress] ✅ FIX-ROUND-RESET: Cartones limpiados. Procesando primer número de Round ${data.round_number}: ${data.number}`
+        );
+      }
+
+      // Ignorar números de rondas anteriores (no de la actual)
+      if (data.round_number !== currentRoundRef.current && !isNewRoundNumber) {
         return;
       }
 
@@ -387,10 +445,17 @@ export function useWebSocketListeners(
       setCurrentNumber(data.number);
       setLastCalledTimestamp(calledTimestamp);
       
-      // FIX-1: Usar ref para obtener valor actualizado (evita closure stale)
+      // FIX-LAST-NUMBERS: Usar los últimos números del servidor para sincronización
+      // Si el servidor envía last_three_numbers, usarlos directamente
+      // Esto garantiza que todos los clientes vean los mismos números
+      if (data.last_three_numbers && Array.isArray(data.last_three_numbers)) {
+        setLastNumbers(data.last_three_numbers);
+      } else {
+        // Fallback: construir localmente si el servidor no envía (compatibilidad)
       const currentLast = lastNumbersRef.current || [];
       const updated = [data.number, ...currentLast].slice(0, 3);
       setLastNumbers(updated);
+      }
 
       setProgress(0);
 
@@ -443,6 +508,10 @@ export function useWebSocketListeners(
         `[GameInProgress] 🧹 Ejecutando RESET COMPLETO de UI para nueva ronda...`
       );
 
+      // FIX-SYNC: Desactivar modo transición - la nueva ronda está lista
+      setIsTransitioning(false);
+      console.log(`[GameInProgress] 🔓 Modo transición DESACTIVADO - interacción permitida`);
+
       // ========================================
       // RESET COMPLETO DE UI - NUEVA RONDA
       // ========================================
@@ -460,6 +529,8 @@ export function useWebSocketListeners(
       setIsCallingNumber(false);
       setProgress(0);
       setCurrentRound(data.round_number);
+      // FIX-ROUND-RESET: Actualizar la última ronda procesada
+      lastProcessedRoundRef.current = data.round_number;
       
       // 3. RESET de todos los countdowns
       setRoundTransitionCountdown(null);
@@ -484,6 +555,44 @@ export function useWebSocketListeners(
       
       // 5. RESET del estado de game starting
       setIsGameStarting(false);
+      
+      // FIX-PATTERN: Si el evento incluye pattern, actualizar inmediatamente el bingo type
+      // Esto evita mostrar el patrón de la ronda anterior mientras carga desde el servidor
+      if (data.pattern) {
+        console.log(
+          `[GameInProgress] 🎯 Actualizando pattern desde round-started: ${data.pattern} para Round ${data.round_number}`
+        );
+        
+        // Actualizar roundsData inmediatamente para que currentBingoType se recalcule
+        setRoundsData((prevRounds) => {
+          const updatedRounds = prevRounds.map((round) => {
+            if (round.round_number === data.round_number) {
+              return {
+                ...round,
+                status_id: { name: "in_progress", category: "round" },
+                pattern_id: { name: data.pattern },
+              };
+            }
+            // Marcar rondas anteriores como finished
+            if (round.round_number < data.round_number) {
+              return {
+                ...round,
+                status_id: { name: "finished", category: "round" },
+              };
+            }
+            return round;
+          });
+          return updatedRounds;
+        });
+
+        // También actualizar roundBingoTypes directamente
+        const newBingoType = mapPatternToBingoType(data.pattern);
+        setRoundBingoTypes((prevTypes) => {
+          const updatedTypes = [...prevTypes];
+          updatedTypes[data.round_number - 1] = newBingoType;
+          return updatedTypes;
+        });
+      }
       
       console.log(
         `[GameInProgress] ✅ Reset completo ejecutado para Round ${data.round_number}`
@@ -781,6 +890,13 @@ export function useWebSocketListeners(
         (data.round_number === currentRound ||
           data.round_number >= currentRound)
       ) {
+        // SYNC-FIX: Sincronizar offset con server_time del evento
+        if (data.server_time) {
+          const clientNow = Date.now();
+          const offset = data.server_time - clientNow;
+          setServerTimeOffset(offset);
+        }
+        
         console.log(
           `[GameInProgress] Countdown de ventana de bingo: ${data.seconds_remaining}s restantes para Round ${data.round_number}`
         );
@@ -842,6 +958,13 @@ export function useWebSocketListeners(
           return;
         }
 
+        // SYNC-FIX: Sincronizar offset con server_time del evento
+        if (data.server_time) {
+          const clientNow = Date.now();
+          const offset = data.server_time - clientNow;
+          setServerTimeOffset(offset);
+        }
+
         console.log(
           `[GameInProgress] Countdown de transición: ${data.seconds_remaining}s para Round ${data.next_round_number}`
         );
@@ -888,21 +1011,22 @@ export function useWebSocketListeners(
           `[GameInProgress] 🧹 Preparando transición: Round ${data.previous_round_number} → Round ${data.next_round_number}`
         );
 
+        // FIX-SYNC: Activar modo transición para bloquear interacción
+        // Esto previene que el usuario cante bingo con datos viejos
+        setIsTransitioning(true);
+        console.log(`[GameInProgress] 🔒 Modo transición ACTIVADO - interacción bloqueada`);
+
         // ========================================
-        // ISSUE-FIX: Limpiar marcas pero mantener números visibles
-        // Los números llamados se mantienen visibles hasta round-started
-        // Pero las MARCAS se limpian para evitar bingo con datos viejos
+        // ISSUE-2 FIX: Limpiar TODO ANTES de la transición
+        // El usuario quiere ver los cartones limpios ANTES de pasar a la siguiente ronda
+        // Esto evita confusión sobre qué números son de la ronda actual vs anterior
         // ========================================
         
-        // 1. MANTENER números visibles para que el usuario vea la ronda anterior
-        // setCalledNumbers(new Set()); // MANTENER COMENTADO - números visibles
-        // setCurrentNumber(""); // MANTENER COMENTADO
-        // setLastNumbers([]); // MANTENER COMENTADO
-        // setLastCalledTimestamp(null); // MANTENER COMENTADO
-        
-        // 2. ISSUE-1 FIX: SÍ limpiar markedNumbers para evitar cantar bingo con datos viejos
-        // Esto previene la condición de carrera donde el usuario abre un cartón
-        // después de round-cleanup pero antes de round-started
+        // 1. LIMPIAR números llamados y marcados AHORA (antes de la transición)
+        setCalledNumbers(new Set());
+        setCurrentNumber("");
+        setLastNumbers([]);
+        setLastCalledTimestamp(null);
         setMarkedNumbers(new Map());
         
         setProgress(0);
@@ -928,12 +1052,14 @@ export function useWebSocketListeners(
         setPreviewCardIndex(null);
         
         console.log(
-          `[GameInProgress] ✅ Preparación de transición completada. Números PERMANECEN visibles hasta round-started.`
+          `[GameInProgress] ✅ ISSUE-2 FIX: Cartones y números LIMPIADOS antes de la transición`
         );
 
         // Actualizar al siguiente round
         if (data.next_round_number > currentRoundRef.current) {
           setCurrentRound(data.next_round_number);
+          // FIX-ROUND-RESET: Actualizar la última ronda procesada
+          lastProcessedRoundRef.current = data.next_round_number;
         }
       }
     });
@@ -972,10 +1098,52 @@ export function useWebSocketListeners(
           `[GameInProgress] 🆕 Detectada nueva ronda en round-sync: ${currentRoundRef.current} → ${data.round_number}`
         );
         setCurrentRound(data.round_number);
+        // FIX-ROUND-RESET: Actualizar la última ronda procesada
+        lastProcessedRoundRef.current = data.round_number;
+      }
+
+      // FIX-PATTERN: Actualizar roundsData con el pattern del evento para que currentBingoType se actualice correctamente
+      if (data.pattern && (isNewRound || data.status === "in_progress")) {
+        console.log(
+          `[GameInProgress] 🎯 Actualizando pattern desde round-sync: ${data.pattern} para Round ${data.round_number}`
+        );
+        
+        // Actualizar roundsData para que el cálculo de currentBingoType use el pattern correcto
+        setRoundsData((prevRounds) => {
+          const updatedRounds = prevRounds.map((round) => {
+            if (round.round_number === data.round_number) {
+              return {
+                ...round,
+                status_id: { name: data.status, category: "round" },
+                pattern_id: { name: data.pattern },
+              };
+            }
+            // Marcar rondas anteriores como finished si es una nueva ronda
+            if (isNewRound && round.round_number < data.round_number) {
+              return {
+                ...round,
+                status_id: { name: "finished", category: "round" },
+              };
+            }
+            return round;
+          });
+          return updatedRounds;
+        });
+
+        // También actualizar roundBingoTypes directamente
+        const newBingoType = mapPatternToBingoType(data.pattern);
+        setRoundBingoTypes((prevTypes) => {
+          const updatedTypes = [...prevTypes];
+          updatedTypes[data.round_number - 1] = newBingoType;
+          return updatedTypes;
+        });
       }
 
       // Si el round está en progreso, preparar la UI
       if (data.status === "in_progress") {
+        // FIX-SYNC: Desactivar modo transición si está activo
+        setIsTransitioning(false);
+        
         // ========================================
         // RESET COMPLETO AL SINCRONIZAR NUEVA RONDA
         // ========================================
@@ -1116,6 +1284,13 @@ export function useWebSocketListeners(
       if (!isMounted) return;
 
       if (data.room_id === roomId) {
+        // SYNC-FIX: Sincronizar offset con server_time del evento
+        if (data.server_time) {
+          const clientNow = Date.now();
+          const offset = data.server_time - clientNow;
+          setServerTimeOffset(offset);
+        }
+        
         if (roundTransitionCountdown !== null && roundTransitionCountdown > 0) {
           console.log(
             `[GameInProgress] Ignorando countdown de inicio de sala: hay countdown de transición activo (${roundTransitionCountdown}s)`
@@ -1157,6 +1332,13 @@ export function useWebSocketListeners(
         (data.round_number === currentRound ||
           data.round_number >= currentRound)
       ) {
+        // SYNC-FIX: Sincronizar offset con server_time del evento
+        if (data.server_time) {
+          const clientNow = Date.now();
+          const offset = data.server_time - clientNow;
+          setServerTimeOffset(offset);
+        }
+        
         if (data.round_number > currentRound) {
           console.log(
             `[GameInProgress] Actualizando round actual desde countdown: Round ${data.round_number} (antes: Round ${currentRound})`

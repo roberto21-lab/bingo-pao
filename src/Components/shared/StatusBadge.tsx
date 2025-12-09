@@ -4,9 +4,10 @@ import { Box, Typography } from "@mui/material";
 
 type StatusBadgeProps = {
   status: "waiting" | "preparing" | "in_progress" | "locked" | "finished";
-  position?: "absolute" | "relative";
+  position?: "absolute" | "relative" | "static";
   top?: number | string;
   right?: number | string;
+  responsive?: boolean; // Si es true, usa position static en mobile
 };
 
 const statusConfig = {
@@ -42,17 +43,22 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   position = "absolute",
   top = 0,
   right = 0,
+  responsive = false,
 }) => {
   const config = statusConfig[status] || statusConfig.waiting;
 
   return (
     <Box
       sx={{
-        position,
-        top,
-        right,
+        // Responsive: static en mobile, absolute en desktop
+        position: responsive 
+          ? { xs: "static", sm: position } 
+          : position,
+        top: responsive ? { xs: "auto", sm: top } : top,
+        right: responsive ? { xs: "auto", sm: right } : right,
         display: "inline-flex",
-        px: 1.5,
+        alignSelf: responsive ? { xs: "flex-start", sm: "auto" } : "auto",
+        px: { xs: 1, sm: 1.5 },
         py: 0.5,
         borderRadius: "10px",
         backgroundColor: `${config.color}25`,
@@ -64,10 +70,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
         variant="caption"
         sx={{
           color: config.color,
-          fontSize: "11px",
+          fontSize: { xs: "9px", sm: "11px" },
           fontWeight: 700,
           textTransform: "uppercase",
-          letterSpacing: "0.8px",
+          letterSpacing: { xs: "0.5px", sm: "0.8px" },
           textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)",
           whiteSpace: "nowrap",
           lineHeight: 1.2,

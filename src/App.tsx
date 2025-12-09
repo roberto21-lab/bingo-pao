@@ -16,6 +16,7 @@ import WalletPage from "./Pages/WalletPage";
 import Login from "./Pages/Login";
 import ProtectedRoute from "./Components/ProtectedRoute";
 import { GameProvider } from "./contexts/GameContext";
+import { RoomProvider } from "./contexts/RoomContext";
 import RecoverPassword from "./Pages/RecoverPassword";
 import RecoverPasswordContact from "./Pages/RecoverPasswordContact";
 
@@ -60,7 +61,9 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <GameProvider>
+        <RoomProvider>
         <AppContent />
+        </RoomProvider>
       </GameProvider>
     </ThemeProvider>
   );

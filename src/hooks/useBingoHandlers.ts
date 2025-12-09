@@ -35,9 +35,13 @@ export function useBingoHandlers(
   const [selectedWinner, setSelectedWinner] = useState<RoomWinner | null>(null);
   const [patternModalOpen, setPatternModalOpen] = useState(false);
   
-  // ISSUE-1: Estado para rastrear si el usuario ya intentó cantar bingo en la ronda actual
+  // ISSUE-1: Estado para rastrear si el usuario ya cantó bingo VÁLIDO en la ronda actual
+  // FIX-SYNC: Solo se marca true si el bingo fue aceptado (válido)
   const [hasClaimedBingoInRound, setHasClaimedBingoInRound] = useState(false);
   const [isClaimingBingo, setIsClaimingBingo] = useState(false); // Para evitar doble-click
+  
+  // FIX-SYNC: Estado para bloquear interacción durante transición de rondas
+  const [isTransitioning, setIsTransitioning] = useState(false);
   
   // ISSUE-2: Estado para rastrear qué cartones ya fueron usados para cantar bingo en esta ronda
   // Set de card_id que ya fueron usados
@@ -52,6 +56,7 @@ export function useBingoHandlers(
       console.log(`[useBingoHandlers] 🔄 Ronda cambió de ${previousRoundRef.current} a ${currentRound}, reseteando estados`);
       setHasClaimedBingoInRound(false);
       setClaimedCardIds(new Set()); // Resetear cartones usados para nueva ronda
+      setIsTransitioning(false); // Asegurar que la transición se resetea
       previousRoundRef.current = currentRound;
     }
   }, [currentRound]);
@@ -61,6 +66,21 @@ export function useBingoHandlers(
     if (roomFinished && winners && winners.length > index) {
       setSelectedWinner(winners[index]);
       setWinnerCardModalOpen(true);
+      return;
+    }
+    
+    // ISSUE-1 FIX: Bloquear apertura de cartones si ya cantó bingo válido en esta ronda
+    // El usuario debe esperar a que la ronda termine y comience la siguiente
+    if (hasClaimedBingoInRound) {
+      console.log(`[useBingoHandlers] ⚠️ Bloqueando apertura de cartón - ya cantaste bingo en esta ronda`);
+      alert("Ya cantaste bingo en esta ronda. Espera a que comience la siguiente ronda.");
+      return;
+    }
+    
+    // ISSUE-1 FIX: Bloquear apertura durante transición de rondas
+    if (isTransitioning) {
+      console.log(`[useBingoHandlers] ⚠️ Bloqueando apertura de cartón - transición en progreso`);
+      alert("Espera un momento, se está preparando la siguiente ronda.");
       return;
     }
     
@@ -119,10 +139,17 @@ export function useBingoHandlers(
     _setProgress: (value: number) => void,
     _handleCloseModal: () => void
   ) => {
-    // ISSUE-1: Verificar si ya se cantó bingo en esta ronda
+    // FIX-SYNC: Verificar si estamos en transición de rondas
+    if (isTransitioning) {
+      console.log(`[GameInProgress] ⚠️ handleBingo: Transición de ronda en progreso, no se puede cantar bingo`);
+      alert("Espera un momento, se está preparando la siguiente ronda.");
+      return;
+    }
+    
+    // ISSUE-1: Verificar si ya se cantó bingo VÁLIDO en esta ronda
     if (hasClaimedBingoInRound) {
-      console.log(`[GameInProgress] ⚠️ handleBingo: Ya se intentó cantar bingo en esta ronda`);
-      alert("Ya realizaste tu intento de bingo en esta ronda. Solo puedes cantar bingo una vez por ronda.");
+      console.log(`[GameInProgress] ⚠️ handleBingo: Ya se cantó bingo válido en esta ronda`);
+      alert("Ya cantaste bingo válido en esta ronda.");
       return;
     }
     
@@ -163,6 +190,16 @@ export function useBingoHandlers(
       const cardMarked = getMarkedForCard(previewCardIndex);
       const markedNumbersArray = Array.from(cardMarked);
       console.log(`[GameInProgress]    - Números marcados: ${markedNumbersArray.length} números`);
+      
+      // FIX-SYNC: Validación pre-claim - verificar que los números marcados están en calledNumbers
+      const invalidMarks = markedNumbersArray.filter(num => !calledNumbers.has(num));
+      if (invalidMarks.length > 0) {
+        console.warn(`[GameInProgress] ⚠️ FIX-SYNC: Detectados ${invalidMarks.length} números marcados que no están en calledNumbers:`, invalidMarks);
+        console.warn(`[GameInProgress] ⚠️ Esto indica desincronización. Solicitando al usuario que recargue.`);
+        alert("Se detectó un problema de sincronización. Algunos números marcados no coinciden con los números actuales de la ronda. Por favor, recarga la página para sincronizar.");
+        setIsClaimingBingo(false);
+        return;
+      }
 
       const cardsData = await getCardsByRoomAndUser(roomId, currentUserId);
       if (previewCardIndex >= cardsData.length) {
@@ -192,14 +229,13 @@ export function useBingoHandlers(
       
       console.log(`[GameInProgress] ✅ Respuesta del backend:`, result);
 
-      // ISSUE-1: Marcar que ya se cantó bingo en esta ronda (exitosamente o no)
-      setHasClaimedBingoInRound(true);
-      
-      // ISSUE-2: Marcar este cartón como usado
-      setClaimedCardIds(prev => new Set([...prev, cardId]));
-
-      // Si el bingo es válido, cerrar el modal del cartón y mostrar confetti
+      // FIX-SYNC: Solo marcar hasClaimedBingoInRound si el bingo fue VÁLIDO
+      // Si fue rechazado por sync issue, el usuario podrá reintentar
       if (result.success) {
+        setHasClaimedBingoInRound(true);
+        // ISSUE-2: Marcar este cartón como usado solo si fue válido
+        setClaimedCardIds(prev => new Set([...prev, cardId]));
+        
         console.log(`[GameInProgress] ✅ Bingo válido! Cerrando modal y mostrando confetti...`);
         // Cerrar el modal del cartón primero
         handleCloseModalLocal();
@@ -221,8 +257,10 @@ export function useBingoHandlers(
           setShowConfetti(false);
         }, 5000);
       } else {
-        console.error(`[GameInProgress] ❌ Bingo no válido:`, result);
-        alert(result.message || "El bingo no es válido. Por favor, verifica que todos los números estén marcados correctamente.");
+        // FIX-SYNC: NO marcar hasClaimedBingoInRound para bingos inválidos
+        // Esto permite reintentar si fue un problema de sincronización
+        console.warn(`[GameInProgress] ⚠️ Bingo no válido:`, result);
+        alert(result.message || "El bingo no es válido. Por favor, verifica que todos los números estén marcados correctamente. Si el problema persiste, recarga la página.");
       }
     } catch (error: unknown) {
       console.error(`[GameInProgress] ❌ Error al reclamar bingo:`, error);
@@ -235,12 +273,15 @@ export function useBingoHandlers(
         }
         alert(error.message);
       }
-      // ISSUE-1: Manejar el error de bingo ya reclamado
+      // ISSUE-1: Manejar el error de bingo ya reclamado (solo si fue válido previamente)
       else if (error instanceof BingoAlreadyClaimedError) {
         console.log(`[GameInProgress] ⚠️ Bingo ya reclamado en esta ronda`);
+        // FIX-SYNC: Solo bloquear si el mensaje indica que fue válido
+        // El backend ahora permite reintento si el claim anterior fue inválido por sync
         setHasClaimedBingoInRound(true);
         alert(error.message);
       } else {
+        // FIX-SYNC: Para otros errores, NO bloquear - puede ser un error de red transitorio
         const errorMessage =
           error && typeof error === "object" && "message" in error
             ? String(error.message)
@@ -331,5 +372,8 @@ export function useBingoHandlers(
     claimedCardIds,
     setClaimedCardIds,
     isCardClaimed,
+    // FIX-SYNC: Exportar estado de transición
+    isTransitioning,
+    setIsTransitioning,
   };
 }

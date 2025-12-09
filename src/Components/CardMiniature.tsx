@@ -249,49 +249,53 @@ const CardMiniature: React.FC<CardMiniatureProps> = ({
           </Box>
         )}
         <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
-          <Box
+          {/* Código del cartón en esquina superior derecha */}
+          <Typography
             sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              mb: 0.5,
-              px: 0.5,
+              fontSize: "10px",
+              fontWeight: 700,
+              color: "#1a1d2e",
+              mb: 0.25,
+              textAlign: "right",
+              pr: 0.25,
             }}
           >
-            <Box
-              sx={{
-                display: "flex",
-                gap: 0.5,
-                flex: 1,
-                justifyContent: "center",
-              }}
-            >
-              {HEADERS.map((letter) => (
+            {cardCode}
+          </Typography>
+
+          {/* Letras BINGO - mismo grid que los números para alineación perfecta */}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, 1fr)",
+              gap: 0.25,
+              mb: 0.25,
+            }}
+          >
+            {HEADERS.map((letter) => (
+              <Box
+                key={letter}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <Typography
-                  key={letter}
                   sx={{
                     fontSize: "10px",
                     fontWeight: 900,
                     color: "#1a1d2e",
-                    letterSpacing: "0.5px",
+                    textAlign: "center",
                   }}
                 >
                   {letter}
                 </Typography>
-              ))}
-            </Box>
-            <Typography
-              sx={{
-                fontSize: "10px",
-                fontWeight: 700,
-                color: "#1a1d2e",
-                ml: 0.5,
-              }}
-            >
-              {cardCode}
-            </Typography>
+              </Box>
+            ))}
           </Box>
 
+          {/* Grid de números */}
           <Box
             sx={{
               display: "grid",
@@ -334,11 +338,11 @@ const CardMiniature: React.FC<CardMiniatureProps> = ({
                       border: isFree
                         ? "1px solid #e0e0e0"
                         : shouldBeGold
-                        ? "2px solid #e3bf70" 
+                        ? "2px solid #e3bf70"
                         : isMarked
-                        ? "1.5px solid #4caf50" 
+                        ? "1.5px solid #4caf50"
                         : isCalledButNotMarked
-                        ? "1.5px solid #f44336" 
+                        ? "1.5px solid #f44336"
                         : "1px solid #e0e0e0",
                       fontSize: "9px",
                       fontWeight: 700,

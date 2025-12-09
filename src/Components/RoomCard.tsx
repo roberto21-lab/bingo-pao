@@ -20,6 +20,8 @@ type RoomCardProps = {
   minPlayers?: number; // Mínimo de jugadores requeridos
   enrolledUsersCount?: number; // Número de usuarios únicos inscritos
   onJoin?: () => void;
+  queuePosition?: "immediate" | "next" | "last" | "middle"; // Posición visual en la cola
+  totalRooms?: number; // Total de salas disponibles
 };
 
 const getStatusLabel = (status: RoomStatus) => {
@@ -97,7 +99,48 @@ const RoomCard: React.FC<RoomCardProps> = ({
   minPlayers = 2,
   enrolledUsersCount = 0,
   onJoin,
+  queuePosition = "middle",
+  totalRooms = 1,
 }) => {
+  // Configuración de colores y efectos según posición en la cola
+  const getQueueStyles = () => {
+    switch (queuePosition) {
+      case "immediate":
+        return {
+          glowColor: "#4caf50",
+          borderColor: "rgba(76, 175, 80, 0.6)",
+          shadowIntensity: "0 0 30px rgba(76, 175, 80, 0.4), 0 0 60px rgba(76, 175, 80, 0.2)",
+          gradientOverlay: "linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, transparent 50%)",
+          pulseAnimation: true,
+        };
+      case "next":
+        return {
+          glowColor: "#ff9800",
+          borderColor: "rgba(255, 152, 0, 0.5)",
+          shadowIntensity: "0 0 25px rgba(255, 152, 0, 0.35), 0 0 50px rgba(255, 152, 0, 0.15)",
+          gradientOverlay: "linear-gradient(135deg, rgba(255, 152, 0, 0.08) 0%, transparent 50%)",
+          pulseAnimation: false,
+        };
+      case "last":
+        return {
+          glowColor: "#9e9e9e",
+          borderColor: "rgba(158, 158, 158, 0.4)",
+          shadowIntensity: "0 0 20px rgba(158, 158, 158, 0.25), 0 0 40px rgba(158, 158, 158, 0.1)",
+          gradientOverlay: "linear-gradient(135deg, rgba(158, 158, 158, 0.06) 0%, transparent 50%)",
+          pulseAnimation: false,
+        };
+      default:
+        return {
+          glowColor: "#2196f3",
+          borderColor: "rgba(33, 150, 243, 0.3)",
+          shadowIntensity: "0 0 15px rgba(33, 150, 243, 0.2)",
+          gradientOverlay: "none",
+          pulseAnimation: false,
+        };
+    }
+  };
+
+  const queueStyles = getQueueStyles();
   // Debug: Log de los datos recibidos
   React.useEffect(() => {
     console.log(`[RoomCard] 🔍 ${title}:`, {
@@ -123,16 +166,42 @@ const RoomCard: React.FC<RoomCardProps> = ({
     scheduledAt,
   };
   return (
-    <Box sx={{ marginBottom: "16px", marginTop: "-40px" }}>
+    <Box 
+      sx={{ 
+        marginBottom: "16px", 
+        marginTop: "-40px",
+        position: "relative",
+        // Efecto de glow exterior según posición
+        "&::before": queuePosition !== "middle" ? {
+          content: '""',
+          position: "absolute",
+          top: "-4px",
+          left: "-4px",
+          right: "-4px",
+          bottom: "-4px",
+          borderRadius: "8px",
+          background: `linear-gradient(135deg, ${queueStyles.glowColor}30 0%, transparent 40%, transparent 60%, ${queueStyles.glowColor}20 100%)`,
+          zIndex: 0,
+          animation: queueStyles.pulseAnimation ? "cardGlow 2s ease-in-out infinite" : "none",
+          "@keyframes cardGlow": {
+            "0%, 100%": { opacity: 0.7 },
+            "50%": { opacity: 1 },
+          },
+        } : {},
+      }}
+    >
       <Card
         onClick={status !== "locked" ? onJoin : undefined}
         sx={{
-          background: "rgba(26, 26, 46, 0.4)",
+          background: queueStyles.gradientOverlay !== "none" 
+            ? `${queueStyles.gradientOverlay}, rgba(26, 26, 46, 0.5)`
+            : "rgba(26, 26, 46, 0.4)",
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          borderRadius: 0,
-          border: "1px solid rgba(255, 255, 255, 0.1)",
+          borderRadius: "4px",
+          border: `2px solid ${queueStyles.borderColor}`,
           boxShadow: `
+            ${queueStyles.shadowIntensity},
             0 8px 32px rgba(0, 0, 0, 0.3),
             0 0 0 1px rgba(255, 255, 255, 0.05) inset
           `,
@@ -147,26 +216,68 @@ const RoomCard: React.FC<RoomCardProps> = ({
             top: 0,
             left: 0,
             right: 0,
-            height: "1px",
-            background: "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent)",
+            height: "2px",
+            background: `linear-gradient(90deg, transparent, ${queueStyles.glowColor}80, transparent)`,
             transition: "opacity 0.3s",
           },
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: "2px",
+            background: `linear-gradient(90deg, transparent, ${queueStyles.glowColor}40, transparent)`,
+          },
           "&:hover": status !== "locked" ? {
-            borderColor: "rgba(227, 191, 112, 0.5)",
+            borderColor: queueStyles.glowColor,
             transform: "translateY(-4px)",
             boxShadow: `
+              0 0 40px ${queueStyles.glowColor}50,
+              0 0 80px ${queueStyles.glowColor}25,
               0 12px 40px rgba(0, 0, 0, 0.4),
-              0 0 0 1px rgba(227, 191, 112, 0.2) inset,
-              0 4px 16px rgba(227, 191, 112, 0.2)
+              0 0 0 1px ${queueStyles.glowColor}40 inset
             `,
-            background: "rgba(31, 34, 51, 0.7)",
+            background: `${queueStyles.gradientOverlay !== "none" ? queueStyles.gradientOverlay + "," : ""} rgba(31, 34, 51, 0.7)`,
             "&::before": {
-              background: "linear-gradient(90deg, transparent, rgba(227, 191, 112, 0.3), transparent)",
+              background: `linear-gradient(90deg, transparent, ${queueStyles.glowColor}, transparent)`,
             },
           } : {},
         }}
       >
         <CardContent sx={{ p: 3, position: "relative", zIndex: 1 }}>
+          {/* Etiqueta de posición en la cola - Esquina superior izquierda */}
+          {queuePosition !== "middle" && (
+            <Box
+              sx={{
+                position: "absolute",
+                top: -2,
+                left: -2,
+                px: 1.5,
+                py: 0.5,
+                borderRadius: "0 0 12px 0",
+                backgroundColor: queueStyles.glowColor,
+                boxShadow: `0 2px 8px ${queueStyles.glowColor}80`,
+                zIndex: 10,
+              }}
+            >
+              <Typography
+                sx={{
+                  color: "#ffffff",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                }}
+              >
+                {queuePosition === "immediate" && "🚀 Inmediata"}
+                {queuePosition === "next" && "⏳ Próxima"}
+                {queuePosition === "last" && "🏁 Última"}
+              </Typography>
+            </Box>
+          )}
+
           {/* Header: Título y Status */}
           <Stack
             direction="row"

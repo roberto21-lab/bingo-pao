@@ -105,6 +105,25 @@ export default function Rooms() {
   const hasNext = currentRoomIndex < rooms.length - 1;
   const currentRoom = rooms[currentRoomIndex];
 
+  // Determinar la etiqueta de cola para la sala actual
+  const getQueueLabel = (index: number, total: number): { label: string; color: string; icon: string } => {
+    if (total === 1) {
+      return { label: "Única sala disponible", color: "#d4af37", icon: "🎯" };
+    }
+    if (index === 0) {
+      return { label: "Inmediata", color: "#4caf50", icon: "🚀" };
+    }
+    if (index === 1) {
+      return { label: "Próxima", color: "#ff9800", icon: "⏳" };
+    }
+    if (index === total - 1) {
+      return { label: "Última", color: "#9e9e9e", icon: "🏁" };
+    }
+    return { label: `Sala ${index + 1} de ${total}`, color: "#2196f3", icon: "📋" };
+  };
+
+  const queueInfo = rooms.length > 0 ? getQueueLabel(currentRoomIndex, rooms.length) : null;
+
   return (
     <Box
       sx={{
@@ -173,6 +192,53 @@ export default function Rooms() {
               </Box>
             ) : (
               <Box>
+                {/* Indicador de posición en la cola - Sutil pero claro */}
+                {queueInfo && (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      mb: 1,
+                      mt: -2,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 0.8,
+                        px: 2,
+                        py: 0.8,
+                        borderRadius: "20px",
+                        backgroundColor: `${queueInfo.color}15`,
+                        border: `1.5px solid ${queueInfo.color}50`,
+                        boxShadow: `0 2px 8px ${queueInfo.color}20`,
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          fontSize: "14px",
+                          lineHeight: 1,
+                        }}
+                      >
+                        {queueInfo.icon}
+                      </Typography>
+                      <Typography
+                        sx={{
+                          color: queueInfo.color,
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.8px",
+                        }}
+                      >
+                        {queueInfo.label}
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+
                 {/* Sala actual */}
                 {currentRoom && (
                 <RoomCard
@@ -190,35 +256,164 @@ export default function Rooms() {
                     minPlayers={currentRoom.minPlayers}
                     enrolledUsersCount={currentRoom.enrolledUsersCount}
                     onJoin={() => handleJoin(currentRoom.id)}
+                    queuePosition={
+                      rooms.length === 1 
+                        ? "immediate" 
+                        : currentRoomIndex === 0 
+                        ? "immediate" 
+                        : currentRoomIndex === 1 
+                        ? "next" 
+                        : currentRoomIndex === rooms.length - 1 
+                        ? "last" 
+                        : "middle"
+                    }
+                    totalRooms={rooms.length}
                 />
                 )}
                 
-                {/* Indicador de posición */}
+                {/* Indicador de posición con etiquetas */}
                 {rooms.length > 1 && (
                   <Box
                     sx={{
                       display: "flex",
-                      justifyContent: "center",
+                      flexDirection: "column",
                       alignItems: "center",
-                      gap: 1,
+                      gap: 1.5,
                       mt: 2,
                     }}
                   >
-                    {rooms.map((_, index) => (
+                    {/* Puntos indicadores */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: 1,
+                      }}
+                    >
+                      {rooms.map((_, index) => {
+                        const isFirst = index === 0;
+                        const isLast = index === rooms.length - 1;
+                        const isCurrent = index === currentRoomIndex;
+                        
+                        // Color según posición
+                        const dotColor = isFirst 
+                          ? "#4caf50" 
+                          : isLast 
+                          ? "#9e9e9e" 
+                          : "#ff9800";
+                        
+                        return (
                       <Box
                         key={index}
+                            onClick={() => setCurrentRoomIndex(index)}
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              cursor: "pointer",
+                              transition: "all 0.3s ease",
+                              "&:hover": {
+                                transform: "scale(1.1)",
+                              },
+                            }}
+                          >
+                            <Box
                         sx={{
-                          width: index === currentRoomIndex ? "24px" : "8px",
-                          height: "8px",
-                          borderRadius: index === currentRoomIndex ? "4px" : "50%",
-                          backgroundColor:
-                            index === currentRoomIndex
-                              ? "#d4af37"
-                              : "rgba(212, 175, 55, 0.3)",
+                                width: isCurrent ? "28px" : "10px",
+                                height: "10px",
+                                borderRadius: isCurrent ? "5px" : "50%",
+                                backgroundColor: isCurrent 
+                                  ? dotColor 
+                                  : `${dotColor}50`,
+                                border: `2px solid ${dotColor}`,
+                                boxShadow: isCurrent 
+                                  ? `0 0 8px ${dotColor}80` 
+                                  : "none",
                           transition: "all 0.3s ease",
                         }}
                       />
-                    ))}
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                    
+                    {/* Leyenda de colores */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: 2,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Box
+                          sx={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            backgroundColor: "#4caf50",
+                          }}
+                        />
+                        <Typography
+                          sx={{
+                            color: "#4caf50",
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          Inmediata
+                        </Typography>
+                      </Box>
+                      {rooms.length > 2 && (
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                          <Box
+                            sx={{
+                              width: "8px",
+                              height: "8px",
+                              borderRadius: "50%",
+                              backgroundColor: "#ff9800",
+                            }}
+                          />
+                          <Typography
+                            sx={{
+                              color: "#ff9800",
+                              fontSize: "10px",
+                              fontWeight: 600,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.5px",
+                            }}
+                          >
+                            Próximas
+                          </Typography>
+                        </Box>
+                      )}
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Box
+                          sx={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            backgroundColor: "#9e9e9e",
+                          }}
+                        />
+                        <Typography
+                          sx={{
+                            color: "#9e9e9e",
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          Última
+                        </Typography>
+                      </Box>
+                    </Box>
                   </Box>
                 )}
               </Box>

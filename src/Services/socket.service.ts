@@ -378,10 +378,13 @@ export const onRoomPending = (
 };
 
 // Escuchar evento de round iniciado
+// FIX-PATTERN: Ahora incluye el pattern para que el frontend pueda actualizar inmediatamente
 export const onRoundStarted = (
   callback: (data: {
     round_number: number;
     room_id: string;
+    pattern?: string | null;
+    orderIndex?: number | null;
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -399,6 +402,8 @@ export const onRoundStarted = (
         callback(data as {
           round_number: number;
           room_id: string;
+          pattern?: string | null;
+          orderIndex?: number | null;
         });
       }
     };
@@ -452,12 +457,14 @@ export const onRoundFinished = (
 };
 
 // Escuchar evento de countdown de inicio de sala (pending → in_progress)
+// SYNC-FIX: Incluye server_time para sincronización entre clientes
 export const onRoomStartCountdown = (
   callback: (data: {
     room_id: string;
     seconds_remaining: number;
     finish_timestamp?: number;
     finish_time?: string;
+    server_time?: number; // SYNC-FIX: Tiempo del servidor
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -752,6 +759,7 @@ export const onTimeoutCountdown = (
 };
 
 // Escuchar evento de countdown de transición entre rondas
+// SYNC-FIX: Incluye server_time para sincronización entre clientes
 export const onRoundTransitionCountdown = (
   callback: (data: {
     round_number: number;
@@ -761,6 +769,7 @@ export const onRoundTransitionCountdown = (
     has_winner?: boolean;
     finish_timestamp?: number;
     finish_time?: string;
+    server_time?: number; // SYNC-FIX: Tiempo del servidor
   }) => void
 ): (() => void) => {
   if (!socket) {
@@ -798,6 +807,7 @@ export const onRoundTransitionCountdown = (
 };
 
 // Escuchar evento de countdown de ventana de bingo
+// SYNC-FIX: Incluye server_time para sincronización entre clientes
 export const onBingoClaimCountdown = (
   callback: (data: {
     round_number: number;
@@ -805,6 +815,7 @@ export const onBingoClaimCountdown = (
     seconds_remaining: number;
     finish_timestamp?: number;
     finish_time?: string;
+    server_time?: number; // SYNC-FIX: Tiempo del servidor
   }) => void
 ): (() => void) => {
   if (!socket) {

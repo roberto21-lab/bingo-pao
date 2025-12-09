@@ -106,23 +106,21 @@ export default function CardList({
       <Box
         sx={{
           mb: 4,
-          px: 2,
-          py: 2,
+          px: { xs: 1, sm: 2 },
+          py: { xs: 1, sm: 2 },
         }}
       >
         <Box
           sx={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 2,
-            py: 2,
-            "& > *": {
-              // Mantener el tamaño original pero asegurar máximo 3 por fila
-              flex: "0 0 calc((100% - 32px) / 3)", // 3 cartones por fila (100% - 2 gaps de 16px cada uno)
-              maxWidth: "calc((100% - 32px) / 3)", // Máximo 1/3 del ancho para que quepan exactamente 3
-              width: "calc((100% - 32px) / 3)", // Cada cartón ocupa 1/3 del ancho disponible
-              margin: "8px 0",
+            display: "grid",
+            // Responsive: 2 columnas en móvil, 3 en tablet/desktop
+            gridTemplateColumns: { 
+              xs: "repeat(2, 1fr)", // 2 cartones en pantallas pequeñas (375px)
+              sm: "repeat(3, 1fr)", // 3 cartones en pantallas medianas
+              md: "repeat(3, 1fr)", // 3 cartones en desktop
             },
+            gap: { xs: 1.5, sm: 2 },
+            py: { xs: 1, sm: 2 },
           }}
         >
           {cards.map((card, index) => {
@@ -141,7 +139,7 @@ export default function CardList({
             const isUserCard = showWinners && winner && userId && winner.user_id === userId;
 
             return (
-              <Box key={index} sx={{ position: "relative", display: "flex", flexDirection: "column", gap: 1 }}>
+              <Box key={index} sx={{ position: "relative", display: "flex", flexDirection: "column", gap: { xs: 0.5, sm: 1 } }}>
                 {showWinners && winner && (
                   <Box
                     sx={{
@@ -264,14 +262,10 @@ export default function CardList({
           {!isGameFinished && roomId && (
             <Box
               sx={{
-                flex: "0 0 calc((100% - 32px) / 3)", // 3 cartones por fila (100% - 2 gaps de 16px cada uno)
-                maxWidth: "calc((100% - 32px) / 3)",
-                width: "calc((100% - 32px) / 3)", // Asegurar que ocupe exactamente 1/3 del ancho disponible
-                minWidth: 0, // Permitir que se ajuste al contenedor
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 1,
+                gap: { xs: 0.5, sm: 1 },
                 position: "relative",
               }}
             >

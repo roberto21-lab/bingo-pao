@@ -391,6 +391,8 @@ export default function GameInProgress() {
     isClaimingBingo,
     // ISSUE-2: Estados para controlar cartones usados
     isCardClaimed,
+    // FIX-SYNC: Estado de transición entre rondas
+    setIsTransitioning,
   } = bingoHandlers;
 
   // Combinar showConfetti de ambos lugares
@@ -511,7 +513,9 @@ export default function GameInProgress() {
     progressIntervalRef,
     // FASE 4: Para sincronización de progress bar con servidor
     setServerTimeOffset,
-    setNextCallAt
+    setNextCallAt,
+    // FIX-SYNC: Para bloquear interacción durante transición de rondas
+    setIsTransitioning
   );
 
   // ISSUE-5: Hook para notificaciones de bingo en tiempo real
@@ -533,27 +537,47 @@ export default function GameInProgress() {
   });
 
   // ISSUE-7: Hook para sincronizar estado al reconectar WebSocket
-  useReconnectSync({
+  // ISSUE-3 FIX: Extraer forceSync para usarlo en visibilitychange
+  const { forceSync } = useReconnectSync({
     roomId,
     enabled: gameStarted && !roomFinished,
     onStateSync: React.useCallback((state: RoomStateData) => {
       console.log("[GameInProgress] Sincronizando estado después de reconexión...");
       
-      // Actualizar números llamados
-      if (state.calledNumbers && state.calledNumbers.length > 0) {
-        setCalledNumbers(new Set(state.calledNumbers));
+      // ISSUE-3 CRITICAL FIX: Usar SOLO los números de la ronda ACTUAL, no de todas las rondas
+      // state.calledNumbers contiene números de TODAS las rondas concatenados (incorrecto)
+      // state.rounds[currentRound-1].called_numbers contiene solo los números de la ronda actual
+      const currentRoundData = state.rounds?.find(r => r.round_number === state.currentRound);
+      const currentRoundNumbers = currentRoundData?.called_numbers || [];
+      
+      console.log(`[GameInProgress] ISSUE-3 FIX: Usando números de ronda ${state.currentRound}: ${currentRoundNumbers.length} números (no ${state.calledNumbers?.length || 0} de todas las rondas)`);
+      
+      // Actualizar números llamados (SOLO de la ronda actual)
+      if (currentRoundNumbers.length > 0) {
+        setCalledNumbers(new Set(currentRoundNumbers));
         
         // Actualizar último número y últimos 3 números
-        const lastNum = state.calledNumbers[state.calledNumbers.length - 1];
+        const lastNum = currentRoundNumbers[currentRoundNumbers.length - 1];
         if (lastNum) {
           setCurrentNumber(lastNum);
-          setLastNumbers(state.calledNumbers.slice(-3).reverse());
+          setLastNumbers(currentRoundNumbers.slice(-3).reverse());
         }
+      } else {
+        // ISSUE-3 FIX: Si no hay números llamados en la ronda actual, limpiar el estado
+        // Esto previene que se queden números viejos de una ronda anterior
+        setCalledNumbers(new Set());
+        setCurrentNumber("");
+        setLastNumbers([]);
       }
       
       // Actualizar round actual
       if (state.currentRound && state.currentRound !== currentRound) {
         setCurrentRound(state.currentRound);
+      }
+      
+      // ISSUE-3 FIX: Limpiar marcas si cambiamos de ronda
+      if (state.currentRound && state.currentRound !== currentRound) {
+        setMarkedNumbers(new Map());
       }
       
       // Actualizar estado de round basado en bingo claims
@@ -571,16 +595,36 @@ export default function GameInProgress() {
       }
       
       console.log("[GameInProgress] Estado sincronizado:", {
-        calledNumbers: state.calledNumbers.length,
+        currentRoundNumbers: currentRoundNumbers.length,
         currentRound: state.currentRound,
         hasWinner: state.bingoState.hasWinner,
         windowActive: state.bingoState.windowActive,
       });
-    }, [currentRound, setCalledNumbers, setCurrentNumber, setLastNumbers, setCurrentRound, setIsCallingNumber, setBingoClaimCountdown]),
+    }, [currentRound, setCalledNumbers, setCurrentNumber, setLastNumbers, setCurrentRound, setIsCallingNumber, setBingoClaimCountdown, setMarkedNumbers]),
     onReconnect: React.useCallback(() => {
       console.log("[GameInProgress] WebSocket reconectado, sincronizando...");
     }, []),
   });
+
+  // ISSUE-3 FIX: Sincronizar estado cuando el usuario vuelve de otra app
+  // Esto previene que aparezcan números incorrectos cuando el usuario cambia de app
+  React.useEffect(() => {
+    if (!gameStarted || roomFinished || !roomId) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log("[GameInProgress] 📱 ISSUE-3 FIX: Usuario volvió a la app, forzando sincronización...");
+        // Forzar sincronización inmediata cuando el usuario vuelve
+        forceSync();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [gameStarted, roomFinished, roomId, forceSync]);
 
   // P2-FIX: Obtener premios desde endpoint centralizado /prizes como fuente de verdad
   // Si prizeData está disponible, usarlo. Si no, fallback al cálculo local.

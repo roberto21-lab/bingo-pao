@@ -9,6 +9,8 @@ import NotificationToast from "./NotificationToast";
 import { onWalletUpdated } from "../Services/socket.service";
 import { useLocation } from "react-router-dom";
 import { useGameContext } from "../contexts/GameContext";
+import { useRoomContext } from "../contexts/RoomContext";
+import { StatusBadge } from "./shared/StatusBadge";
 
 const Header: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -19,12 +21,16 @@ const Header: React.FC = () => {
   
   const { notifications, unreadCount, markNotificationAsRead, fetchNotifications } = useNotifications();
   const { isGameActive } = useGameContext();
+  const { roomStatus } = useRoomContext();
   
   // Mostrar badge "En línea" solo en el Home
   const showOnlineBadge = isAuthenticated && location.pathname === "/";
   
   // Detectar si estamos en la página de juego
   const isGamePage = location.pathname.startsWith("/game/");
+  
+  // Detectar si estamos en la página de selección de cartones (room)
+  const isRoomPage = location.pathname.startsWith("/room/");
 
   // Manejar nuevas notificaciones en tiempo real - MOSTRAR INMEDIATAMENTE (sin duplicados)
   React.useEffect(() => {
@@ -174,13 +180,21 @@ const Header: React.FC = () => {
 
           </Box>
 
-          {/* Contenedor derecho: En Vivo o En línea */}
+          {/* Contenedor derecho: Status de sala, En Vivo o En línea */}
           <Box
             sx={{
               display: "flex",
               alignItems: "center",
             }}
           >
+            {/* Badge de Status de Sala (solo en página de selección de cartones) */}
+            {isRoomPage && roomStatus && (
+              <StatusBadge
+                status={roomStatus}
+                position="static"
+              />
+            )}
+
             {/* Badge "En Vivo" (solo en página de juego activa) */}
             {isGamePage && isGameActive && (
               <Chip
