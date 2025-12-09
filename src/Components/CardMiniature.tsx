@@ -17,6 +17,7 @@ export type CardMiniatureProps = {
   winningNumbers?: Set<string>; // Números que hicieron bingo (para salas finalizadas)
   showLoserAnimation?: boolean; // Si se debe mostrar animación de "mala suerte"
   isFinishedRoom?: boolean; // ISSUE-2: Si la sala está finalizada (no mostrar calledNumbers en rojo)
+  testId?: string; // Para E2E testing
 };
 
 const HEADERS = ["B", "I", "N", "G", "O"] as const;
@@ -44,6 +45,7 @@ const CardMiniature: React.FC<CardMiniatureProps> = ({
   winningNumbers = new Set(),
   showLoserAnimation = false,
   isFinishedRoom = false, // ISSUE-2: Por defecto false
+  testId,
 }) => {
   const isNumberCalled = (num: number): boolean => {
     if (num === 0) return false;
@@ -69,6 +71,7 @@ const CardMiniature: React.FC<CardMiniatureProps> = ({
 
   return (
     <Box
+      data-testid={testId || `card-miniature-${cardCode}`}
       sx={{
         display: "flex",
         flexDirection: "column",

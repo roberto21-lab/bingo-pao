@@ -5,7 +5,7 @@ export interface RoomDetailData {
   currency: string;
   ticketsToStart: number;
   ticketPrice: number;
-  status: string;
+  status: RoomStatus;
 }
 
 export interface CardMaps {

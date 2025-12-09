@@ -274,6 +274,7 @@ export const onNumberCalled = (
     room_id: string;
     server_time?: number; // Timestamp del servidor para sincronización
     next_call_at?: number; // Timestamp del próximo número
+    last_three_numbers?: string[]; // Últimos 3 números llamados para sincronización
   }) => void
 ): (() => void) => {
   if (!socket) {

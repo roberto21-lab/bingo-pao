@@ -424,7 +424,7 @@ export default function RoomDetail() {
   const cardIdMapRef = React.useRef(cardIdMap);
   const codeMapRef = React.useRef(codeMap);
   const searchTermRef = React.useRef(searchTerm);
-  const reloadDebounceRef = React.useRef<NodeJS.Timeout | null>(null);
+  const reloadDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mantener las refs actualizadas
   React.useEffect(() => {

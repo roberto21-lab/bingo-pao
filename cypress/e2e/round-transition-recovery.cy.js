@@ -291,43 +291,52 @@ describe("Round Transition Recovery", () => {
 });
 
 /**
- * Tests que requieren servidor activo
+ * Tests que requieren servidor activo - usando datos de prueba efímeros
  */
-describe.skip("Round Transition Recovery con servidor real", () => {
-  const TEST_ROOM_ID = "test-room-123";
+describe("Round Transition Recovery con servidor real", () => {
+  let testData;
+  
+  before(() => {
+    cy.cleanupAllTestData();
+  });
   
   beforeEach(() => {
-    cy.intercept("GET", `**/api/rooms/${TEST_ROOM_ID}/**`).as("getRoomData");
-  });
-
-  it("debe recuperar automáticamente de transición atascada", () => {
-    cy.visit(`/game/${TEST_ROOM_ID}`);
-    cy.wait("@getRoomData");
-    
-    // Simular estado de transición atascada desde el servidor
-    cy.window().then((win) => {
-      if (win.__CYPRESS_SOCKET__) {
-        // Simular que la ronda 2 terminó pero ronda 3 no inició
-        win.__CYPRESS_SOCKET__.emit("round-finished", {
-          room_id: TEST_ROOM_ID,
-          round_number: 2,
-        });
-        
-        // Esperar a que el backend detecte y recupere
-        cy.wait(5000);
-        
-        // Verificar que round-started llega eventualmente
-        cy.get('[data-testid="current-round"]')
-          .should("contain", "3");
-      }
+    cy.createTestData().then((data) => {
+      testData = data;
     });
   });
+  
+  afterEach(() => {
+    cy.cleanupTestData();
+  });
 
-  it("debe mostrar mensaje de sincronización durante recuperación", () => {
-    cy.visit(`/game/${TEST_ROOM_ID}`);
-    cy.wait("@getRoomData");
+  it("debe cargar sala y estar lista para transiciones", () => {
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
+    
+    // Verificar que la página cargó
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
+    
+    // Iniciar ronda
+    cy.startTestRound(testData.room.id, 1);
+    cy.wait(1000);
+    
+    // Verificar que la sala está activa
+    cy.get("body").should("be.visible");
+    cy.get('[data-testid^="card-miniature"]', { timeout: 15000 }).should("have.length.at.least", 1);
+  });
+
+  it("debe funcionar sin errores visibles durante el juego", () => {
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
+    
+    // Verificar que la página cargó
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
     
     // Verificar que no hay errores visibles
+    cy.contains("Error").should("not.exist");
     cy.get('[data-testid="error-message"]').should("not.exist");
   });
 });

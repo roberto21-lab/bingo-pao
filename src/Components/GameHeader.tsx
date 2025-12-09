@@ -25,7 +25,7 @@ export default function GameHeader({
 }: GameHeaderProps) {
   return (
     <>
-      <Box sx={{ position: "relative", mb: 3, mt: roomFinished ? "24px" : "4rem" }}>
+      <Box data-testid="game-header" sx={{ position: "relative", mb: 3, mt: roomFinished ? "24px" : "4rem" }}>
         <Typography
           variant="h4"
           sx={{

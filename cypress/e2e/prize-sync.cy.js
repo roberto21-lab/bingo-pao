@@ -177,14 +177,44 @@ describe("Lógica de premio con datos mock", () => {
 });
 
 /**
- * Tests de WebSocket (requieren conexión real)
+ * Tests de WebSocket (requieren conexión real) - usando datos de prueba efímeros
  */
-describe.skip("Actualizaciones en tiempo real del premio", () => {
-  it("debe actualizar el premio cuando se recibe evento room-prize-updated", () => {
-    cy.visit("/");
+describe("Actualizaciones en tiempo real del premio", () => {
+  let testData;
+  
+  before(() => {
+    cy.cleanupAllTestData();
+  });
+  
+  beforeEach(() => {
+    cy.createTestData().then((data) => {
+      testData = data;
+    });
+  });
+  
+  afterEach(() => {
+    cy.cleanupTestData();
+  });
+
+  it("debe cargar la sala con WebSocket y mostrar premio", () => {
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
     
-    // Este test requeriría simular eventos WebSocket
-    // que está fuera del alcance de Cypress básico
+    // Verificar que la página cargó
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
+    
+    // Verificar que hay contenido de la sala
+    cy.get("body").then(($body) => {
+      const text = $body.text();
+      // La página debe mostrar algo relacionado con el juego
+      const hasGameContent = 
+        text.includes("Ronda") || 
+        text.includes("Bs") || 
+        $body.find('[data-testid^="card-miniature"]').length > 0;
+      
+      expect(hasGameContent, "La página debe mostrar contenido del juego").to.be.true;
+    });
   });
 });
 

@@ -100,7 +100,8 @@ const RoomCard: React.FC<RoomCardProps> = ({
   enrolledUsersCount = 0,
   onJoin,
   queuePosition = "middle",
-  totalRooms = 1,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  totalRooms: _totalRooms = 1,
 }) => {
   // Configuración de colores y efectos según posición en la cola
   const getQueueStyles = () => {

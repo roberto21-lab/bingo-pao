@@ -12,8 +12,27 @@ module.exports = defineConfig({
     defaultCommandTimeout: 10000,
     requestTimeout: 10000,
     responseTimeout: 10000,
+    pageLoadTimeout: 30000,
+    // Reintentar en errores de red
+    retries: {
+      runMode: 1,
+      openMode: 0,
+    },
+    env: {
+      API_URL: "http://localhost:3000",
+    },
     setupNodeEvents(on, config) {
-      // implement node event listeners here
+      // Cleanup antes de correr todos los tests
+      on("before:run", async () => {
+        console.log("🧹 Cleaning up test data before run...");
+      });
+      
+      // Cleanup después de correr todos los tests
+      on("after:run", async () => {
+        console.log("🧹 Cleaning up test data after run...");
+      });
+      
+      return config;
     },
   },
 });

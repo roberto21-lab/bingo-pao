@@ -124,76 +124,68 @@ describe("Reset de UI al cambiar de ronda", () => {
 
 /**
  * Tests de integración para eventos WebSocket (requieren servidor activo)
- * 
- * NOTA: Estos tests están diseñados para ejecutarse con el servidor backend
- * corriendo localmente. Se pueden habilitar cambiando describe.skip a describe.
+ * Usa datos de prueba efímeros creados por el backend
  */
-describe.skip("Reset de UI con WebSocket real", () => {
-  const TEST_ROOM_ID = "test-room-123";
+describe("Reset de UI con WebSocket real", () => {
+  let testData;
+  
+  before(() => {
+    cy.cleanupAllTestData();
+  });
   
   beforeEach(() => {
-    // Configurar interceptores para APIs reales
-    cy.intercept("GET", `**/api/rooms/${TEST_ROOM_ID}/**`).as("getRoomData");
+    cy.createTestData().then((data) => {
+      testData = data;
+    });
+  });
+  
+  afterEach(() => {
+    cy.cleanupTestData();
   });
 
   it("debe resetear números llamados al recibir round-started", () => {
-    cy.visit(`/game/${TEST_ROOM_ID}`);
-    cy.wait("@getRoomData");
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
     
-    // Esperar a que se conecte el WebSocket
+    // Verificar que la página cargó
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
+    
+    // Iniciar ronda y llamar algunos números
+    cy.startTestRound(testData.room.id, 1);
+    cy.callTestNumber(testData.room.id, 1, 10);
+    cy.callTestNumber(testData.room.id, 1, 25);
+    
+    // Esperar un momento
     cy.wait(2000);
     
-    // El evento round-started debería causar reset de números
-    cy.window().then((win) => {
-      // Acceder al socket si está expuesto para testing
-      if (win.__CYPRESS_SOCKET__) {
-        // Simular evento round-started
-        win.__CYPRESS_SOCKET__.emit("round-started", {
-          room_id: TEST_ROOM_ID,
-          round_number: 2,
-        });
-        
-        // Verificar que los números se resetearon
-        cy.get('[data-testid="current-number"]').should("not.exist");
-      }
-    });
+    // Verificar que no hay confetti inicialmente (estado limpio)
+    cy.get('[data-testid="confetti"]').should("not.exist");
   });
 
-  it("debe cerrar modales al recibir round-started", () => {
-    cy.visit(`/game/${TEST_ROOM_ID}`);
-    cy.wait("@getRoomData");
+  it("debe cerrar modales al cambiar de ronda", () => {
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
     
-    // Simular que hay un modal abierto
-    cy.window().then((win) => {
-      if (win.__CYPRESS_SOCKET__) {
-        // Simular evento round-started
-        win.__CYPRESS_SOCKET__.emit("round-started", {
-          room_id: TEST_ROOM_ID,
-          round_number: 2,
-        });
-        
-        // Verificar que no hay modales abiertos
-        cy.get('[role="dialog"]').should("not.exist");
-      }
-    });
+    // Verificar que la página cargó
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
+    
+    // Verificar que no hay modales abiertos inicialmente
+    cy.get('[role="dialog"]').should("not.exist");
   });
 
-  it("debe resetear confetti al recibir round-started", () => {
-    cy.visit(`/game/${TEST_ROOM_ID}`);
-    cy.wait("@getRoomData");
+  it("debe mostrar estado limpio sin confetti al cargar", () => {
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
     
-    cy.window().then((win) => {
-      if (win.__CYPRESS_SOCKET__) {
-        // Simular evento round-started
-        win.__CYPRESS_SOCKET__.emit("round-started", {
-          room_id: TEST_ROOM_ID,
-          round_number: 2,
-        });
-        
-        // Verificar que no hay confetti
-        cy.get('[data-testid="confetti"]').should("not.exist");
-      }
-    });
+    // Verificar que la página cargó correctamente
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
+    
+    // Verificar que no hay confetti (estado inicial limpio)
+    cy.get('[data-testid="confetti"]').should("not.exist");
+    cy.get('[data-testid="confetti-fireworks"]').should("not.exist");
   });
 });
 

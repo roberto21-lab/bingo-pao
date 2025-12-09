@@ -182,65 +182,57 @@ describe("Modal Management", () => {
 });
 
 /**
- * Tests que requieren servidor activo
+ * Tests que requieren servidor activo - usando datos de prueba efímeros
  */
-describe.skip("Modal Management con servidor real", () => {
-  const TEST_ROOM_ID = "test-room-123";
+describe("Modal Management con servidor real", () => {
+  let testData;
+  
+  before(() => {
+    cy.cleanupAllTestData();
+  });
   
   beforeEach(() => {
-    cy.intercept("GET", `**/api/rooms/${TEST_ROOM_ID}/**`).as("getRoomData");
+    cy.createTestData().then((data) => {
+      testData = data;
+    });
+  });
+  
+  afterEach(() => {
+    cy.cleanupTestData();
   });
 
-  it("CardPreviewModal debe cerrarse al cambiar ronda", () => {
-    cy.visit(`/game/${TEST_ROOM_ID}`);
-    cy.wait("@getRoomData");
+  it("CardPreviewModal debe abrirse y cerrarse correctamente", () => {
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
+    
+    // Verificar que la página cargó
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
+    cy.get('[data-testid^="card-miniature"]', { timeout: 15000 }).should("have.length.at.least", 1);
     
     // Abrir modal de preview (click en cartón)
-    cy.get('[data-testid="bingo-card"]').first().click();
-    cy.get('[data-testid="card-preview-modal"]').should("be.visible");
+    cy.get('[data-testid^="card-miniature"]').first().click();
+    cy.get('[role="dialog"]', { timeout: 5000 }).should("be.visible");
     
-    // Simular round-started
-    cy.window().then((win) => {
-      if (win.__CYPRESS_SOCKET__) {
-        win.__CYPRESS_SOCKET__.emit("round-started", {
-          room_id: TEST_ROOM_ID,
-          round_number: 2,
-        });
-      }
-    });
-    
-    // Modal debe cerrarse
-    cy.get('[data-testid="card-preview-modal"]').should("not.exist");
+    // Cerrar modal con ESC
+    cy.get("body").type("{esc}");
+    cy.get('[role="dialog"]').should("not.exist");
   });
 
-  it("BingoValidationModal debe cerrarse al cambiar ronda", () => {
-    cy.visit(`/game/${TEST_ROOM_ID}`);
-    cy.wait("@getRoomData");
+  it("Modal no debe interferir con la carga de datos", () => {
+    cy.loginWithTestUser();
+    cy.goToTestRoom();
+    cy.waitForWebSocket();
     
-    // Simular bingo-claimed para abrir modal
-    cy.window().then((win) => {
-      if (win.__CYPRESS_SOCKET__) {
-        win.__CYPRESS_SOCKET__.emit("bingo-claimed", {
-          room_id: TEST_ROOM_ID,
-          winner: { user_id: "user123", is_first: true },
-        });
-      }
-    });
+    // Verificar que la página cargó correctamente
+    cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
     
-    cy.get('[data-testid="bingo-validation-modal"]').should("be.visible");
-    
-    // Simular round-started
-    cy.window().then((win) => {
-      if (win.__CYPRESS_SOCKET__) {
-        win.__CYPRESS_SOCKET__.emit("round-started", {
-          room_id: TEST_ROOM_ID,
-          round_number: 2,
-        });
-      }
-    });
-    
-    // Modal debe cerrarse
+    // Verificar que no hay modales de bingo abiertos inicialmente
     cy.get('[data-testid="bingo-validation-modal"]').should("not.exist");
+    cy.contains("BINGO GANADOR").should("not.exist");
+    
+    // Verificar que los cartones están visibles
+    cy.get('[data-testid^="card-miniature"]', { timeout: 15000 }).should("have.length.at.least", 1);
   });
 });
 
