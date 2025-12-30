@@ -63,7 +63,7 @@ export async function createBankAccount(data: {
   document_type_id: string;
 }): Promise<{ message: string; bank_account: BankAccount }> {
   const response = await api.post<{ message: string; bank_account: BankAccount }>(
-    "/bank-accounts/create",
+    "/bank-accounts",
     data
   );
   return response.data;

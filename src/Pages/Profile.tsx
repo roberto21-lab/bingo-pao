@@ -122,14 +122,10 @@ function ProfileContent() {
           return;
         }
 
-        console.log("🔍 Intentando obtener usuario con ID:", userId);
-        console.log("📋 Tipo de userId:", typeof userId);
-        console.log("📋 Longitud de userId:", userId.length);
+      
 
         const userData = await getUserById(userId);
-        if (!userData) {
-          throw new Error("No se pudo obtener la información del usuario");
-        }
+        console.log("🚀 ~ loadUserData ~ userData:", userData)
 
         setUser(userData);
         console.log("✅ Usuario cargado exitosamente:", userData);
@@ -160,11 +156,7 @@ function ProfileContent() {
           response?: { status?: number; data?: { message?: string } };
           message?: string;
         };
-        console.error("📋 Detalles del error:", {
-          status: errorResponse?.response?.status,
-          message: errorResponse?.message,
-          responseData: errorResponse?.response?.data,
-        });
+    
 
         // Si es un 404, verificar si el usuario está autenticado
         if (errorResponse?.response?.status === 404) {
@@ -206,7 +198,7 @@ function ProfileContent() {
       const { throttle } = await import("../utils/throttle");
       
       // OPTIMIZACIÓN: Throttle para evitar actualizaciones excesivas (máximo 1 vez por segundo)
-      const throttledUpdate = throttle((data: any) => {
+      const throttledUpdate = throttle((data) => {
         setWallet((prev) => {
           if (!prev) return prev;
           return {
@@ -216,7 +208,7 @@ function ProfileContent() {
         });
       }, 1000);
       
-      const unsubscribe = onWalletUpdated((data: any) => {
+      const unsubscribe = onWalletUpdated((data) => {
         throttledUpdate(data);
       });
 

@@ -14,9 +14,11 @@ export interface User {
   _id: string;
   name: string;
   email: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   role_id?: any;
   profile?: {
     _id: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     document_type_id: any;
     document_number: string;
     phone?: string;
@@ -42,32 +44,21 @@ export async function getUserById(userId: string): Promise<User | null> {
       throw new Error("ID de usuario inválido");
     }
 
-    console.log("📡 Haciendo petición GET a:", `/users/${userId}`);
-    const response = await api.get<{ success: boolean; data: User }>(
-      `/users/${userId}`
-    );
+    // console.log("📡 Haciendo petición GET a:", `/users/${userId}`);
+
+   const response = await api.get<User>(`/users/${userId}`);
+  
+    return response.data;
     
-    console.log("📥 Respuesta del servidor:", {
-      status: response.status,
-      success: response.data?.success,
-      hasData: !!response.data?.data,
-    });
+    // console.log("✅ Respuesta recibida:", response.data);
     
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
     
     // Si la respuesta no tiene success: true o data, lanzar error
     throw new Error("No se pudo obtener la información del usuario");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error("❌ Error al obtener usuario:", error);
-    console.error("📋 Detalles del error:", {
-      status: error?.response?.status,
-      statusText: error?.response?.statusText,
-      data: error?.response?.data,
-      message: error?.message,
-      url: error?.config?.url,
-    });
+  
     
     // Si es un error 404, lanzar un error más específico
     if (error?.response?.status === 404) {

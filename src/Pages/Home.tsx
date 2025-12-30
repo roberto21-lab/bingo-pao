@@ -418,27 +418,27 @@ export default function Home() {
       setWithdrawError(null);
 
       if (!bankAccount) {
-        if (!userProfile?.document_type_id || !userProfile?.document_number || !userProfile?.phone) {
-          setWithdrawError("Debe completar su perfil con documento y teléfono antes de retirar fondos");
-          return;
-        }
+        // if (!userProfile?.document_type_id || !userProfile?.document_number || !userProfile?.phone) {
+        //   setWithdrawError("Debe completar su perfil con documento y teléfono antes de retirar fondos");
+        //   return;
+        // }
 
-        const profileDocTypeId = userProfile.document_type_id._id;
+        // const profileDocTypeId = userProfile.document_type_id._id;
         
-        if (profileDocTypeId !== formData.document_type_id) {
-          setWithdrawError("El tipo de documento no coincide con el registrado en su perfil");
-          return;
-        }
+        // if (profileDocTypeId !== formData.document_type_id) {
+        //   setWithdrawError("El tipo de documento no coincide con el registrado en su perfil");
+        //   return;
+        // }
 
-        if (userProfile.document_number !== formData.docId) {
-          setWithdrawError("El número de documento no coincide con el registrado en su perfil");
-          return;
-        }
+        // if (userProfile.document_number !== formData.docId) {
+        //   setWithdrawError("El número de documento no coincide con el registrado en su perfil");
+        //   return;
+        // }
 
-        if (userProfile.phone !== formData.phone) {
-          setWithdrawError("El número de teléfono no coincide con el registrado en su perfil");
-          return;
-        }
+        // if (userProfile.phone !== formData.phone) {
+        //   setWithdrawError("El número de teléfono no coincide con el registrado en su perfil");
+        //   return;
+        // }
 
         if (!formData.bankName) {
           setWithdrawError("Debe seleccionar un banco");
@@ -641,6 +641,7 @@ export default function Home() {
           availableBalance={availableBalance}
           hasBankAccount={!!bankAccount}
           bankAccount={bankAccount}
+          setBankAccount={setBankAccount}
           onDeleteBankAccount={handleDeleteBankAccount}
         />
 

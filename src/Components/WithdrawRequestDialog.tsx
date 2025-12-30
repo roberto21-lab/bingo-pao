@@ -9,6 +9,7 @@ import {
   Box,
   Typography,
   Button,
+  DialogActions,
 } from "@mui/material";
 import { DocumentTypeSelect } from "./DocumentTypeSelect";
 import { COLORS } from "../constants/colors";
@@ -19,17 +20,23 @@ import { DialogHeader } from "./shared/DialogHeader";
 import { DialogFooter } from "./shared/DialogFooter";
 import { BankAccountInfoCard } from "./shared/BankAccountInfoCard";
 import { WithdrawalSummaryCard } from "./shared/WithdrawalSummaryCard";
+import { useAuth } from "../hooks/useAuth";
+import { createBankAccount } from "../Services/bankAccounts.service";
+
+// import { createBankAccount } from "../Services/bankAccounts.service";
 
 export type WithdrawRequestFormState = {
-  bankName: string;
+  userId: string;
+  bank_name: string;
   document_type_id: string;
   docId: string;
-  phone: string;
+  phone_number: string;
   amount: string;
   notes: string;
 };
 
 type WithdrawRequestDialogProps = {
+  userId: string;
   open: boolean;
   onClose: () => void;
   onSubmit: (data: WithdrawRequestFormState) => void;
@@ -43,6 +50,7 @@ type WithdrawRequestDialogProps = {
     phone: string;
   };
   availableBalance?: number;
+  setBankAccount?: (bankAccount: WithdrawRequestDialogProps["bankAccount"] | null) => void;
   bankAccount?: {
     _id: string;
     bank_name: string;
@@ -70,11 +78,12 @@ const BANKS = [
   "Bancamiga",
 ];
 
-const createDefaultState = (accountInfo?: WithdrawRequestDialogProps["accountInfo"]): WithdrawRequestFormState => ({
-  bankName: accountInfo?.bankName || "",
+const createDefaultState = (accountInfo?: WithdrawRequestDialogProps["accountInfo"], userId?: string): WithdrawRequestFormState => ({
+  userId: userId || "",
+  bank_name: accountInfo?.bankName || "",
   document_type_id: accountInfo?.document_type_id || "",
   docId: accountInfo?.docId || "",
-  phone: accountInfo?.phone || "",
+  phone_number: accountInfo?.phone || "",
   amount: "",
   notes: "",
 });
@@ -88,6 +97,7 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
   title = "Solicitar retiro de saldo",
   accountInfo,
   bankAccount,
+  setBankAccount,
   onDeleteBankAccount,
   minAmount = 500,
   hasBankAccount = false,
@@ -96,7 +106,8 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
   const [form, setForm] = useState<WithdrawRequestFormState>(createDefaultState(accountInfo));
   const [localError, setLocalError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState(0);
-
+  const { user } = useAuth();
+  console.log("🚀 ~ WithdrawRequestDialog ~ user:", user)
   const steps = hasBankAccount
     ? ["Monto a retirar", "Confirmación"]
     : ["Datos bancarios", "Monto a retirar", "Confirmación"];
@@ -104,20 +115,23 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
   useEffect(() => {
     if (open) {
       if (bankAccount) {
+     
         setForm({
-          bankName: bankAccount.bank_name,
-          document_type_id: bankAccount.document_type_id._id,
-          docId: bankAccount.document_number,
-          phone: bankAccount.phone_number,
+          userId: user?.id || "",
+          bank_name: bankAccount.bank_name || "",
+          document_type_id: bankAccount.document_type_id._id || "",
+          docId: bankAccount.document_number || "",
+          phone_number: bankAccount.phone_number || "",
           amount: "",
           notes: "",
         });
       } else if (accountInfo) {
         setForm({
-          bankName: accountInfo.bankName || "",
+          userId: user?.id || "",
+          bank_name: accountInfo.bankName || "",
           document_type_id: accountInfo.document_type_id || "",
           docId: accountInfo.docId || "",
-          phone: accountInfo.phone || "",
+          phone_number: accountInfo.phone || "",
           amount: "",
           notes: "",
         });
@@ -140,7 +154,7 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
 
   const validateStep = (step: number): boolean => {
     setLocalError(null);
-    
+
     if (hasBankAccount) {
       if (step === 0) {
         const numericAmount = Number(form.amount);
@@ -160,11 +174,11 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
       }
     } else {
       if (step === 0) {
-        if (!form.bankName || form.bankName === "Seleccione un banco") {
+        if (!form.bank_name || form.bank_name === "Seleccione un banco") {
           setLocalError("Debe seleccionar un banco.");
           return false;
         }
-        if (!form.document_type_id || !form.docId || !form.phone) {
+        if (!form.document_type_id || !form.docId || !form.phone_number) {
           setLocalError("Por favor complete todos los campos requeridos.");
           return false;
         }
@@ -185,7 +199,7 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
         }
       }
     }
-    
+
     return true;
   };
 
@@ -206,6 +220,72 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
     }
   };
 
+  const cretaBankAccount = async () => {
+    try {
+      console.log("Form original:", form);
+      console.log("Usuario:", user);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: any = {
+        userId: user?.id,                     // 👈 CLAVE
+        bank_name: form?.bank_name,             // 👈 mapeo
+        phone_number: form.phone_number,             // 👈 mapeo
+        document_number: form.docId,          // 👈 mapeo
+        document_type_id: form.document_type_id,
+        // account_number no lo tienes → no lo mandas (es opcional)
+      };
+
+      console.log("Payload final:", payload);
+
+      const response = await createBankAccount(payload);
+      setBankAccount(response.bank_account); // Actualiza el estado de la cuenta bancaria en el componente padre
+      console.log("Cuenta bancaria creada:", response);
+      setActiveStep((prevStep) => prevStep + 1);
+   
+
+      // aqui me falta algo para avanzar al siguiente paso ...
+      // que basicamente es que como ya hay cuenta bancaria no deberia de mostrar el btn del registro de cuenta bancaria si no
+      // los otros btns de siguiente y confirmar retiro
+      
+
+
+    } catch (error) {
+      console.error("Error creando cuenta bancaria:", error);
+    }
+  };
+
+  const btnDisable =
+    !String(form?.bank_name ?? "").trim() ||
+    !String(form?.phone_number ?? "").trim();
+
+
+
+  //   const cretaBankAccount = async () => {
+  //   try {
+  //     console.log("Crear cuenta bancaria con los datos:", form);
+
+
+
+  //     const response = await createBankAccount(form);
+
+  //     console.log("Cuenta bancaria creada:", response);
+
+  //     // 👉 feedback visual
+  //     // enqueueSnackbar(response.message, { variant: "success" });
+
+  //     // 👉 opcional: limpiar formulario
+  //     // setForm(initialForm);
+
+  //   } catch (error) {
+  //     console.error("Error creando cuenta bancaria:", error);
+
+  //     // enqueueSnackbar(
+  //     //   error?.response?.data?.message || "Error creando cuenta bancaria",
+  //     //   { variant: "error" }
+  //     // );
+  //   }
+  // };
+
   const renderStepContent = (step: number) => {
     if (hasBankAccount) {
       if (step === 0) {
@@ -214,15 +294,15 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             <Typography variant="h6" sx={{ color: COLORS.TEXT.PRIMARY, fontWeight: 600, mb: 1 }}>
               Monto a retirar
             </Typography>
-            
+
             <Alert severity="info" sx={{ bgcolor: "#e3f2fd", color: "#1565c0", border: "1px solid #90caf9" }}>
               Se utilizará la cuenta bancaria registrada. Si desea cambiar la cuenta, debe eliminar la actual primero.
             </Alert>
 
             <BankAccountInfoCard
-              bankName={form.bankName}
+              bankName={form.bank_name}
               documentId={form.docId}
-              phone={form.phone}
+              phone={form.phone_number}
             />
 
             {onDeleteBankAccount && (
@@ -279,7 +359,7 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             commissionPercent={commissionPercent}
             commissionAmount={commissionAmount}
             transferAmount={transferAmount}
-            bankName={form.bankName}
+            bankName={form.bank_name}
             currency={currency}
           />
         );
@@ -289,7 +369,7 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
         return (
           <Stack spacing={3}>
             <Typography variant="h6" sx={{ color: COLORS.TEXT.PRIMARY, fontWeight: 600, mb: 1 }}>
-              Información bancaria
+              Registra tu información bancaria
             </Typography>
 
             <Alert severity="warning" sx={{ bgcolor: "#fff3e0", color: "#e65100", border: "1px solid #ffb74d" }}>
@@ -298,8 +378,8 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             </Alert>
 
             <BankSelect
-              value={form.bankName}
-              onChange={(value) => setForm((prev) => ({ ...prev, bankName: value }))}
+              value={form.bank_name}
+              onChange={(value) => setForm((prev) => ({ ...prev, bank_name: value }))}
               banks={BANKS}
               required
               label="Banco destino"
@@ -329,12 +409,14 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             <TextField
               fullWidth
               label="Teléfono asociado"
-              value={form.phone}
-              onChange={handleChange("phone")}
+              value={form.phone_number}
+              onChange={handleChange("phone_number")}
               required
               disabled={!!accountInfo?.phone}
               sx={commonInputStyles}
             />
+
+
           </Stack>
         );
       } else if (step === 1) {
@@ -383,13 +465,13 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
             commissionPercent={commissionPercent}
             commissionAmount={commissionAmount}
             transferAmount={transferAmount}
-            bankName={form.bankName}
+            bankName={form.bank_name}
             currency={currency}
           />
         );
       }
     }
-    
+
     return null;
   };
 
@@ -435,16 +517,48 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
         </Box>
       </DialogContent>
 
-      <DialogFooter
-        onClose={onClose}
-        onBack={handleBack}
-        onNext={handleNext}
-        onSubmit={handleSubmit}
-        showBack={activeStep > 0}
-        showNext={activeStep < steps.length - 1}
-        showSubmit={activeStep === steps.length - 1}
-        submitLabel="Confirmar retiro"
-      />
+
+      {bankAccount ? (
+        <DialogFooter
+          onClose={onClose}
+          onBack={handleBack}
+          onNext={handleNext}
+          onSubmit={handleSubmit}
+          showBack={activeStep > 0}
+          showNext={activeStep < steps.length - 1}
+          showSubmit={activeStep === steps.length - 1}
+          submitLabel="Confirmar retiro"
+        />
+      ) : (
+        <DialogActions
+          sx={{
+            bgcolor: COLORS.BACKGROUND.LIGHT,
+            borderTop: "2px solid #e0e0e0",
+            px: { xs: 2, sm: 3 },
+            py: { xs: 2, sm: 2.5 },
+            gap: { xs: 1, sm: 2 },
+            flexDirection: { xs: "column-reverse", sm: "row" },
+            "& > *": {
+              width: { xs: "100%", sm: "auto" },
+            },
+          }}
+        >
+          <Button
+          variant="contained"
+          
+            sx={{
+                    color: "#000000",
+                    fontWeight: 600,
+                  }}
+            disabled={btnDisable}
+            onClick={cretaBankAccount}>
+            Registra tu cuenta bancaria
+          </Button>
+
+        </DialogActions>
+
+      )}
+
     </Dialog>
   );
 };
