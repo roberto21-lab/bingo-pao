@@ -19,6 +19,7 @@ import { GameProvider } from "./contexts/GameContext";
 import { RoomProvider } from "./contexts/RoomContext";
 import RecoverPassword from "./Pages/RecoverPassword";
 import RecoverPasswordContact from "./Pages/RecoverPasswordContact";
+import Roulette from "./Pages/Roulette";
 
 function NotFound() {
   return (
@@ -44,6 +45,8 @@ function AppContent() {
         <Route path="/game/:roomId" element={<ProtectedRoute><GameInProgress /></ProtectedRoute>} />
         <Route path="/purchased-cartons" element={<ProtectedRoute><PurchasedCartons /></ProtectedRoute>} />
         <Route path="/profile" element={<Profile />} />
+        {/* Roulette */}
+        <Route path="/roulette" element={<ProtectedRoute><Roulette /></ProtectedRoute>} />
         <Route path="/404" element={<NotFound />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
