@@ -245,7 +245,7 @@ const WalletPage: React.FC = () => {
     setOpenReport(false);
   };
 
-  const handleSubmitWithdraw = async () => {
+  const handleSubmitWithdraw = async (_formData?: unknown) => {
     if (userId) {
       try {
         const wallet = await getWalletByUser(userId);
@@ -511,6 +511,7 @@ const WalletPage: React.FC = () => {
         open={openWithdraw}
         onClose={() => setOpenWithdraw(false)}
         onSubmit={handleSubmitWithdraw}
+        userId={userId || ""}
         currency={currency}
         hasBankAccount={!!bankAccount}
         bankAccount={bankAccount}

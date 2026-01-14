@@ -26,7 +26,7 @@ import { getBankAccountByUser, createBankAccountWithWithdraw, deleteBankAccount,
 import { getUserById } from "../Services/users.service";
 import { onRoomPrizeUpdated, onRoomsReordered, joinRoom, leaveRoom } from "../Services/socket.service";
 import { homeStyles } from "../styles/home.styles";
-import type { ActiveRoom, UserProfile, WithdrawFormData, WalletUpdateData } from "../types/home.types";
+import type { ActiveRoom, UserProfile, WalletUpdateData } from "../types/home.types";
 import { mapOptimizedToActiveRoom } from "../types/home.types";
 import { translateError, translateActiveRoomsError } from "../utils/errorTranslator";
 
@@ -408,7 +408,7 @@ export default function Home() {
   const [showWithdrawErrorToast, setShowWithdrawErrorToast] = React.useState(false);
   const [withdrawErrorMessage, setWithdrawErrorMessage] = React.useState<string>("");
 
-  const handleSubmitWithdrawRequestDialog = async (formData: WithdrawFormData) => {
+  const handleSubmitWithdrawRequestDialog = async (formData: { bank_name: string; document_type_id: string; docId: string; phone_number: string; amount: string; notes: string }) => {
     if (!userId) {
       setWithdrawError("No se pudo identificar al usuario");
       return;
@@ -418,38 +418,16 @@ export default function Home() {
       setWithdrawError(null);
 
       if (!bankAccount) {
-        // if (!userProfile?.document_type_id || !userProfile?.document_number || !userProfile?.phone) {
-        //   setWithdrawError("Debe completar su perfil con documento y teléfono antes de retirar fondos");
-        //   return;
-        // }
-
-        // const profileDocTypeId = userProfile.document_type_id._id;
-        
-        // if (profileDocTypeId !== formData.document_type_id) {
-        //   setWithdrawError("El tipo de documento no coincide con el registrado en su perfil");
-        //   return;
-        // }
-
-        // if (userProfile.document_number !== formData.docId) {
-        //   setWithdrawError("El número de documento no coincide con el registrado en su perfil");
-        //   return;
-        // }
-
-        // if (userProfile.phone !== formData.phone) {
-        //   setWithdrawError("El número de teléfono no coincide con el registrado en su perfil");
-        //   return;
-        // }
-
-        if (!formData.bankName) {
+        if (!formData.bank_name) {
           setWithdrawError("Debe seleccionar un banco");
           return;
         }
 
         const result = await createBankAccountWithWithdraw({
           userId,
-          bank_name: formData.bankName,
+          bank_name: formData.bank_name,
           account_number: "",
-          phone_number: formData.phone,
+          phone_number: formData.phone_number,
           document_number: formData.docId,
           document_type_id: formData.document_type_id,
           amount: parseFloat(formData.amount)
@@ -629,6 +607,7 @@ export default function Home() {
           open={openWithdrawRequestDialog}
           onClose={() => setOpenWithdrawRequestDialog(false)}
           onSubmit={handleSubmitWithdrawRequestDialog}
+          userId={userId || ""}
           error={withdrawError}
           currency="Bs"
           minAmount={500}
@@ -641,7 +620,7 @@ export default function Home() {
           availableBalance={availableBalance}
           hasBankAccount={!!bankAccount}
           bankAccount={bankAccount}
-          setBankAccount={setBankAccount}
+          setBankAccount={(account) => setBankAccount(account as BankAccount | null)}
           onDeleteBankAccount={handleDeleteBankAccount}
         />
 

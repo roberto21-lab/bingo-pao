@@ -36,10 +36,10 @@ export type WithdrawRequestFormState = {
 };
 
 type WithdrawRequestDialogProps = {
-  userId: string;
+  userId?: string;
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: WithdrawRequestFormState) => void;
+  onSubmit: (data: WithdrawRequestFormState) => void | Promise<void>;
   error?: string | null;
   currency: string;
   title?: string;
@@ -50,7 +50,18 @@ type WithdrawRequestDialogProps = {
     phone: string;
   };
   availableBalance?: number;
-  setBankAccount?: (bankAccount: WithdrawRequestDialogProps["bankAccount"] | null) => void;
+  setBankAccount?: (bankAccount: {
+    _id: string;
+    bank_name: string;
+    account_number?: string;
+    phone_number: string;
+    document_number: string;
+    document_type_id: {
+      _id: string;
+      name: string;
+      code: string;
+    };
+  } | null) => void;
   bankAccount?: {
     _id: string;
     bank_name: string;
@@ -238,7 +249,9 @@ export const WithdrawRequestDialog: React.FC<WithdrawRequestDialogProps> = ({
       console.log("Payload final:", payload);
 
       const response = await createBankAccount(payload);
-      setBankAccount(response.bank_account); // Actualiza el estado de la cuenta bancaria en el componente padre
+      if (setBankAccount) {
+        setBankAccount(response.bank_account); // Actualiza el estado de la cuenta bancaria en el componente padre
+      }
       console.log("Cuenta bancaria creada:", response);
       setActiveStep((prevStep) => prevStep + 1);
    

@@ -387,10 +387,10 @@ function ProfileContent() {
 
   const handleSubmitWithdrawRequestDialog = async (
     formData: {
-      bankName: string;
+      bank_name: string;
       document_type_id: string;
       docId: string;
-      phone: string;
+      phone_number: string;
       amount: string;
       notes: string;
     }
@@ -406,16 +406,16 @@ function ProfileContent() {
 
       if (!bankAccount) {
         // No hay cuenta bancaria, crear cuenta y retiro
-        if (!formData.bankName) {
+        if (!formData.bank_name) {
           setWithdrawError("Debe seleccionar un banco");
           return;
         }
 
         const result = await createBankAccountWithWithdraw({
           userId,
-          bank_name: formData.bankName,
+          bank_name: formData.bank_name,
           account_number: "",
-          phone_number: formData.phone,
+          phone_number: formData.phone_number,
           document_number: formData.docId,
           document_type_id: formData.document_type_id,
           amount: parseFloat(formData.amount)
@@ -1172,6 +1172,7 @@ function ProfileContent() {
         open={openWithdrawRequestDialog}
         onClose={() => setOpenWithdrawRequestDialog(false)}
         onSubmit={handleSubmitWithdrawRequestDialog}
+        userId={userId || ""}
         error={withdrawError}
         currency={currency}
         minAmount={500}

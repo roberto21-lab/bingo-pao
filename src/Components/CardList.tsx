@@ -266,7 +266,7 @@ export default function CardList({
                     // FIX-WINNING: Usar winningNumbersForCard que ya calculamos arriba
                     // Si no hay datos del map, crear Set directamente de winner.bingo_numbers
                     // Solo si bingo_numbers tiene elementos (no vacío)
-                    winningNumbers={winningNumbersForCard || (winner?.bingo_numbers?.length > 0 ? new Set(winner.bingo_numbers) : undefined)}
+                    winningNumbers={winningNumbersForCard || (winner && winner.bingo_numbers && winner.bingo_numbers.length > 0 ? new Set(winner.bingo_numbers) : undefined)}
                     // ISSUE-4: NO mostrar "Mala Suerte" si el usuario ya cantó bingo en esta ronda
                     showLoserAnimation={showLoserAnimation && !cardHasBingo && !hasClaimedBingoInRound}
                     // ISSUE-2: Pasar si la sala está finalizada para no mostrar números en rojo
