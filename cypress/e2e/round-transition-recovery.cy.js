@@ -317,11 +317,11 @@ describe("Round Transition Recovery con servidor real", () => {
     
     // Verificar que la página cargó
     cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
-    
+        
     // Iniciar ronda
     cy.startTestRound(testData.room.id, 1);
     cy.wait(1000);
-    
+        
     // Verificar que la sala está activa
     cy.get("body").should("be.visible");
     cy.get('[data-testid^="card-miniature"]', { timeout: 15000 }).should("have.length.at.least", 1);

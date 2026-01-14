@@ -127,8 +127,8 @@ describe("Reconnection con servidor real", () => {
     cy.window().should((win) => {
       const authToken = win.localStorage.getItem("auth_token");
       expect(authToken, "auth_token should be present").to.not.be.null;
-    });
-    
+  });
+
     // Verificar que hay cartones (datos sincronizados)
     cy.get('[data-testid^="card-miniature"]', { timeout: 15000 }).should("have.length.at.least", 1);
   });

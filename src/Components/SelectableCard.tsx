@@ -310,8 +310,22 @@ const CardMiniature: React.FC<CardMiniatureProps> = ({
                 const numFormat = num !== 0 ? numberToBingoFormat(num) : "";
                 const isPartOfBingoPattern = hasBingo && numFormat !== "" && bingoPatternNumbers.has(numFormat);
                 const isWinningNumber = numFormat !== "" && winningNumbers.has(numFormat);
-                // Si hay winningNumbers, priorizar esos sobre el patrón de bingo
-                const shouldBeGold = isWinningNumber || (isPartOfBingoPattern && isMarked);
+                
+                // FIX-WINNING-NUMBERS: Lógica para determinar si mostrar en dorado
+                // 
+                // Cuando isFinishedRoom=true (sala finalizada mostrando ganadores):
+                // - SOLO usar winningNumbers para mostrar en dorado
+                // - Si winningNumbers está vacío (backend no envió datos), NO mostrar nada en dorado
+                // - NUNCA usar bingoPatternNumbers/isMarked porque son datos del usuario actual, no del ganador
+                //
+                // Cuando isFinishedRoom=false (juego activo):
+                // - Usar la lógica original: winningNumbers o (bingoPattern && isMarked)
+                const hasWinningNumbersData = winningNumbers.size > 0;
+                const shouldBeGold = isFinishedRoom
+                  ? isWinningNumber  // Sala finalizada: SOLO winningNumbers (o nada si está vacío)
+                  : (hasWinningNumbersData 
+                      ? isWinningNumber  // Juego activo con winningNumbers
+                      : (isPartOfBingoPattern && isMarked)); // Juego activo sin winningNumbers
                 
                 return (
                   <Box

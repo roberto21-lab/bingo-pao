@@ -137,6 +137,25 @@ export default function CardList({
             
             // Verificar si este cartón pertenece al usuario en sesión
             const isUserCard = showWinners && winner && userId && winner.user_id === userId;
+            
+            // FIX-WINNING-MAP: Usar clave compuesta card_id + round_number
+            // Esto es necesario cuando el mismo cartón gana múltiples rondas
+            const mapKey = winner ? `${winner.card_id}_round_${winner.round_number}` : null;
+            const winningNumbersForCard = mapKey 
+              ? winningNumbersMap.get(mapKey) 
+              : (cardsData[index]?._id ? winningNumbersMap.get(cardsData[index]._id) : undefined);
+            
+            // DEBUG: Log para diagnosticar el problema de las miniaturas
+            if (showWinners && winner) {
+              console.log(`[CardList] 🔍 DEBUG Miniatura Ronda ${winner.round_number}:`, {
+                cardCode: winner.card_code,
+                card_id: winner.card_id,
+                mapKey: mapKey,
+                winningNumbersMapKeys: Array.from(winningNumbersMap.keys()),
+                winningNumbersForCard: winningNumbersForCard ? Array.from(winningNumbersForCard) : 'undefined',
+                bingo_numbers_from_winner: winner.bingo_numbers,
+              });
+            }
 
             return (
               <Box key={index} sx={{ position: "relative", display: "flex", flexDirection: "column", gap: { xs: 0.5, sm: 1 } }}>
@@ -244,9 +263,10 @@ export default function CardList({
                     markedNumbers={cardMarked}
                     hasBingo={cardHasBingo}
                     bingoPatternNumbers={cardBingoPatternNumbers}
-                    // ISSUE-8: Usar card_id del ganador para obtener los números correctos
-                    // Esto asegura que la miniatura use los mismos datos que el modal
-                    winningNumbers={winner ? winningNumbersMap.get(winner.card_id) : (cardsData[index]?._id ? winningNumbersMap.get(cardsData[index]._id) : undefined)}
+                    // FIX-WINNING: Usar winningNumbersForCard que ya calculamos arriba
+                    // Si no hay datos del map, crear Set directamente de winner.bingo_numbers
+                    // Solo si bingo_numbers tiene elementos (no vacío)
+                    winningNumbers={winningNumbersForCard || (winner?.bingo_numbers?.length > 0 ? new Set(winner.bingo_numbers) : undefined)}
                     // ISSUE-4: NO mostrar "Mala Suerte" si el usuario ya cantó bingo en esta ronda
                     showLoserAnimation={showLoserAnimation && !cardHasBingo && !hasClaimedBingoInRound}
                     // ISSUE-2: Pasar si la sala está finalizada para no mostrar números en rojo

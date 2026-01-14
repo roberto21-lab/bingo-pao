@@ -170,9 +170,9 @@ describe("Reset de UI con WebSocket real", () => {
     
     // Verificar que la página cargó
     cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
-    
+        
     // Verificar que no hay modales abiertos inicialmente
-    cy.get('[role="dialog"]').should("not.exist");
+        cy.get('[role="dialog"]').should("not.exist");
   });
 
   it("debe mostrar estado limpio sin confetti al cargar", () => {
@@ -182,9 +182,9 @@ describe("Reset de UI con WebSocket real", () => {
     
     // Verificar que la página cargó correctamente
     cy.get('[data-testid="game-header"]', { timeout: 15000 }).should("exist");
-    
+        
     // Verificar que no hay confetti (estado inicial limpio)
-    cy.get('[data-testid="confetti"]').should("not.exist");
+        cy.get('[data-testid="confetti"]').should("not.exist");
     cy.get('[data-testid="confetti-fireworks"]').should("not.exist");
   });
 });

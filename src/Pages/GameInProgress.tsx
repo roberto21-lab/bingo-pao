@@ -64,6 +64,8 @@ export default function GameInProgress() {
     roundBingoTypes,
     roundsData,
     calledNumbers,
+    // FIX-CRITICAL: Ref para calledNumbers para evitar stale closures
+    calledNumbersRef,
     currentNumber,
     lastNumbers,
     lastCalledTimestamp,
@@ -107,6 +109,11 @@ export default function GameInProgress() {
     Map<number, Set<string>>
   >(new Map());
   const [countdown, setCountdown] = React.useState<number | null>(null);
+  
+  // FIX-ROUND-MARKS: Ref para trackear la ronda anterior y detectar cambios
+  // Esto garantiza que markedNumbers se limpie cuando cambia la ronda,
+  // independientemente de si los eventos WebSocket llegaron correctamente
+  const previousRoundForMarksRef = React.useRef(currentRound);
   const [timeoutCountdown, setTimeoutCountdown] = React.useState<number | null>(
     null
   );
@@ -115,6 +122,52 @@ export default function GameInProgress() {
   );
   const [isGameStarting, setIsGameStarting] = React.useState(false);
   const [showConfetti, setShowConfetti] = React.useState(false);
+
+  // FIX-ROUND-MARKS: useEffect para limpiar markedNumbers Y calledNumbers cuando cambia la ronda
+  // Este es un safety net que garantiza que los números de la ronda anterior
+  // no persistan y causen el error "número no ha salido" al cantar bingo en la nueva ronda
+  // 
+  // IMPORTANTE: Limpiamos AMBOS porque:
+  // 1. markedNumbers: números que el usuario marcó manualmente (de ronda anterior)
+  // 2. calledNumbers: números que el servidor llamó (pueden ser de ronda anterior si WebSocket no sincronizó)
+  React.useEffect(() => {
+    if (currentRound !== previousRoundForMarksRef.current) {
+      const previousRound = previousRoundForMarksRef.current;
+      console.log(
+        `[GameInProgress] 🧹 FIX-ROUND-MARKS: Detectado cambio de ronda (${previousRound} → ${currentRound}). Limpiando estados...`
+      );
+      
+      // Limpiar números marcados por el usuario
+      setMarkedNumbers(new Map());
+      console.log(
+        `[GameInProgress] ✅ FIX-ROUND-MARKS: markedNumbers limpiados`
+      );
+      
+      // Limpiar números llamados (serán recargados por WebSocket o sincronización)
+      // Solo limpiar si estamos avanzando de ronda (no retrocediendo)
+      if (currentRound > previousRound) {
+        // Verificar si calledNumbers tiene datos de la ronda anterior
+        // Usamos la ref para obtener el valor actual
+        const currentCalledNumbers = calledNumbersRef.current;
+        console.log(
+          `[GameInProgress] 🔍 FIX-ROUND-MARKS: calledNumbers actuales: ${currentCalledNumbers.size} números`
+        );
+        
+        // Limpiar calledNumbers para evitar desincronización
+        setCalledNumbers(new Set());
+        setCurrentNumber("");
+        setLastNumbers([]);
+        console.log(
+          `[GameInProgress] ✅ FIX-ROUND-MARKS: calledNumbers limpiados para ronda ${currentRound}`
+        );
+      }
+      
+      previousRoundForMarksRef.current = currentRound;
+      console.log(
+        `[GameInProgress] ✅ FIX-ROUND-MARKS: Estados limpiados correctamente para ronda ${currentRound}`
+      );
+    }
+  }, [currentRound, setCalledNumbers, setCurrentNumber, setLastNumbers]);
 
   // Hook para conexión WebSocket
   useWebSocketConnection(roomId, gameStarted);
@@ -190,11 +243,14 @@ export default function GameInProgress() {
   ]);
 
   // Obtener el pattern del round actual directamente desde roundsData (debe estar antes de los hooks que lo usan)
+  // FIX-PATTERN: Incluir TODOS los estados activos para que el pattern se muestre correctamente
   const currentBingoType: BingoType = React.useMemo(() => {
+    // FIX-PATTERN: Buscar ronda activa incluyendo "bingo_claimed"
+    // Sin esto, al pasar de ronda durante la ventana de bingo, se muestra el pattern anterior
     const activeRound = roundsData.find((r) => {
       const status =
         typeof r.status_id === "object" && r.status_id ? r.status_id.name : "";
-      return status === "in_progress" || status === "starting";
+      return status === "in_progress" || status === "starting" || status === "bingo_claimed";
     });
 
     const maxRounds = totalRounds || 3;
@@ -220,6 +276,8 @@ export default function GameInProgress() {
       return mapPatternToBingoType(pattern);
     }
 
+    // FIX-PATTERN: Si no hay ronda activa, usar el número de ronda actual
+    // Esto es especialmente importante durante transiciones entre rondas
     const currentRoundData = roundsData.find(
       (r) => r.round_number === currentRound
     );
@@ -246,6 +304,9 @@ export default function GameInProgress() {
       return mapPatternToBingoType(pattern);
     }
 
+    // FIX-PATTERN: Fallback a roundBingoTypes que se actualiza por WebSocket
+    // Esto asegura que si el pattern llega por evento antes que roundsData,
+    // aún se muestre correctamente
     if (roundBingoTypes.length > 0 && roundBingoTypes[currentRound - 1]) {
       return roundBingoTypes[currentRound - 1];
     }
@@ -552,8 +613,18 @@ export default function GameInProgress() {
       
       console.log(`[GameInProgress] ISSUE-3 FIX: Usando números de ronda ${state.currentRound}: ${currentRoundNumbers.length} números (no ${state.calledNumbers?.length || 0} de todas las rondas)`);
       
+      // FIX-RELOAD: NUNCA borrar números si ya tenemos más localmente
+      // Esto previene que el sync con datos incompletos borre nuestro estado
+      // FIX-CRITICAL: Usar REF para evitar stale closure - calledNumbers.size podría ser stale
+      const localNumbersCount = calledNumbersRef.current.size;
+      const serverNumbersCount = currentRoundNumbers.length;
+      
+      console.log(`[GameInProgress] FIX-CRITICAL: Comparando números (local ref: ${localNumbersCount}, servidor: ${serverNumbersCount})`);
+      
       // Actualizar números llamados (SOLO de la ronda actual)
       if (currentRoundNumbers.length > 0) {
+        // FIX-RELOAD: Solo actualizar si el servidor tiene MÁS números o estamos en una ronda diferente
+        if (serverNumbersCount >= localNumbersCount || state.currentRound !== currentRound) {
         setCalledNumbers(new Set(currentRoundNumbers));
         
         // Actualizar último número y últimos 3 números
@@ -562,12 +633,20 @@ export default function GameInProgress() {
           setCurrentNumber(lastNum);
           setLastNumbers(currentRoundNumbers.slice(-3).reverse());
         }
+          console.log(`[GameInProgress] ✅ FIX-RELOAD: Números actualizados desde servidor (${serverNumbersCount} números)`);
       } else {
-        // ISSUE-3 FIX: Si no hay números llamados en la ronda actual, limpiar el estado
-        // Esto previene que se queden números viejos de una ronda anterior
+          console.log(`[GameInProgress] ⚠️ FIX-RELOAD: Ignorando sync con menos números (local: ${localNumbersCount}, servidor: ${serverNumbersCount})`);
+        }
+      } else if (state.currentRound !== currentRound) {
+        // FIX-RELOAD: Solo limpiar si CAMBIAMOS de ronda
+        // Esto previene que se borren números cuando el servidor no devuelve datos
+        console.log(`[GameInProgress] 🔄 FIX-RELOAD: Cambiando de ronda ${currentRound} → ${state.currentRound}, limpiando números`);
         setCalledNumbers(new Set());
         setCurrentNumber("");
         setLastNumbers([]);
+      } else {
+        // FIX-RELOAD: NO limpiar si estamos en la misma ronda y el servidor no devuelve números
+        console.log(`[GameInProgress] ⚠️ FIX-RELOAD: Servidor sin números para ronda ${state.currentRound}, manteniendo ${localNumbersCount} números locales`);
       }
       
       // Actualizar round actual
@@ -596,11 +675,13 @@ export default function GameInProgress() {
       
       console.log("[GameInProgress] Estado sincronizado:", {
         currentRoundNumbers: currentRoundNumbers.length,
+        localNumbers: localNumbersCount,
         currentRound: state.currentRound,
         hasWinner: state.bingoState.hasWinner,
         windowActive: state.bingoState.windowActive,
       });
-    }, [currentRound, setCalledNumbers, setCurrentNumber, setLastNumbers, setCurrentRound, setIsCallingNumber, setBingoClaimCountdown, setMarkedNumbers]),
+    // FIX-CRITICAL: Removido calledNumbers de deps - usamos calledNumbersRef para evitar stale closure
+    }, [currentRound, calledNumbersRef, setCalledNumbers, setCurrentNumber, setLastNumbers, setCurrentRound, setIsCallingNumber, setBingoClaimCountdown, setMarkedNumbers]),
     onReconnect: React.useCallback(() => {
       console.log("[GameInProgress] WebSocket reconectado, sincronizando...");
     }, []),
@@ -766,10 +847,18 @@ export default function GameInProgress() {
           onPatternClick={() => setPatternModalOpen(true)}
         />
 
+        {/* FIX-SYNC: Derivar lastNumbers de calledNumbers para garantizar consistencia */}
+        {/* Esto previene que el header muestre números diferentes al modal */}
         <GameStatusCard
           currentRound={currentRound}
           totalRounds={totalRounds}
-          lastNumbers={lastNumbers}
+          lastNumbers={
+            // FIX-SYNC: Usar lastNumbers solo si está sincronizado con calledNumbers
+            // De lo contrario, derivar de calledNumbers para mantener consistencia
+            lastNumbers.length > 0 && lastNumbers.every(n => calledNumbers.has(n))
+              ? lastNumbers
+              : Array.from(calledNumbers).slice(-3).reverse()
+          }
           currentNumber={currentNumber}
           calledNumbers={calledNumbers}
           progress={progress}

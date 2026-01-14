@@ -124,6 +124,11 @@ export function useWebSocketListeners(
   // FIX-ROUND-RESET: Ref para trackear la última ronda para la cual procesamos números
   // Esto ayuda a detectar cuando necesitamos limpiar cartones al cambiar de ronda
   const lastProcessedRoundRef = useRef(currentRound);
+  // FIX-CRITICAL: Ref para calledNumbers - CRUCIAL para que los handlers vean el valor actual
+  // Sin esto, los handlers de WebSocket capturan el valor inicial (vacío) y nunca ven actualizaciones
+  const calledNumbersRef = useRef(calledNumbers);
+  // FIX-CRITICAL: Ref para saber si useGameData ya cargó datos iniciales
+  const initialLoadCompleteRef = useRef(false);
 
   // Actualizar refs cuando cambian los valores
   useEffect(() => {
@@ -140,7 +145,14 @@ export function useWebSocketListeners(
     // FIX-1 & FIX-3: Sincronizar refs adicionales
     lastNumbersRef.current = lastNumbers;
     hasClaimedBingoInRoundRef.current = hasClaimedBingoInRound;
-  }, [currentRound, roomId, roundFinished, bingoClaimCountdown, isCallingNumber, isGameStarting, roundTransitionCountdown, lastCalledTimestamp, timeoutCountdown, timeoutStartTime, lastNumbers, hasClaimedBingoInRound]);
+    // FIX-CRITICAL: Sincronizar calledNumbersRef para que handlers vean valor actual
+    calledNumbersRef.current = calledNumbers;
+    // FIX-CRITICAL: Marcar si ya tenemos datos cargados
+    if (calledNumbers.size > 0) {
+      initialLoadCompleteRef.current = true;
+    }
+  // FIX-CRITICAL: calledNumbers DEBE estar en las dependencias para sincronizar la ref correctamente
+  }, [currentRound, roomId, roundFinished, bingoClaimCountdown, isCallingNumber, isGameStarting, roundTransitionCountdown, lastCalledTimestamp, timeoutCountdown, timeoutStartTime, lastNumbers, hasClaimedBingoInRound, calledNumbers]);
 
   // NUEVO: useEffect separado para eventos que necesitan funcionar ANTES de que empiece el juego
   // Estos listeners se registran siempre que haya un roomId, independientemente de gameStarted
@@ -251,19 +263,24 @@ export function useWebSocketListeners(
           setRoundFinished(false);
           setRoomFinished(false);
         } else if (roundStatus === "in_progress") {
+          const serverNumbersCount = data.round.called_numbers?.length || 0;
           console.log(
-            `[GameInProgress] 🔄 Sincronizando estado: Round ${data.round.round_number}, ${data.round.called_count || 0} números llamados`
+            `[GameInProgress] 🔄 Sincronizando estado: Round ${data.round.round_number}, ${serverNumbersCount} números del servidor`
           );
           
-          // CRÍTICO: Sincronizar números llamados desde el estado recibido
-          if (data.round.called_numbers && Array.isArray(data.round.called_numbers)) {
+          // FIX-RELOAD: Sincronizar números SOLO si el servidor tiene MÁS que nosotros
+          // Esto previene que datos incompletos del servidor sobrescriban nuestro estado local
+          if (data.round.called_numbers && Array.isArray(data.round.called_numbers) && data.round.called_numbers.length > 0) {
             const syncedNumbers = new Set(
               data.round.called_numbers.map((cn: { number: string }) => cn.number)
             );
+            
+            // FIX-RELOAD: Solo actualizar si el servidor tiene más números o es una ronda diferente
+            // FIX-CRITICAL: Usar REF para ver valor actual, no el capturado en closure
+            if (syncedNumbers.size >= calledNumbersRef.current.size || data.round.round_number !== currentRoundRef.current) {
             setCalledNumbers(syncedNumbers);
             
             // Actualizar número actual y últimos números
-            if (data.round.called_numbers.length > 0) {
               const lastCalled = data.round.called_numbers[data.round.called_numbers.length - 1];
               setCurrentNumber(lastCalled.number);
               
@@ -279,10 +296,18 @@ export function useWebSocketListeners(
                 .reverse()
                 .map((cn: { number: string }) => cn.number);
               setLastNumbers(lastThree);
-            }
             
             console.log(
-              `[GameInProgress] ✅ ${syncedNumbers.size} número(s) sincronizado(s) desde estado del servidor`
+                `[GameInProgress] ✅ FIX-RELOAD: ${syncedNumbers.size} número(s) sincronizado(s) desde servidor`
+              );
+            } else {
+              console.log(
+                `[GameInProgress] ⚠️ FIX-RELOAD: Ignorando sync (local: ${calledNumbersRef.current.size}, servidor: ${syncedNumbers.size})`
+              );
+            }
+          } else {
+            console.log(
+              `[GameInProgress] ⚠️ FIX-RELOAD: Servidor sin números para ronda ${data.round.round_number}, manteniendo estado local`
             );
           }
           
@@ -293,41 +318,6 @@ export function useWebSocketListeners(
           setRoomFinished(false);
           setIsGameStarting(false);
           setProgress(0);
-          
-          console.log(
-            `[GameInProgress] ✅ Estado sincronizado completamente para Round ${data.round.round_number}`
-          );
-
-          setRoomFinished(false);
-
-          // Sincronizar números llamados
-          if (data.round.called_numbers.length > 0) {
-            const calledSet = new Set(
-              data.round.called_numbers.map((cn) => cn.number)
-            );
-            setCalledNumbers(calledSet);
-
-            // Actualizar último número llamado
-            const lastCalled =
-              data.round.called_numbers[data.round.called_numbers.length - 1];
-            setCurrentNumber(lastCalled.number);
-
-            if (data.round.last_called_at) {
-              setLastCalledTimestamp(
-                new Date(data.round.last_called_at).getTime()
-              );
-            }
-
-            // Actualizar últimos 3 números
-            const lastThree = data.round.called_numbers
-              .slice(-3)
-              .reverse()
-              .map((cn) => cn.number);
-            setLastNumbers(lastThree);
-          }
-
-          setIsGameStarting(false);
-          setIsCallingNumber(true);
         } else if (roundStatus === "finished") {
           setIsCallingNumber(false);
           setRoundEnded(true);
@@ -341,12 +331,11 @@ export function useWebSocketListeners(
           setRoomFinished(false);
         }
       } else {
-        console.log(`[GameInProgress] No hay ronda activa en la sala`);
-        setCurrentRound(1);
-        setCalledNumbers(new Set());
-        setCurrentNumber("");
-        setLastNumbers([]);
-        setLastCalledTimestamp(null);
+        // FIX-RELOAD: NO limpiar números si no hay data de ronda del servidor
+        // El servidor puede no enviar data de ronda pero eso no significa que debamos
+        // borrar el estado local que ya tenemos cargado
+        console.log(`[GameInProgress] ⚠️ FIX-RELOAD: No hay data de ronda en room-state-sync, manteniendo estado local`);
+        // Solo actualizar estados de UI, NO borrar números
         setIsCallingNumber(false);
         setRoundEnded(false);
         setRoundFinished(false);
@@ -363,14 +352,19 @@ export function useWebSocketListeners(
         return;
       }
 
-      // FIX-ROUND-RESET: Detectar si es un número de una ronda diferente
-      // Si el número es de una ronda diferente a la que estábamos procesando,
-      // necesitamos limpiar los cartones ANTES de procesar el número
+      // FIX-CRITICAL: Detectar si es un número de una ronda diferente
+      // PERO solo limpiar si:
+      // 1. Es una transición hacia ADELANTE (nueva ronda > anterior)
+      // 2. Y NO tenemos números de esa ronda ya cargados
       const isNewRoundNumber = data.round_number !== lastProcessedRoundRef.current;
+      const isForwardTransition = data.round_number > lastProcessedRoundRef.current;
       
-      if (isNewRoundNumber) {
+      // FIX-CRITICAL: Usar REF para ver el valor actual, no el capturado en closure
+      const alreadyHaveNumbers = calledNumbersRef.current.size > 0;
+      
+      if (isNewRoundNumber && isForwardTransition && !alreadyHaveNumbers) {
         console.log(
-          `[GameInProgress] 🔄 FIX-ROUND-RESET: Detectado número de nueva ronda (${lastProcessedRoundRef.current} → ${data.round_number}). Limpiando cartones automáticamente...`
+          `[GameInProgress] 🔄 FIX-ROUND-RESET: Nueva ronda detectada (${lastProcessedRoundRef.current} → ${data.round_number}), sin números previos. Limpiando...`
         );
         
         // Limpiar TODO antes de procesar el número de la nueva ronda
@@ -407,16 +401,54 @@ export function useWebSocketListeners(
         lastProcessedRoundRef.current = data.round_number;
         
         console.log(
-          `[GameInProgress] ✅ FIX-ROUND-RESET: Cartones limpiados. Procesando primer número de Round ${data.round_number}: ${data.number}`
+          `[GameInProgress] ✅ FIX-ROUND-RESET: Limpieza completa. Procesando primer número de Round ${data.round_number}: ${data.number}`
         );
+      } else if (isNewRoundNumber) {
+        // FIX-CRITICAL: Solo actualizar refs sin limpiar números
+        console.log(
+          `[GameInProgress] 📝 FIX-CRITICAL: Actualizando refs de ronda (${lastProcessedRoundRef.current} → ${data.round_number}) SIN limpiar (ya hay ${calledNumbersRef.current.size} números)`
+        );
+        lastProcessedRoundRef.current = data.round_number;
+        if (data.round_number !== currentRoundRef.current) {
+          setCurrentRound(data.round_number);
+        }
       }
+
+      // FIX-REALTIME: Log detallado para diagnosticar números perdidos
+      console.log(
+        `[GameInProgress] 📥 number_called recibido: ${data.number}, Round ${data.round_number} (currentRoundRef: ${currentRoundRef.current})`
+      );
 
       // Ignorar números de rondas anteriores (no de la actual)
       if (data.round_number !== currentRoundRef.current && !isNewRoundNumber) {
+        console.log(
+          `[GameInProgress] ⚠️ FIX-REALTIME: Número ${data.number} ignorado - ronda diferente (evento: ${data.round_number}, actual: ${currentRoundRef.current})`
+        );
         return;
       }
 
-      if (roundFinishedRef.current || bingoClaimCountdownRef.current !== null) {
+      // FIX-REALTIME: NO ignorar números durante bingo_claimed
+      // El usuario debe ver TODOS los números que salieron antes del bingo
+      if (roundFinishedRef.current) {
+        console.log(
+          `[GameInProgress] ⚠️ FIX-REALTIME: Número ${data.number} ignorado - ronda finalizada`
+        );
+        return;
+      }
+      
+      // FIX-REALTIME: Durante ventana de bingo, AÑADIR el número pero no resetear UI
+      // Esto es importante porque los números pueden seguir saliendo durante la ventana
+      if (bingoClaimCountdownRef.current !== null) {
+        console.log(
+          `[GameInProgress] ⚠️ FIX-REALTIME: Número ${data.number} durante ventana de bingo - añadiendo sin resetear UI`
+        );
+        // Añadir el número al set pero no continuar con el resto del procesamiento
+        setCalledNumbers((prev) => {
+          if (prev.has(data.number)) {
+            return prev;
+          }
+          return new Set([...prev, data.number]);
+        });
         return;
       }
 
@@ -435,12 +467,60 @@ export function useWebSocketListeners(
         setNextCallAt(data.next_call_at);
       }
       
-      setCalledNumbers((prev) => {
-        if (prev.has(data.number)) {
-          return prev;
-        }
-        return new Set([...prev, data.number]);
-      });
+      // CRITICAL-FIX: Detectar desincronización usando total_called del servidor
+      // Si el servidor dice que hay más números de los que tenemos localmente, hay desincronización
+      const localCount = calledNumbersRef.current.size;
+      const serverTotalCalled = (data as any).total_called;
+      
+      // Si después de agregar este número, todavía tenemos menos que el servidor, hay desincronización
+      const expectedLocalCount = localCount + (calledNumbersRef.current.has(data.number) ? 0 : 1);
+      const hasDesync = serverTotalCalled && expectedLocalCount < serverTotalCalled;
+      
+      if (hasDesync) {
+        console.warn(
+          `[GameInProgress] ⚠️ CRITICAL-FIX: Desincronización detectada en number-called! Local: ${expectedLocalCount}, Servidor: ${serverTotalCalled}, Faltantes: ${serverTotalCalled - expectedLocalCount}`
+        );
+        
+        // Forzar recarga de números desde el servidor
+        getCalledNumbers(roomIdRef.current!, data.round_number)
+          .then((calledNumbersData) => {
+            if (!isMounted) return;
+            
+            if (calledNumbersData.length > calledNumbersRef.current.size) {
+              console.log(
+                `[GameInProgress] ✅ CRITICAL-FIX: Sincronizando ${calledNumbersData.length} números desde servidor (teníamos ${calledNumbersRef.current.size})`
+              );
+              
+              const syncedNumbers = new Set(calledNumbersData.map((cn) => cn.number));
+              setCalledNumbers(syncedNumbers);
+              
+              const lastCalled = calledNumbersData[calledNumbersData.length - 1];
+              setCurrentNumber(lastCalled.number);
+              
+              if (lastCalled.called_at) {
+                const timestamp = new Date(lastCalled.called_at).getTime();
+                setLastCalledTimestamp(timestamp);
+              }
+              
+              const lastThree = calledNumbersData
+                .slice(-3)
+                .reverse()
+                .map((cn) => cn.number);
+              setLastNumbers(lastThree);
+            }
+          })
+          .catch((error) => {
+            console.error(`[GameInProgress] Error al recargar números por desincronización:`, error);
+          });
+      } else {
+        // Sin desincronización, agregar el número normalmente
+        setCalledNumbers((prev) => {
+          if (prev.has(data.number)) {
+            return prev;
+          }
+          return new Set([...prev, data.number]);
+        });
+      }
 
       setCurrentNumber(data.number);
       setLastCalledTimestamp(calledTimestamp);
@@ -450,11 +530,12 @@ export function useWebSocketListeners(
       // Esto garantiza que todos los clientes vean los mismos números
       if (data.last_three_numbers && Array.isArray(data.last_three_numbers)) {
         setLastNumbers(data.last_three_numbers);
-      } else {
+      } else if (!hasDesync) {
         // Fallback: construir localmente si el servidor no envía (compatibilidad)
-      const currentLast = lastNumbersRef.current || [];
-      const updated = [data.number, ...currentLast].slice(0, 3);
-      setLastNumbers(updated);
+        // Solo si NO hay desincronización (si la hay, ya se actualizó arriba)
+        const currentLast = lastNumbersRef.current || [];
+        const updated = [data.number, ...currentLast].slice(0, 3);
+        setLastNumbers(updated);
       }
 
       setProgress(0);
@@ -494,10 +575,26 @@ export function useWebSocketListeners(
       }
 
       const currentRoundValue = currentRoundRef.current;
-      if (data.round_number < currentRoundValue) {
+      
+      // FIX-CRITICAL: Ignorar si es una ronda anterior O si es la misma ronda y ya tenemos datos
+      // Esto previene que un round-started del servidor borre números que ya cargamos
+      const isOldRound = data.round_number < currentRoundValue;
+      const isSameRoundWithData = data.round_number === currentRoundValue && calledNumbersRef.current.size > 0;
+      
+      if (isOldRound) {
         console.log(
-          `[GameInProgress] Ignorando round-started para Round ${data.round_number} (round actual: ${currentRoundValue})`
+          `[GameInProgress] ⏭️ Ignorando round-started para Round ${data.round_number} (round actual: ${currentRoundValue})`
         );
+        return;
+      }
+      
+      if (isSameRoundWithData) {
+        console.log(
+          `[GameInProgress] ⏭️ FIX-CRITICAL: Ignorando round-started para Round ${data.round_number} - ya tenemos ${calledNumbersRef.current.size} números cargados`
+        );
+        // Solo actualizar refs y estados de UI, NO borrar números
+        setIsTransitioning(false);
+        lastProcessedRoundRef.current = data.round_number;
         return;
       }
 
@@ -616,12 +713,13 @@ export function useWebSocketListeners(
         });
         setRoundBingoTypes(updatedBingoTypes);
 
+        // FIX-PATTERN: Incluir "bingo_claimed" para detectar rondas activas correctamente
         const activeRound = sortedUpdatedRounds.find((r) => {
           const status =
             typeof r.status_id === "object" && r.status_id
               ? r.status_id.name
               : "";
-          return status === "in_progress" || status === "starting";
+          return status === "in_progress" || status === "starting" || status === "bingo_claimed";
         });
 
         if (activeRound) {
@@ -932,7 +1030,7 @@ export function useWebSocketListeners(
     });
 
     // Escuchar eventos de round finalizado
-    const unsubscribeRoundFinished = onRoundFinished((data) => {
+    const unsubscribeRoundFinished = onRoundFinished(async (data) => {
       if (!isMounted) return;
 
       if (data.round_number === currentRoundRef.current && data.room_id === roomIdRef.current) {
@@ -946,6 +1044,85 @@ export function useWebSocketListeners(
         setTimeoutCountdown(null);
         setTimeoutStartTime(null);
         setBingoClaimCountdown(null);
+        
+        // FIX-ROOM-FINISH: Safety net para detectar cuando la última ronda termina
+        // Si esta es la última ronda, marcar la sala como finalizada después de un timeout
+        // Esto previene que el usuario quede en un estado inconsistente si room-finished no llega
+        const isLastRound = data.round_number === totalRounds;
+        if (isLastRound) {
+          console.log(
+            `[GameInProgress] ⚠️ FIX-ROOM-FINISH: Última ronda (${data.round_number}/${totalRounds}) finalizada. Activando safety net...`
+          );
+          
+          // Esperar 10 segundos para dar tiempo al evento room-finished
+          // Si no llega, cargar ganadores y marcar la sala como finalizada manualmente
+          setTimeout(async () => {
+            if (!isMounted) return;
+            
+            // Verificar si la sala ya fue marcada como finalizada por el evento room-finished
+            // Si roomFinished ya es true, no hacer nada (el evento llegó)
+            // Usamos una llamada al API para verificar el estado actual
+            try {
+              console.log(
+                `[GameInProgress] 🔄 FIX-ROOM-FINISH: Verificando estado de la sala después de última ronda...`
+              );
+              
+              const winnersData = await getRoomWinners(roomIdRef.current!);
+              
+              // Si hay ganadores para la última ronda, la sala está finalizada
+              const hasLastRoundWinner = winnersData.some(w => w.round_number === totalRounds);
+              
+              if (hasLastRoundWinner) {
+                console.log(
+                  `[GameInProgress] ✅ FIX-ROOM-FINISH: Detectado ganador de última ronda. Marcando sala como finalizada...`
+                );
+                
+                setRoomFinished(true);
+                setWinners(winnersData);
+                
+                const winnerCards: BingoGrid[] = [];
+                const winnerCardsData: Array<{ _id: string; code: string }> = [];
+                const winningNumbers = new Map<string, Set<string>>();
+                
+                const sortedWinners = [...winnersData].sort((a, b) => a.round_number - b.round_number);
+                
+                sortedWinners.forEach((winner) => {
+                  console.log(
+                    `[GameInProgress] FIX-ROOM-FINISH: Procesando ganador - Ronda ${winner.round_number}: Pattern=${winner.pattern}, Cartón ${winner.card_code}, bingo_numbers: ${winner.bingo_numbers?.length || 0}`
+                  );
+                  winnerCards.push(convertCardNumbers(winner.card_numbers));
+                  winnerCardsData.push({ _id: winner.card_id, code: winner.card_code });
+                  // FIX-WINNING-MAP: Usar clave compuesta para cuando el mismo cartón gana múltiples rondas
+                  const mapKey = `${winner.card_id}_round_${winner.round_number}`;
+                  winningNumbers.set(mapKey, new Set(winner.bingo_numbers));
+                });
+                
+                setPlayerCards(winnerCards);
+                setPlayerCardsData(winnerCardsData);
+                setWinningNumbersMap(winningNumbers);
+                
+                const allCalledNumbers = new Set<string>();
+                for (const winner of winnersData) {
+                  winner.called_numbers.forEach((num: string) => allCalledNumbers.add(num));
+                }
+                setCalledNumbers(allCalledNumbers);
+                setCurrentRound(totalRounds);
+                
+                console.log(
+                  `[GameInProgress] ✅ FIX-ROOM-FINISH: Sala marcada como finalizada con ${winnersData.length} ganadores`
+                );
+              } else {
+                console.log(
+                  `[GameInProgress] ⏳ FIX-ROOM-FINISH: No se encontró ganador de última ronda aún, esperando...`
+                );
+              }
+            } catch (error) {
+              console.error(
+                `[GameInProgress] ❌ FIX-ROOM-FINISH: Error al verificar estado de sala:`, error
+              );
+            }
+          }, 10000); // Esperar 10 segundos
+        }
       }
     });
 
@@ -977,6 +1154,34 @@ export function useWebSocketListeners(
           console.log(
             `[GameInProgress] Actualizando round actual durante transición: Round ${data.next_round_number} (antes: Round ${currentRoundValue})`
           );
+          
+          // ========================================
+          // FIX-MODE: Actualizar roundsData para que currentBingoType use el pattern correcto
+          // Marcar rondas anteriores como "finished" para que no sean consideradas "activas"
+          // ========================================
+          setRoundsData((prevRounds) => {
+            const updatedRounds = prevRounds.map((round) => {
+              // Marcar todas las rondas anteriores a la nueva como "finished"
+              if (round.round_number < data.next_round_number) {
+                const currentStatus = typeof round.status_id === "object" && round.status_id
+                  ? round.status_id.name
+                  : "";
+                // Solo actualizar si NO está ya como "finished"
+                if (currentStatus !== "finished") {
+                  console.log(
+                    `[GameInProgress] 🎯 FIX-MODE (transition): Marcando Round ${round.round_number} como finished`
+                  );
+                  return {
+                    ...round,
+                    status_id: { name: "finished", category: "round" },
+                  };
+                }
+              }
+              return round;
+            });
+            return updatedRounds;
+          });
+          
           setCurrentRound(data.next_round_number);
         }
         
@@ -1007,6 +1212,18 @@ export function useWebSocketListeners(
       if (!isMounted) return;
 
       if (data.room_id === roomIdRef.current) {
+        // FIX-CRITICAL: Solo procesar si la transición es HACIA ADELANTE desde nuestra ronda actual
+        // Esto previene que eventos de transiciones pasadas (por reconexión) borren datos
+        const isRelevantTransition = data.previous_round_number === currentRoundRef.current && 
+                                      data.next_round_number > currentRoundRef.current;
+        
+        if (!isRelevantTransition) {
+          console.log(
+            `[GameInProgress] ⏭️ FIX-CRITICAL: Ignorando round-cleanup irrelevante (prev: ${data.previous_round_number}, next: ${data.next_round_number}, current: ${currentRoundRef.current})`
+          );
+          return;
+        }
+        
         console.log(
           `[GameInProgress] 🧹 Preparando transición: Round ${data.previous_round_number} → Round ${data.next_round_number}`
         );
@@ -1015,6 +1232,31 @@ export function useWebSocketListeners(
         // Esto previene que el usuario cante bingo con datos viejos
         setIsTransitioning(true);
         console.log(`[GameInProgress] 🔒 Modo transición ACTIVADO - interacción bloqueada`);
+
+        // ========================================
+        // FIX-MODE: Actualizar roundsData para que currentBingoType use el pattern correcto
+        // CRÍTICO: Sin esto, el useMemo de currentBingoType sigue viendo la ronda anterior
+        // como "activa" y muestra el pattern incorrecto
+        // ========================================
+        setRoundsData((prevRounds) => {
+          const updatedRounds = prevRounds.map((round) => {
+            // Marcar la ronda anterior como "finished" para que ya no sea considerada "activa"
+            if (round.round_number === data.previous_round_number) {
+              console.log(
+                `[GameInProgress] 🎯 FIX-MODE: Marcando Round ${round.round_number} como finished`
+              );
+              return {
+                ...round,
+                status_id: { name: "finished", category: "round" },
+              };
+            }
+            return round;
+          });
+          return updatedRounds;
+        });
+        console.log(
+          `[GameInProgress] ✅ FIX-MODE: roundsData actualizado - Round ${data.previous_round_number} marcado como finished`
+        );
 
         // ========================================
         // ISSUE-2 FIX: Limpiar TODO ANTES de la transición
@@ -1145,16 +1387,24 @@ export function useWebSocketListeners(
         setIsTransitioning(false);
         
         // ========================================
-        // RESET COMPLETO AL SINCRONIZAR NUEVA RONDA
+        // RESET CONDICIONAL - FIX-SYNC
         // ========================================
         
-        // 1. RESET de números y estado de juego (siempre si es nueva ronda)
-        if (isNewRound || data.called_count === 0) {
+        // FIX-SYNC: Solo limpiar números si es una nueva ronda Y tenemos menos números localmente
+        // Esto previene que events con called_count=0 borren números que ya tenemos
+        // FIX-CRITICAL: Usar REF para ver valor actual
+        const shouldClearNumbers = isNewRound && calledNumbersRef.current.size === 0;
+        
+        if (shouldClearNumbers) {
+          console.log(`[GameInProgress] 🧹 FIX-SYNC: Limpiando números para nueva ronda ${data.round_number}`);
           setCalledNumbers(new Set());
           setCurrentNumber("");
           setLastNumbers([]);
           setLastCalledTimestamp(null);
           setMarkedNumbers(new Map());
+        } else if (data.called_count === 0 && calledNumbersRef.current.size > 0) {
+          // FIX-SYNC: No limpiar si ya tenemos números localmente
+          console.log(`[GameInProgress] ⚠️ FIX-SYNC: Ignorando reset - ya tenemos ${calledNumbersRef.current.size} números localmente`);
         }
         setProgress(0);
         
@@ -1187,32 +1437,58 @@ export function useWebSocketListeners(
           );
         }
         
-        // Si hay números llamados, sincronizarlos
+        // CRITICAL-FIX: Detectar desincronización comparando conteos
+        const localCount = calledNumbersRef.current.size;
+        const serverCount = data.called_count || (data.called_numbers?.length || 0);
+        const serverHasMoreNumbers = serverCount > localCount;
+        
+        // Si hay números llamados Y (el servidor tiene más O es nueva ronda), sincronizarlos
         if (data.called_numbers && data.called_numbers.length > 0) {
-          const syncedNumbers = new Set(
-            data.called_numbers.map((cn) => cn.number)
-          );
-          setCalledNumbers(syncedNumbers);
-          
-          const lastCalled = data.called_numbers[data.called_numbers.length - 1];
-          setCurrentNumber(lastCalled.number);
-          
-          if (lastCalled.called_at) {
-            const timestamp = new Date(lastCalled.called_at).getTime();
-            setLastCalledTimestamp(timestamp);
+          // CRITICAL-FIX: Si el servidor tiene más números que nosotros, FORZAR sincronización
+          if (serverHasMoreNumbers || isNewRound) {
+            console.log(
+              `[GameInProgress] 🔄 CRITICAL-FIX: Sincronizando números - Local: ${localCount}, Servidor: ${serverCount}, Diferencia: ${serverCount - localCount}`
+            );
+            
+            const syncedNumbers = new Set(
+              data.called_numbers.map((cn) => cn.number)
+            );
+            setCalledNumbers(syncedNumbers);
+            
+            const lastCalled = data.called_numbers[data.called_numbers.length - 1];
+            setCurrentNumber(lastCalled.number);
+            
+            if (lastCalled.called_at) {
+              const timestamp = new Date(lastCalled.called_at).getTime();
+              setLastCalledTimestamp(timestamp);
+            }
+            
+            const lastThree = data.called_numbers
+              .slice(-3)
+              .reverse()
+              .map((cn) => cn.number);
+            setLastNumbers(lastThree);
+            
+            setIsCallingNumber(true);
+            
+            console.log(
+              `[GameInProgress] ✅ CRITICAL-FIX: Sincronización forzada completada - Ahora tenemos ${syncedNumbers.size} números`
+            );
+          } else {
+            console.log(
+              `[GameInProgress] ⏭️ Sync no necesario - Local: ${localCount}, Servidor: ${serverCount}`
+            );
           }
-          
-          const lastThree = data.called_numbers
-            .slice(-3)
-            .reverse()
-            .map((cn) => cn.number);
-          setLastNumbers(lastThree);
-          
-          setIsCallingNumber(true);
+        } else if (serverHasMoreNumbers && serverCount > 0) {
+          // CRITICAL-FIX: El servidor dice que tiene más números pero no los envió
+          // Esto no debería pasar con el fix del backend, pero por seguridad logueamos
+          console.warn(
+            `[GameInProgress] ⚠️ CRITICAL-FIX: Servidor tiene más números (${serverCount}) que local (${localCount}) pero no envió called_numbers`
+          );
         }
         
         console.log(
-          `[GameInProgress] ✅ Sincronización completada para Round ${data.round_number}`
+          `[GameInProgress] ✅ Sincronización completada para Round ${data.round_number} (${calledNumbersRef.current.size} números)`
         );
       }
     });
@@ -1453,7 +1729,10 @@ export function useWebSocketListeners(
 
       if (data.room_id === roomId) {
         console.log(
-          `[GameInProgress] Sala ${data.room_name} finalizada. Cargando ganadores...`
+          `[GameInProgress] 🏁 ========== EVENTO ROOM-FINISHED RECIBIDO ==========`
+        );
+        console.log(
+          `[GameInProgress] 🏁 Sala ${data.room_name} finalizada. Cargando ganadores...`
         );
 
         setRoomFinished(true);
@@ -1469,6 +1748,10 @@ export function useWebSocketListeners(
 
         try {
           const winnersData = await getRoomWinners(roomId);
+          console.log(
+            `[GameInProgress] 🏆 Ganadores obtenidos del servidor:`, 
+            winnersData.map(w => ({ round: w.round_number, pattern: w.pattern, card: w.card_code }))
+          );
           setWinners(winnersData);
 
           const winnerCards: BingoGrid[] = [];
@@ -1481,24 +1764,26 @@ export function useWebSocketListeners(
           );
 
           sortedWinners.forEach((winner) => {
+            // FIX-PATTERN-LOG: Log detallado incluyendo el patrón para diagnóstico
             console.log(
-              `[GameInProgress] Procesando ganador - Ronda ${winner.round_number}: Cartón ${winner.card_code} (ID: ${winner.card_id})`
+              `[GameInProgress] 🎯 Procesando ganador - Ronda ${winner.round_number}: Pattern="${winner.pattern}", Cartón ${winner.card_code} (ID: ${winner.card_id}), bingo_numbers: ${winner.bingo_numbers?.length || 0}`
             );
             winnerCards.push(convertCardNumbers(winner.card_numbers));
             winnerCardsData.push({
               _id: winner.card_id,
               code: winner.card_code,
             });
-            // ISSUE-8: Usar card_id como clave (misma fuente que bingo_numbers del modal)
-            winningNumbers.set(winner.card_id, new Set(winner.bingo_numbers));
+            // FIX-WINNING-MAP: Usar clave compuesta para cuando el mismo cartón gana múltiples rondas
+            const mapKey = `${winner.card_id}_round_${winner.round_number}`;
+            winningNumbers.set(mapKey, new Set(winner.bingo_numbers));
           });
 
           console.log(
-            `[GameInProgress] Total ganadores cargados: ${winnerCards.length}`
+            `[GameInProgress] ✅ Total ganadores cargados: ${winnerCards.length}`
           );
           console.log(
-            `[GameInProgress] Códigos de cartones:`,
-            winnerCardsData.map((c) => c.code)
+            `[GameInProgress] 📋 Resumen de ganadores:`,
+            sortedWinners.map(w => `R${w.round_number}: ${w.pattern} (${w.card_code})`).join(', ')
           );
 
           setPlayerCards(winnerCards);
@@ -1514,15 +1799,33 @@ export function useWebSocketListeners(
           setCalledNumbers(allCalledNumbers);
 
           setCurrentRound(totalRounds);
+          
+          console.log(
+            `[GameInProgress] 🏁 ========== SALA FINALIZADA CORRECTAMENTE ==========`
+          );
         } catch (error) {
-          console.error(`[GameInProgress] Error al cargar ganadores:`, error);
+          console.error(`[GameInProgress] ❌ Error al cargar ganadores:`, error);
         }
       }
     });
 
-    // Cargar números llamados iniciales (solo una vez al montar)
+    // FIX-RELOAD: NO cargar números iniciales aquí si useGameData ya los cargó
+    // useGameData ya carga los números en la carga inicial de la página
+    // Esta función causaba una condición de carrera donde sobrescribía los números
+    // con una versión potencialmente más vieja o incompleta
+    //
+    // Solo cargamos si NO tenemos números aún (para casos de reconexión rápida)
     const loadInitialNumbers = async () => {
+      // FIX-RELOAD: Verificar si ya tenemos números antes de cargar
+      // Usamos calledNumbers del closure para verificar el estado actual
+      // FIX-CRITICAL: Usar REF para ver valor actual, no el capturado en closure
+      if (calledNumbersRef.current.size > 0 || initialLoadCompleteRef.current) {
+        console.log(`[GameInProgress] ⏭️ FIX-RELOAD: Ya tenemos ${calledNumbersRef.current.size} números (initialLoadComplete: ${initialLoadCompleteRef.current}), saltando loadInitialNumbers`);
+        return;
+      }
+      
       try {
+        console.log(`[GameInProgress] 📥 FIX-RELOAD: Cargando números iniciales para Round ${currentRound}...`);
         const calledNumbersData = await getCalledNumbers(roomId!, currentRound);
 
         if (calledNumbersData.length > 0) {
@@ -1542,6 +1845,8 @@ export function useWebSocketListeners(
               .reverse()
               .map((cn) => cn.number)
           );
+          
+          console.log(`[GameInProgress] ✅ FIX-RELOAD: Cargados ${numbersSet.size} números iniciales`);
         }
       } catch {
         // Error silencioso al cargar números iniciales
@@ -1577,10 +1882,15 @@ export function useWebSocketListeners(
       unsubscribeRoomStatusUpdated();
       unsubscribeRoomFinished();
     };
+    // FIX-REALTIME: Removido currentRound de las dependencias
+    // Los handlers usan currentRoundRef que se actualiza automáticamente
+    // Esto previene que los listeners se re-registren cuando cambia la ronda,
+    // lo cual causaba que se perdieran eventos durante la re-suscripción
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     gameStarted,
     roomId,
-    currentRound,
+    // currentRound - REMOVIDO: usar currentRoundRef.current dentro de los handlers
   ]);
 }
+

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import * as React from "react";
 import { getCardsByRoomAndUser } from "../Services/cards.service";
 import { claimBingo, BingoAlreadyClaimedError, CardAlreadyClaimedError, type RoomWinner } from "../Services/bingo.service";
+import { getCalledNumbers } from "../Services/calledNumbers.service";
 import { numberToBingoFormat } from "../utils/bingoUtils";
 import { hasBingo } from "../utils/bingoLogic";
 import type { BingoGrid } from "../utils/bingo";
@@ -191,15 +192,45 @@ export function useBingoHandlers(
       const markedNumbersArray = Array.from(cardMarked);
       console.log(`[GameInProgress]    - Números marcados: ${markedNumbersArray.length} números`);
       
-      // FIX-SYNC: Validación pre-claim - verificar que los números marcados están en calledNumbers
-      const invalidMarks = markedNumbersArray.filter(num => !calledNumbers.has(num));
-      if (invalidMarks.length > 0) {
-        console.warn(`[GameInProgress] ⚠️ FIX-SYNC: Detectados ${invalidMarks.length} números marcados que no están en calledNumbers:`, invalidMarks);
-        console.warn(`[GameInProgress] ⚠️ Esto indica desincronización. Solicitando al usuario que recargue.`);
-        alert("Se detectó un problema de sincronización. Algunos números marcados no coinciden con los números actuales de la ronda. Por favor, recarga la página para sincronizar.");
+      // FIX-ROUND-SYNC: SINCRONIZACIÓN CON SERVIDOR antes de validar
+      // Esto es CRÍTICO para evitar el error "número no fue llamado en este round"
+      // El problema ocurre cuando el frontend tiene números desactualizados de rondas anteriores
+      console.log(`[GameInProgress] 🔄 FIX-ROUND-SYNC: Sincronizando con servidor antes de validar...`);
+      
+      let serverCalledNumbers: Set<string>;
+      try {
+        const serverNumbersData = await getCalledNumbers(roomId, currentRound);
+        serverCalledNumbers = new Set(serverNumbersData.map(cn => cn.number));
+        console.log(`[GameInProgress] ✅ FIX-ROUND-SYNC: Servidor tiene ${serverCalledNumbers.size} números para Round ${currentRound}`);
+        console.log(`[GameInProgress]    - Números del servidor: ${Array.from(serverCalledNumbers).slice(0, 10).join(', ')}${serverCalledNumbers.size > 10 ? '...' : ''}`);
+      } catch (syncError) {
+        console.error(`[GameInProgress] ❌ FIX-ROUND-SYNC: Error al sincronizar con servidor:`, syncError);
+        alert("Error al verificar con el servidor. Por favor, intenta de nuevo.");
         setIsClaimingBingo(false);
         return;
       }
+      
+      // FIX-ROUND-SYNC: Validar contra los números del SERVIDOR (fuente de verdad)
+      // No usar calledNumbers del frontend que puede estar desactualizado
+      const invalidMarks = markedNumbersArray.filter(num => !serverCalledNumbers.has(num));
+      if (invalidMarks.length > 0) {
+        console.warn(`[GameInProgress] ⚠️ FIX-ROUND-SYNC: Detectados ${invalidMarks.length} números marcados que NO están en el servidor para Round ${currentRound}:`, invalidMarks);
+        console.warn(`[GameInProgress] ⚠️ Números del servidor (${serverCalledNumbers.size}):`, Array.from(serverCalledNumbers));
+        console.warn(`[GameInProgress] ⚠️ Números locales (${calledNumbers.size}):`, Array.from(calledNumbers));
+        
+        // Detectar si es un problema de ronda anterior
+        const localHasInvalid = invalidMarks.some(num => calledNumbers.has(num));
+        if (localHasInvalid) {
+          console.warn(`[GameInProgress] ⚠️ FIX-ROUND-SYNC: El frontend tiene números que el servidor no reconoce para esta ronda - posible desincronización de ronda`);
+          alert(`¡Atención! Se detectó un problema de sincronización entre rondas.\n\nTienes ${invalidMarks.length} número(s) marcado(s) que el servidor no reconoce para la Ronda ${currentRound}:\n${invalidMarks.join(', ')}\n\nEstos números pueden ser de una ronda anterior. Por favor, recarga la página para sincronizar correctamente.`);
+        } else {
+          alert(`¡Atención! Tienes ${invalidMarks.length} número(s) marcado(s) que no han salido en esta ronda (Ronda ${currentRound}). Por favor, desmarca los números incorrectos.`);
+        }
+        setIsClaimingBingo(false);
+        return;
+      }
+      
+      console.log(`[GameInProgress] ✅ FIX-ROUND-SYNC: Todos los números marcados están validados contra el servidor`);
 
       const cardsData = await getCardsByRoomAndUser(roomId, currentUserId);
       if (previewCardIndex >= cardsData.length) {

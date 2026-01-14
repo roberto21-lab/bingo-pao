@@ -6,9 +6,10 @@ import { api } from "../Services/api";
 import { useGameContext } from "../contexts/GameContext";
 
 // P9-FIX: Constantes de configuración de polling optimizadas
-const ROUND_CHECK_INTERVAL = 45000; // 45 segundos - polling muy reducido
-const GAME_STATE_SYNC_INTERVAL = 60000; // 60 segundos - solo fallback
-const FRESH_DATA_THRESHOLD = 20000; // 20 segundos - no hacer polling si hay datos más recientes
+// FIX-CRITICAL: Reducir intervalos para detectar inconsistencias más rápido
+const ROUND_CHECK_INTERVAL = 30000; // 30 segundos - verificar estado de ronda
+const GAME_STATE_SYNC_INTERVAL = 15000; // 15 segundos - sync más frecuente para detectar números perdidos
+const FRESH_DATA_THRESHOLD = 10000; // 10 segundos - threshold reducido para mayor frescura
 // const DESYNC_CHECK_INTERVAL = 30000; // 30 segundos - verificar desincronización (reservado para futuro uso)
 
 /**
@@ -159,42 +160,47 @@ export function useGameStateSync(
           if (shouldUpdate) {
             setCurrentRound(newCurrentRoundData.round_number);
 
-            // Si es un nuevo round, limpiar números
+            // FIX-CRITICAL: Si es un nuevo round, cargar números PRIMERO antes de limpiar
+            // Esto evita el parpadeo de "0 números" -> "X números"
             if (newCurrentRoundData.round_number > currentRoundRef.current) {
-              setCalledNumbers(new Set());
-              setCurrentNumber("");
-              setLastNumbers([]);
-              setLastCalledTimestamp(null);
-              setMarkedNumbers(new Map());
-              setRoundFinished(false);
-              setRoundEnded(false);
-              setIsCallingNumber(true);
-              setProgress(0);
-
-              // Cargar números de la nueva ronda
+              // Cargar números de la nueva ronda ANTES de limpiar
               try {
                 const calledNumbersData = await getCalledNumbers(
                   currentRoomId,
                   newCurrentRoundData.round_number
                 );
-                if (calledNumbersData.length > 0) {
-                  const calledSet = new Set(
-                    calledNumbersData.map((cn) => cn.number)
-                  );
-                  setCalledNumbers(calledSet);
+                
+                // FIX-CRITICAL: Solo limpiar si la nueva ronda tiene datos diferentes
+                // Esto previene borrar números que ya tenemos si la API retorna los mismos
+                const localNumbersCount = localNumberCountRef.current;
+                const serverNumbersCount = calledNumbersData.length;
+                
+                // Solo actualizar si el servidor tiene MÁS números o estamos sin datos
+                if (serverNumbersCount > 0 || localNumbersCount === 0) {
+                  setCalledNumbers(new Set(calledNumbersData.map((cn) => cn.number)));
+                  setMarkedNumbers(new Map());
+                  setRoundFinished(false);
+                  setRoundEnded(false);
+                  setIsCallingNumber(true);
+                  setProgress(0);
+                  localNumberCountRef.current = serverNumbersCount;
 
-                  const lastCalled =
-                    calledNumbersData[calledNumbersData.length - 1];
-                  setCurrentNumber(lastCalled.number);
-                  setLastCalledTimestamp(
-                    new Date(lastCalled.called_at).getTime()
-                  );
+                  if (calledNumbersData.length > 0) {
+                    const lastCalled = calledNumbersData[calledNumbersData.length - 1];
+                    setCurrentNumber(lastCalled.number);
+                    setLastCalledTimestamp(new Date(lastCalled.called_at).getTime());
 
-                  const lastThree = calledNumbersData
-                    .slice(-3)
-                    .reverse()
-                    .map((cn) => cn.number);
-                  setLastNumbers(lastThree);
+                    const lastThree = calledNumbersData.slice(-3).reverse().map((cn) => cn.number);
+                    setLastNumbers(lastThree);
+                  } else {
+                    setCurrentNumber("");
+                    setLastNumbers([]);
+                    setLastCalledTimestamp(null);
+                  }
+                  
+                  console.log(`[useGameStateSync] ✅ FIX-CRITICAL: Round ${newCurrentRoundData.round_number} cargado (${serverNumbersCount} números)`);
+                } else {
+                  console.log(`[useGameStateSync] ⚠️ FIX-CRITICAL: Ignorando actualización - manteniendo ${localNumbersCount} números locales`);
                 }
               } catch (error) {
                 console.error(
@@ -263,6 +269,15 @@ export function useGameStateSync(
           const serverCount = data.length;
           const localCount = localNumberCountRef.current;
           
+          // FIX-SYNC: Solo actualizar si el servidor tiene MÁS números que localmente
+          // Esto previene que datos incompletos (de ronda equivocada) sobrescriban datos correctos
+          if (serverCount < localCount) {
+            console.log(
+              `[useGameStateSync] ⚠️ FIX-SYNC: Ignorando sync con menos números (local: ${localCount}, servidor: ${serverCount})`
+            );
+            return; // No sobrescribir
+          }
+          
           if (serverCount !== localCount && Math.abs(serverCount - localCount) > 2) {
             // Desincronización detectada
             checkDesynchronization(serverCount, localCount);
@@ -292,6 +307,10 @@ export function useGameStateSync(
           setRoundEnded(false);
           setRoundFinished(false);
           setProgress(0);
+          
+          console.log(
+            `[useGameStateSync] ✅ FIX-SYNC: Números sincronizados (${serverCount} números)`
+          );
         } else if (roundsData.status === "fulfilled") {
           // No hay números, verificar estado del round
           const currentRoundData = roundsData.value.find(

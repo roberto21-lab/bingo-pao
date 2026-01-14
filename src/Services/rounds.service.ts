@@ -20,6 +20,11 @@ export type BackendRound = {
     amount: number;
     pattern: string | null;
   } | null;
+  // FIX-RELOAD: Optional called_numbers array for state persistence
+  called_numbers?: Array<{
+    number: string;
+    called_at: string;
+  }>;
   created_at: string;
   updated_at: string;
 };

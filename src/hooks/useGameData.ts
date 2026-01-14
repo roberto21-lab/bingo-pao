@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../Services/api";
 import { getCardsByRoomAndUser } from "../Services/cards.service";
 import { getRoomRounds } from "../Services/rounds.service";
@@ -33,6 +33,8 @@ export interface UseGameDataReturn {
   roundBingoTypes: BingoType[];
   roundsData: any[];
   calledNumbers: Set<string>;
+  // FIX-CRITICAL: Ref para evitar stale closures en callbacks
+  calledNumbersRef: React.MutableRefObject<Set<string>>;
   currentNumber: string;
   lastNumbers: string[];
   lastCalledTimestamp: number | null;
@@ -89,6 +91,13 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
   const [roundBingoTypes, setRoundBingoTypes] = useState<BingoType[]>([]);
   const [roundsData, setRoundsData] = useState<any[]>([]);
   const [calledNumbers, setCalledNumbers] = useState<Set<string>>(new Set());
+  // FIX-CRITICAL: Ref para calledNumbers para evitar stale closures en callbacks
+  const calledNumbersRef = useRef<Set<string>>(calledNumbers);
+  // FIX-CRITICAL: Sincronizar ref cuando cambia el estado
+  useEffect(() => {
+    calledNumbersRef.current = calledNumbers;
+  }, [calledNumbers]);
+  
   const [currentNumber, setCurrentNumber] = useState<string>("");
   const [lastNumbers, setLastNumbers] = useState<string[]>([]);
   const [lastCalledTimestamp, setLastCalledTimestamp] = useState<number | null>(null);
@@ -188,7 +197,15 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
         // Si la sala está finalizada, cargar ganadores
         if (isRoomFinished) {
           try {
+            console.log(`[useGameData] 🏁 Sala finalizada, cargando ganadores...`);
             const winnersData = await getRoomWinners(roomId);
+            
+            // FIX-PATTERN-LOG: Log detallado de los ganadores con sus patrones
+            console.log(
+              `[useGameData] 🏆 Ganadores obtenidos del servidor:`,
+              winnersData.map(w => ({ round: w.round_number, pattern: w.pattern, card: w.card_code }))
+            );
+            
             setWinners(winnersData);
             
             const winnerCards: BingoGrid[] = [];
@@ -199,11 +216,24 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
             const sortedWinners = [...winnersData].sort((a, b) => a.round_number - b.round_number);
             
             sortedWinners.forEach((winner) => {
+              // FIX-PATTERN-LOG: Log detallado incluyendo el patrón para diagnóstico
+              console.log(
+                `[useGameData] 🎯 Procesando ganador - Ronda ${winner.round_number}: Pattern="${winner.pattern}", Cartón ${winner.card_code}, bingo_numbers: ${winner.bingo_numbers?.length || 0}`
+              );
               winnerCards.push(convertCardNumbers(winner.card_numbers));
               winnerCardsData.push({ _id: winner.card_id, code: winner.card_code });
-              // ISSUE-8: Usar card_id como clave (misma fuente que bingo_numbers del modal)
-              winningNumbers.set(winner.card_id, new Set(winner.bingo_numbers));
+              // FIX-WINNING-MAP: Usar clave compuesta card_id + round_number
+              // Esto es necesario cuando el mismo cartón gana múltiples rondas
+              // para no sobrescribir los bingo_numbers de rondas anteriores
+              const mapKey = `${winner.card_id}_round_${winner.round_number}`;
+              winningNumbers.set(mapKey, new Set(winner.bingo_numbers));
+              console.log(`[useGameData] 📍 Guardando bingo_numbers con clave: ${mapKey}, números: ${winner.bingo_numbers?.length || 0}`);
             });
+            
+            console.log(
+              `[useGameData] 📋 Resumen de ganadores:`,
+              sortedWinners.map(w => `R${w.round_number}: ${w.pattern} (${w.card_code})`).join(', ')
+            );
             
             setPlayerCards(winnerCards);
             setPlayerCardsData(winnerCardsData);
@@ -220,9 +250,11 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
             setRoundEnded(true);
             setIsCallingNumber(false);
             setLoading(false);
+            
+            console.log(`[useGameData] ✅ Sala finalizada cargada correctamente con ${winnersData.length} ganadores`);
             return;
           } catch (err) {
-            console.error("Error al cargar ganadores:", err);
+            console.error("[useGameData] ❌ Error al cargar ganadores:", err);
           }
         }
         
@@ -263,14 +295,34 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
         setRoundBingoTypes(bingoTypes);
 
         // Encontrar round actual
+        // FIX-RELOAD: Incluir TODOS los estados activos de una ronda:
+        // - "starting": countdown antes de empezar a llamar números
+        // - "in_progress": llamando números activamente
+        // - "bingo_claimed": ventana de 45 segundos para validar bingos
+        // Sin esto, al recargar durante bingo_claimed se pierden los números
         let currentRoundData = roundsData.find((r) => {
           const status = typeof r.status_id === "object" && r.status_id
             ? r.status_id.name
             : "";
-          return status === "starting" || status === "in_progress";
+          return status === "starting" || status === "in_progress" || status === "bingo_claimed";
         });
         
         if (!currentRoundData) {
+          // Si no hay ronda activa, buscar la ronda más reciente por round_number
+          // que tenga números llamados (puede estar en transición)
+          const roundsWithNumbers = roundsData.filter((r) => {
+            const calledCount = r.called_numbers?.length || 0;
+            return calledCount > 0;
+          });
+          
+          if (roundsWithNumbers.length > 0) {
+            roundsWithNumbers.sort((a, b) => b.round_number - a.round_number);
+            currentRoundData = roundsWithNumbers[0];
+          }
+        }
+        
+        if (!currentRoundData) {
+          // Fallback final: buscar rondas finished
           const finishedRounds = roundsData.filter((r) => {
             const status = typeof r.status_id === "object" && r.status_id
               ? r.status_id.name
@@ -292,6 +344,17 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
           setRoundFinished(status === "finished");
           
           if (status === "starting") {
+            setIsCallingNumber(false);
+            setRoundEnded(false);
+            setRoundFinished(false);
+          } else if (status === "in_progress") {
+            // FIX-RELOAD: Cuando la ronda está en progreso, activar estados correctamente
+            setIsCallingNumber(true);
+            setRoundEnded(false);
+            setRoundFinished(false);
+          } else if (status === "bingo_claimed") {
+            // FIX-RELOAD: Durante ventana de bingo, los números ya no se llaman
+            // pero la ronda NO ha terminado - el usuario aún puede cantar bingo
             setIsCallingNumber(false);
             setRoundEnded(false);
             setRoundFinished(false);
@@ -416,6 +479,8 @@ export function useGameData(roomId: string | undefined): UseGameDataReturn {
     roundBingoTypes,
     roundsData,
     calledNumbers,
+    // FIX-CRITICAL: Ref para evitar stale closures
+    calledNumbersRef,
     currentNumber,
     lastNumbers,
     lastCalledTimestamp,
